@@ -25,6 +25,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 # Number of GPUs to use for distributed training
 NUM_GPUS="${NUM_GPUS:-4}"
 
@@ -62,7 +65,7 @@ echo "ECG pretraining: data=${DATA_DIR} out=${OUTPUT_DIR} gpus=${NUM_GPUS}"
 # Architecture: 12-lead ECG, 3 wavelet levels, kernel 24, patch 64.
 # Masking is frequency-guided at 70%, which suits the sharp QRS morphology.
 # ---------------------------------------------------------------------------
-torchrun --standalone --nproc_per_node="${NUM_GPUS}" pretrain.py \
+"${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" pretrain.py \
   --train_files "${TRAIN_FILES}" \
   ${VAL_FILES:+--val_files "${VAL_FILES}"} \
   --in_channels 12 \

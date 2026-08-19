@@ -100,6 +100,41 @@ cd $HOME && python -m venv pwprep && source pwprep/bin/activate
 pip install --no-cache-dir mne wfdb h5py numpy scipy pandas tqdm
 ```
 
+## Two environments never share a shell
+
+`cineca-ai` and the standalone `python/3.11` module pull in different builds of
+the same dependency (`bzip2/1.0.8-ib3znej` vs `bzip2/1.0.8-gp5wcz5`), which the
+module system reports as a conflict. Switching between the training and the
+data-prep environment therefore means starting from `module purge`:
+
+```bash
+# training
+module purge && module load profile/deeplrn cineca-ai/4.3.0
+source $HOME/pw/bin/activate
+
+# data preparation
+module purge && module load python/3.11
+source $HOME/pwprep/bin/activate
+```
+
+## Never launch through `torchrun`
+
+`torch.distributed.run` spawns its workers with `sys.executable`. The `torchrun`
+console script on PATH belongs to the cineca-ai environment, so its
+`sys.executable` is the *module's* interpreter and the workers cannot see
+anything pip installed into the venv -- `pywt` among them -- even with the venv
+active in the parent shell. The launch scripts always use
+
+```bash
+python -m torch.distributed.run ...
+```
+
+so the venv's interpreter is the parent and the workers inherit its
+site-packages. `scripts/cineca_env.sh` exposes this as `${PW_TORCHRUN[@]}`.
+
+Note that `torchrun` is absent from PATH on the login node but present on a
+compute node, so preferring it fails only where the GPUs are.
+
 ## Smoke test (login node, CPU, free)
 
 ```bash
@@ -140,6 +175,34 @@ spend a 24 h four-node reservation producing numbers that are not results.
 
 Override anything through `--export`: `PW_CKPT_ROOT`, `PW_DATA_EEG`, `DATASETS`,
 `PW_VENV`, `PROJECT_DIR`, `EPOCHS`, `BATCH_SIZE`, `PRECISION`, `EXTRA`.
+
+## NinaPro DB5 (EMG fine-tuning)
+
+`EMG/db5_finetune.py` converts the raw `.mat` files. Two traps it handles:
+the `exercise` field inside the `.mat` disagrees with the file name (E1 reads
+3, E2 reads 1), and `restimulus` restarts at 1 in every exercise file, so
+concatenating without an offset merges 52 movements into 23.
+
+```bash
+# download (login node -- compute nodes have no internet)
+mkdir -p $SCRATCH/bio/emg/db5/raw && cd $SCRATCH/bio/emg/db5/raw
+for n in $(seq 1 10); do
+  curl -fL --retry 3 -O "https://ninapro.hevs.ch/files/DB5_Preproc/s${n}.zip"
+  unzip -q -o "s${n}.zip" && rm "s${n}.zip"
+done
+
+# convert (pwprep environment: needs scipy for .mat)
+python EMG/db5_finetune.py --root $SCRATCH/bio/emg/db5/raw \
+                           --out-dir $SCRATCH/bio/emg/db5 \
+                           --window 512 --stride 128
+
+# fine-tune (pw environment, inside a GPU allocation)
+TASK=db5 IN_CHANNELS=16 NUM_CLASSES=53 NUM_GPUS=4 bash EMG/finetune_emg.sh
+```
+
+`--window` must be a multiple of the model's `patch_size`; `model.py` asserts
+`T % patch_size == 0`. 512 samples is 2.56 s at 200 Hz and fits inside 99% of
+the movement segments.
 
 ## Monitoring
 

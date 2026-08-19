@@ -25,6 +25,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 # Number of GPUs to use for distributed training
 NUM_GPUS="${NUM_GPUS:-4}"
 
@@ -42,9 +45,18 @@ PRETRAINED_MODEL="${PRETRAINED_MODEL:-${PW_CKPT_ROOT}/pretrain_ecg/best_model.pt
 # Output directory for fine-tuning results
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/finetune_ecg_${TASK}_multilabel}"
 
-for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}" "${PRETRAINED_MODEL}"; do
+for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}"; do
     [[ -f "${f}" ]] || { echo "ERROR: missing ${f}" >&2; exit 1; }
 done
+
+# The checkpoint is optional: finetune.py falls back to random init, which is
+# how you smoke-test the pipeline before any encoder has been pretrained.
+if [[ ! -f "${PRETRAINED_MODEL}" ]]; then
+    echo "WARNING: no checkpoint at ${PRETRAINED_MODEL}; training from scratch." >&2
+    PRETRAINED_ARG=()
+else
+    PRETRAINED_ARG=(--pretrained_path "${PRETRAINED_MODEL}")
+fi
 mkdir -p "${OUTPUT_DIR}"
 
 echo "ECG multi-label fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
@@ -54,11 +66,11 @@ echo "ECG multi-label fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DI
 # rhythms co-occur, so a lower operating point trades precision for recall.
 # The architecture block must match ECG/pretrain_ecg.sh.
 # ---------------------------------------------------------------------------
-torchrun --standalone --nproc_per_node="${NUM_GPUS}" finetune_multilabel.py \
+"${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" finetune_multilabel.py \
   --train_file "${TRAIN_FILE}" \
   --val_file "${VAL_FILE}" \
   --test_file "${TEST_FILE}" \
-  --pretrained_path "${PRETRAINED_MODEL}" \
+  ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
   --task_type multilabel \
   --threshold 0.3 \
   --in_channels 12 \

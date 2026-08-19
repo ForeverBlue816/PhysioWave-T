@@ -123,7 +123,7 @@ TRAIN_ARGS=(
 srun --kill-on-bad-exit=1 \
     --ntasks="${SLURM_NNODES}" \
     --ntasks-per-node=1 \
-    torchrun \
+    "${PW_TORCHRUN[@]}" \
     --nproc_per_node="${GPUS_PER_NODE}" \
     --nnodes="${SLURM_NNODES}" \
     --rdzv_id="${SLURM_JOB_ID}" \

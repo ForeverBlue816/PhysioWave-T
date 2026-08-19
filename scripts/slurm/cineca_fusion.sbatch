@@ -93,7 +93,7 @@ echo "  OUTPUT_DIR=${OUTPUT_DIR}"
 echo "============================================================"
 
 srun --kill-on-bad-exit=1 --ntasks="${SLURM_NNODES}" --ntasks-per-node=1 \
-    torchrun --nproc_per_node="${GPUS_PER_NODE}" --nnodes="${SLURM_NNODES}" \
+    "${PW_TORCHRUN[@]}" --nproc_per_node="${GPUS_PER_NODE}" --nnodes="${SLURM_NNODES}" \
     --rdzv_id="${SLURM_JOB_ID}" --rdzv_backend=c10d \
     --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT}" \
     -m physiowave.train.fusion_main \

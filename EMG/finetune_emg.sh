@@ -25,6 +25,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 # Number of GPUs to use for distributed training
 NUM_GPUS="${NUM_GPUS:-4}"
 
@@ -41,9 +44,18 @@ PRETRAINED_MODEL="${PRETRAINED_MODEL:-${PW_CKPT_ROOT}/pretrain_emg/best_model.pt
 # Output directory for fine-tuning results
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/finetune_emg_${TASK}}"
 
-for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}" "${PRETRAINED_MODEL}"; do
+for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}"; do
     [[ -f "${f}" ]] || { echo "ERROR: missing ${f}" >&2; exit 1; }
 done
+
+# The checkpoint is optional: finetune.py falls back to random init, which is
+# how you smoke-test the pipeline before any encoder has been pretrained.
+if [[ ! -f "${PRETRAINED_MODEL}" ]]; then
+    echo "WARNING: no checkpoint at ${PRETRAINED_MODEL}; training from scratch." >&2
+    PRETRAINED_ARG=()
+else
+    PRETRAINED_ARG=(--pretrained_path "${PRETRAINED_MODEL}")
+fi
 mkdir -p "${OUTPUT_DIR}"
 
 echo "EMG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
@@ -51,17 +63,17 @@ echo "EMG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
 # ---------------------------------------------------------------------------
 # The architecture block must match EMG/pretrain_emg.sh exactly.
 # ---------------------------------------------------------------------------
-torchrun --standalone --nproc_per_node="${NUM_GPUS}" finetune.py \
+"${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" finetune.py \
   --train_file "${TRAIN_FILE}" \
   --val_file "${VAL_FILE}" \
   --test_file "${TEST_FILE}" \
-  --pretrained_path "${PRETRAINED_MODEL}" \
-  --in_channels 8 \
+  ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
+  --in_channels "${IN_CHANNELS:-8}" \
   --max_level 3 \
   --wave_kernel_size 16 \
   --wavelet_names sym4 sym5 db6 coif3 bior4.4 \
   --use_separate_channel \
-  --patch_size 64 \
+  --patch_size "${PATCH_SIZE:-64}" \
   --embed_dim 256 \
   --depth 6 \
   --num_heads 8 \

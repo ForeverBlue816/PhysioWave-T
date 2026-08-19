@@ -51,20 +51,44 @@ PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
 # --------------------------------------------------------------------------- #
 PW_CINECA_AI="${PW_CINECA_AI:-cineca-ai/4.3.0}"
 
+# Is a module with this name (any version) already in the environment?
+# $LOADEDMODULES is the colon-separated list the module system maintains.
+pw_module_is_loaded() {
+    local want="${1%%/*}" entry
+    local IFS=':'
+    for entry in ${LOADEDMODULES:-}; do
+        [[ "${entry%%/*}" == "${want}" ]] && return 0
+    done
+    return 1
+}
+
 if [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     if ! type -t module >/dev/null 2>&1; then
         # Non-login shells do not always have the module function defined.
         # shellcheck disable=SC1091
         [[ -f /etc/profile.d/modules.sh ]] && source /etc/profile.d/modules.sh
     fi
-    module load profile/deeplrn
-    module load "${PW_CINECA_AI}"
+
+    # Loading a module that is already loaded is not a no-op: it re-resolves the
+    # whole dependency chain and aborts on the first version conflict (typically
+    # bzip2, pulled in by python/3.11). So load only what is missing, and let
+    # PW_SKIP_MODULES=1 bypass the step entirely for an already-set-up shell.
+    if [[ "${PW_SKIP_MODULES:-0}" == "1" ]]; then
+        :
+    elif pw_module_is_loaded "${PW_CINECA_AI}"; then
+        :
+    else
+        pw_module_is_loaded profile || module load profile/deeplrn
+        module load "${PW_CINECA_AI}"
+    fi
 
     # ----------------------------------------------------------------------- #
     # 2. Virtualenv (created with --system-site-packages on top of cineca-ai)
     # ----------------------------------------------------------------------- #
     PW_VENV="${PW_VENV:-${VENV:-${HOME}/pw}}"
-    if [[ -f "${PW_VENV}/bin/activate" ]]; then
+    if [[ "${VIRTUAL_ENV:-}" == "${PW_VENV}" ]]; then
+        :                                   # already active; re-sourcing stacks PATH
+    elif [[ -f "${PW_VENV}/bin/activate" ]]; then
         # shellcheck disable=SC1091
         source "${PW_VENV}/bin/activate"
     else
@@ -125,7 +149,70 @@ export PW_CKPT_ROOT PW_CACHE_ROOT PW_SSL_CACHE PW_PREP_CACHE PW_MANIFEST_DIR
 export PW_DATA_ROOT PW_DATA_EEG PW_DATA_ECG PW_DATA_EMG
 
 # --------------------------------------------------------------------------- #
-# 4. Helpers
+# 4. Launcher
+#
+# Always `python -m torch.distributed.run`, never the `torchrun` console script.
+#
+# torch.distributed.run spawns its workers with sys.executable. The `torchrun`
+# on PATH belongs to the cineca-ai environment, so its sys.executable is the
+# *module's* python -- and the workers then cannot see anything pip installed
+# into the venv (pywt, for one), even though the parent shell has the venv
+# active. Invoking the module form makes the venv's python the parent, and the
+# workers inherit its site-packages.
+#
+# On the login node `torchrun` is not on PATH at all; on a compute node it is.
+# Preferring it would therefore fail only on the machine that has GPUs.
+# --------------------------------------------------------------------------- #
+PW_TORCHRUN=("${PYTHON:-python}" -m torch.distributed.run)
+
+# Fail before the allocation is spent, not inside a worker: every module the
+# training entry points import at top level, checked in the venv's interpreter.
+pw_require_python_deps() {
+    local missing
+    missing="$("${PYTHON:-python}" - <<'PYEOF'
+import importlib.util as u
+need = ["torch", "numpy", "scipy", "h5py", "pywt", "sklearn", "yaml", "tqdm"]
+print(" ".join(m for m in need if u.find_spec(m) is None))
+PYEOF
+)"
+    if [[ -n "${missing}" ]]; then
+        echo "ERROR: missing Python packages in $("${PYTHON:-python}" -c 'import sys;print(sys.prefix)'): ${missing}" >&2
+        echo "       pip install --no-cache-dir --no-deps ${missing}" >&2
+        echo "       (pywt is the PyWavelets distribution; sklearn is scikit-learn)" >&2
+        return 1
+    fi
+    return 0
+}
+
+# Refuse to start training on a login node.  finetune.py and pretrain_main both
+# initialise NCCL, which needs a GPU; without one the job dies deep inside
+# init_process_group instead of here, and CINECA frowns on login-node compute.
+pw_require_gpu() {
+    if [[ -n "${SLURM_JOB_ID:-}" ]]; then
+        return 0                      # inside a Slurm allocation (sbatch or srun)
+    fi
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        return 0                      # a GPU is actually visible
+    fi
+    cat >&2 <<'MSG'
+ERROR: no GPU and no Slurm allocation -- this looks like a login node.
+
+  Training initialises NCCL, which requires a GPU. Get an allocation first:
+
+    # interactive, for a smoke test
+    srun --nodes=1 --gpus=1 --ntasks-per-node=1 --cpus-per-task=8 \
+         -A iscrb_wearusfm -p boost_usr_prod --time=0:30:00 --pty /bin/bash
+
+    # or submit a batch job
+    sbatch scripts/slurm/cineca_pretrain.sbatch
+
+  Set PW_ALLOW_NO_GPU=1 to override (CPU-only debugging).
+MSG
+    return 1
+}
+
+# --------------------------------------------------------------------------- #
+# 5. Helpers
 # --------------------------------------------------------------------------- #
 
 # Directory holding the corpora for one modality.  `emg` and `semg` are the same

@@ -25,6 +25,9 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 # Number of GPUs to use for distributed training
 NUM_GPUS="${NUM_GPUS:-4}"
 
@@ -62,15 +65,15 @@ echo "EMG pretraining: data=${DATA_DIR} out=${OUTPUT_DIR} gpus=${NUM_GPUS}"
 # than ECG/EEG -- sEMG bursts are broadband and brief, so long kernels smear
 # onset timing.  Masking at 60%, slightly lower than ECG.
 # ---------------------------------------------------------------------------
-torchrun --standalone --nproc_per_node="${NUM_GPUS}" pretrain.py \
+"${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" pretrain.py \
   --train_files "${TRAIN_FILES}" \
   ${VAL_FILES:+--val_files "${VAL_FILES}"} \
-  --in_channels 8 \
+  --in_channels "${IN_CHANNELS:-8}" \
   --max_level 3 \
   --wave_kernel_size 16 \
   --wavelet_names sym4 sym5 db6 coif3 bior4.4 \
   --use_separate_channel \
-  --patch_size 64 \
+  --patch_size "${PATCH_SIZE:-64}" \
   --embed_dim 256 \
   --depth 6 \
   --num_heads 8 \

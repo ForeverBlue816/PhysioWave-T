@@ -41,6 +41,9 @@ TASK="${TASK:-tuab}"
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/${TASK}}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/finetune_eeg_${TASK}}"
 PRETRAINED_MODEL="${PRETRAINED_MODEL:-${PW_CKPT_ROOT}/pretrain_eeg/best_model.pth}"
@@ -52,6 +55,15 @@ TEST_FILE="${TEST_FILE:-${DATA_DIR}/${TASK}_test.h5}"
 for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}"; do
     [[ -f "${f}" ]] || { echo "ERROR: missing ${f} (build it with EEG/tuab_finetune.py)" >&2; exit 1; }
 done
+
+# The checkpoint is optional: finetune.py falls back to random init, which is
+# how you smoke-test the pipeline before any encoder has been pretrained.
+if [[ ! -f "${PRETRAINED_MODEL}" ]]; then
+    echo "WARNING: no checkpoint at ${PRETRAINED_MODEL}; training from scratch." >&2
+    PRETRAINED_ARG=()
+else
+    PRETRAINED_ARG=(--pretrained_path "${PRETRAINED_MODEL}")
+fi
 
 mkdir -p "${OUTPUT_DIR}"
 
@@ -65,11 +77,11 @@ echo "EEG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
 #                       EEG rhythms of interest sit below 45 Hz
 #   wavelet_names    -> longer-support families track EEG rhythms better than
 #                       the short kernels used for EMG bursts
-torchrun --standalone --nproc_per_node="${NUM_GPUS}" finetune.py \
+"${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" finetune.py \
   --train_file "${TRAIN_FILE}" \
   --val_file "${VAL_FILE}" \
   --test_file "${TEST_FILE}" \
-  --pretrained_path "${PRETRAINED_MODEL}" \
+  ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
   --in_channels 19 \
   --max_level 4 \
   --wave_kernel_size 24 \

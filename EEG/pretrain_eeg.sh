@@ -44,6 +44,9 @@ WEIGHTS="${WEIGHTS:-[0.7,0.3]}"
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+[[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
+pw_require_python_deps || exit 1
+
 DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg}"
 mkdir -p "${OUTPUT_DIR}"
@@ -101,7 +104,7 @@ OVERRIDES=(
 echo "EEG pretraining: datasets=${DATASETS} data=${DATA_DIR} out=${OUTPUT_DIR}"
 
 if [[ "${NUM_GPUS}" -gt 1 ]]; then
-  torchrun --standalone --nproc_per_node="${NUM_GPUS}" \
+  "${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}" \
     -m physiowave.train.pretrain_main \
     --config pretrain/eeg \
     --output-dir "${OUTPUT_DIR}" \
