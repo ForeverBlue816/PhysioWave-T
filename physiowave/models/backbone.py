@@ -32,6 +32,73 @@ class BackboneConfig:
     mlp_ratio: float = 4.0
     dropout: float = 0.1
     use_rope: bool = True
+    # Post-BERT defaults. Each is switchable so the paper can ablate it rather
+    # than assert it: 'layernorm'/'mlp'/qk_norm=False reproduce the original
+    # block exactly.
+    norm: str = "rmsnorm"          # 'layernorm' | 'rmsnorm'
+    ffn: str = "swiglu"            # 'mlp' | 'swiglu'
+    qk_norm: bool = True           # normalise q and k per head before attention
+
+
+class RMSNorm(nn.Module):
+    """LayerNorm without the mean subtraction or the bias.
+
+    Two fewer ops per token than LayerNorm and one fewer parameter tensor, at
+    no measured cost in quality. The reduction runs in fp32 because under bf16
+    autocast the mean of squares over a few hundred channels loses enough
+    mantissa to move the normaliser visibly.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        dtype = x.dtype
+        xf = x.float()
+        xf = xf * torch.rsqrt(xf.pow(2).mean(-1, keepdim=True) + self.eps)
+        return (xf * self.weight.float()).to(dtype)
+
+
+def make_norm(kind: str, dim: int) -> nn.Module:
+    if kind == "rmsnorm":
+        return RMSNorm(dim)
+    if kind == "layernorm":
+        return nn.LayerNorm(dim)
+    raise ValueError(f"unknown norm {kind!r}; expected 'rmsnorm' or 'layernorm'")
+
+
+class SwiGLU(nn.Module):
+    """Gated FFN: ``down(silu(gate(x)) * up(x))``.
+
+    Three projections instead of two, so the hidden width is scaled by 2/3 to
+    keep the parameter count level with the GELU MLP it replaces -- otherwise a
+    'better FFN' comparison is really just a bigger one.
+    """
+
+    def __init__(self, dim: int, hidden: int, dropout: float = 0.0) -> None:
+        super().__init__()
+        self.gate = nn.Linear(dim, hidden, bias=False)
+        self.up = nn.Linear(dim, hidden, bias=False)
+        self.down = nn.Linear(hidden, dim, bias=False)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.drop(self.down(F.silu(self.gate(x)) * self.up(x)))
+
+
+def make_ffn(cfg: "BackboneConfig") -> nn.Module:
+    D = cfg.embed_dim
+    if cfg.ffn == "swiglu":
+        hidden = int(D * cfg.mlp_ratio * 2 / 3)
+        hidden += (-hidden) % 8                       # keep the GEMM aligned
+        return SwiGLU(D, hidden, cfg.dropout)
+    if cfg.ffn == "mlp":
+        hidden = int(D * cfg.mlp_ratio)
+        return nn.Sequential(nn.Linear(D, hidden), nn.GELU(), nn.Dropout(cfg.dropout),
+                             nn.Linear(hidden, D), nn.Dropout(cfg.dropout))
+    raise ValueError(f"unknown ffn {cfg.ffn!r}; expected 'swiglu' or 'mlp'")
 
 
 class RotaryEmbedding(nn.Module):
@@ -57,7 +124,8 @@ class RotaryEmbedding(nn.Module):
 class MultiHeadAttention(nn.Module):
     """Standard MHA with optional RoPE, used for both factorized axes."""
 
-    def __init__(self, dim: int, num_heads: int, dropout: float = 0.0, use_rope: bool = True) -> None:
+    def __init__(self, dim: int, num_heads: int, dropout: float = 0.0, use_rope: bool = True,
+                 qk_norm: bool = False) -> None:
         super().__init__()
         assert dim % num_heads == 0, f"dim={dim} not divisible by num_heads={num_heads}"
         self.h, self.hd = num_heads, dim // num_heads
@@ -65,12 +133,18 @@ class MultiHeadAttention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.drop = nn.Dropout(dropout)
         self.rope = RotaryEmbedding(self.hd) if use_rope else None
+        # Bounding the norm of q and k keeps the logits from drifting into the
+        # range where softmax saturates and gradients stop flowing -- the usual
+        # cause of a loss that plateaus early at high learning rates.
+        self.q_norm = RMSNorm(self.hd) if qk_norm else nn.Identity()
+        self.k_norm = RMSNorm(self.hd) if qk_norm else nn.Identity()
 
     def forward(self, x: torch.Tensor, key_padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """``[N, L, D] -> [N, L, D]``; ``key_padding_mask`` is ``[N, L]``, True = keep."""
         N, L, D = x.shape
         qkv = self.qkv(x).reshape(N, L, 3, self.h, self.hd).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
+        q, k = self.q_norm(q), self.k_norm(k)
         if self.rope is not None:
             q, k = self.rope(q), self.rope(k)
         attn_mask = None
@@ -88,14 +162,14 @@ class FactorizedBlock(nn.Module):
     def __init__(self, cfg: BackboneConfig) -> None:
         super().__init__()
         D = cfg.embed_dim
-        self.n1 = nn.LayerNorm(D)
-        self.time_attn = MultiHeadAttention(D, cfg.num_heads, cfg.dropout, cfg.use_rope)
-        self.n2 = nn.LayerNorm(D)
-        self.slot_attn = MultiHeadAttention(D, cfg.slot_heads, cfg.dropout, use_rope=False)
-        self.n3 = nn.LayerNorm(D)
-        hidden = int(D * cfg.mlp_ratio)
-        self.mlp = nn.Sequential(nn.Linear(D, hidden), nn.GELU(), nn.Dropout(cfg.dropout),
-                                 nn.Linear(hidden, D), nn.Dropout(cfg.dropout))
+        self.n1 = make_norm(cfg.norm, D)
+        self.time_attn = MultiHeadAttention(D, cfg.num_heads, cfg.dropout, cfg.use_rope,
+                                            cfg.qk_norm)
+        self.n2 = make_norm(cfg.norm, D)
+        self.slot_attn = MultiHeadAttention(D, cfg.slot_heads, cfg.dropout, use_rope=False,
+                                            qk_norm=cfg.qk_norm)
+        self.n3 = make_norm(cfg.norm, D)
+        self.mlp = make_ffn(cfg)
 
     def forward(self, x: torch.Tensor, time_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """``[B, K, S, D] -> [B, K, S, D]``."""
@@ -121,7 +195,7 @@ class FactorizedBackbone(nn.Module):
         self.slot_embed = nn.Parameter(torch.randn(1, 64, 1, cfg.embed_dim) * 0.02)
         self.time_embed = nn.Parameter(torch.randn(1, 1, max_patches, cfg.embed_dim) * 0.02)
         self.blocks = nn.ModuleList(FactorizedBlock(cfg) for _ in range(cfg.depth))
-        self.norm = nn.LayerNorm(cfg.embed_dim)
+        self.norm = make_norm(cfg.norm, cfg.embed_dim)
 
     def forward(self, x: torch.Tensor, time_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         assert x.dim() == 4, f"expected [B, K, S, D], got {tuple(x.shape)}"
