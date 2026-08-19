@@ -132,3 +132,58 @@ def test_unknown_block_variants_are_rejected():
         TransformerBlock(dim=32, num_heads=4, ffn="gelu-glu")
     with pytest.raises(ValueError, match="norm"):
         TransformerBlock(dim=32, num_heads=4, norm="batchnorm")
+
+
+def test_legacy_runs_through_the_new_trainer_interface():
+    """The legacy model must accept (x, meta) and return a logits dict.
+
+    This is what lets the same training loop drive both architectures, which is
+    the only way to tell an architecture gap from a pipeline gap.
+    """
+    cfg = load_config("pretrain/semg_legacy",
+                      ["model.legacy.depth=1", "model.legacy.embed_dim=32",
+                       "model.legacy.max_level=2", "model.legacy.in_channels=8"])
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+
+    from physiowave.channels.tare import ChannelMeta
+
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(8)], torch.zeros(8, 3))
+    with torch.no_grad():
+        out = enc(torch.randn(2, 8, 256), meta)
+    assert isinstance(out, dict) and out["logits"].shape == (2, 5)
+    assert torch.isfinite(out["logits"]).all()
+
+
+def test_the_two_dataset_classes_read_identical_tensors(tmp_path):
+    """finetune.py and finetune_main must feed the model the same numbers.
+
+    They have separate Dataset implementations over the same HDF5, and a
+    difference here would look exactly like an architecture difference in a
+    benchmark table.
+    """
+    import importlib.util
+
+    import h5py
+    import numpy as np
+
+    from physiowave.train.finetune_main import LabelledWindows
+
+    path = tmp_path / "train.h5"
+    rng = np.random.default_rng(0)
+    data = rng.normal(size=(32, 8, 128)).astype(np.float32)
+    label = rng.integers(0, 4, 32).astype(np.int64)
+    with h5py.File(path, "w") as f:
+        f.create_dataset("data", data=data)
+        f.create_dataset("label", data=label)
+
+    spec = importlib.util.spec_from_file_location("_ft_for_test", "finetune.py")
+    ft = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ft)
+
+    new, old = LabelledWindows(str(path)), ft.TimeSeriesDataset(str(path))
+    assert len(new) == len(old)
+    for i in range(len(new)):
+        xn, yn = new[i]
+        xo, yo = old[i]
+        assert torch.equal(xn, xo) and int(yn) == int(yo), i

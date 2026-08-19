@@ -49,6 +49,32 @@ def build_legacy_model(**kwargs: Any):
     return BERTWaveletTransformer(**kwargs)
 
 
+class LegacyForFinetuneMain(nn.Module):
+    """The legacy model behind the interface ``finetune_main`` expects.
+
+    Exists to make one experiment possible: run the original architecture through
+    the *new* training loop, same data, same schedule, same metrics. When the two
+    paths disagree on a benchmark that is the only way to tell an architecture
+    difference from a pipeline difference -- optimizer groups, warmup, label
+    smoothing, evaluation and checkpoint selection all differ between
+    ``finetune.py`` and ``physiowave.train.finetune_main``, and any of them could
+    account for a gap that looks architectural.
+
+    The legacy ``forward`` takes a task name as its second positional argument,
+    where this interface passes ``ChannelMeta``; the adapter swallows the
+    metadata (the legacy model has no use for it) and returns the dict shape.
+    """
+
+    def __init__(self, **legacy_kwargs: Any) -> None:
+        super().__init__()
+        self.model = build_legacy_model(**legacy_kwargs)
+
+    def forward(self, x: torch.Tensor, meta: Any = None, **_: Any) -> Dict[str, Any]:
+        out = self.model(x, task="downstream", task_name="classification")
+        logits = out["logits"] if isinstance(out, dict) else out
+        return {"logits": logits, "pooled": logits}
+
+
 def legacy_token_count(in_channels: int, max_level: int, T: int, patch_size) -> Dict[str, int]:
     """Token count of the legacy path, for the token-efficiency table.
 

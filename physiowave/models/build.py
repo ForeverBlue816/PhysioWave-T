@@ -26,7 +26,8 @@ from ..wavelet.wast import WASTConfig
 from .backbone import BackboneConfig
 from .encoder import EncoderConfig, PhysioWaveEncoder
 from .fusion import MultimodalPhysioWave, RALFConfig
-from .legacy import LegacyWithChannelID, build_legacy_model
+from .legacy import (LegacyForFinetuneMain, LegacyWithChannelID,
+                     build_legacy_model)
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,13 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
         if name == "legacy_channel_id":
             logger.info("Building legacy + channel-ID with %s", params)
             return LegacyWithChannelID(**params)
+        if model_cfg.get("num_classes") is not None:
+            # Driven by finetune_main, which passes ChannelMeta and reads a dict.
+            params.setdefault("task_type", "classification")
+            params["num_classes"] = model_cfg["num_classes"]
+            logger.info("Building the legacy PhysioWave model for finetune_main with %s",
+                        params)
+            return LegacyForFinetuneMain(**params)
         logger.info("Building the legacy PhysioWave model with %s", params)
         return build_legacy_model(**params)
 
