@@ -337,6 +337,14 @@ def main(argv=None) -> int:
                     find_unused_parameters=True)
     core = model.module if hasattr(model, "module") else model
     if info.is_main:
+        # State the block that is actually running. The components are dataclass
+        # defaults rather than YAML entries, so reading the configs does not tell
+        # you which ones are on, and an ablation that silently kept the defaults
+        # would be indistinguishable from one that took effect.
+        bb = getattr(getattr(core, "cfg", None), "backbone", None)
+        if bb is not None:
+            logger.info("backbone: depth=%d dim=%d | rope=%s norm=%s ffn=%s qk_norm=%s",
+                        bb.depth, bb.embed_dim, bb.use_rope, bb.norm, bb.ffn, bb.qk_norm)
         total = sum(p.numel() for p in core.parameters())
         trainable = sum(p.numel() for p in core.parameters() if p.requires_grad)
         # Raw counts as well as millions: a linear probe leaves a couple of
