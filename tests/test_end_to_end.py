@@ -192,7 +192,13 @@ def test_lattice_config_still_tells_channels_apart():
     p = torch.randperm(C)
     with torch.no_grad():
         a, b = enc(x, meta)["logits"], enc(x[:, p], meta)["logits"]
-    assert (a - b).abs().max().item() > 1e-3
+    # Not just "nonzero": at the default pos_embed_init of 0.02 the slot
+    # embedding is ~3% of the token magnitude and the model provably fails to
+    # find it (see the table in configs/pretrain/semg_lattice.yaml). The
+    # threshold is a floor on the config actually carrying channel identity,
+    # not on the mechanism existing.
+    moved = (a - b).abs().max().item() / a.std().item()
+    assert moved > 0.05, f"channel identity is only {moved:.1%} of the logit scale"
 
 
 def test_channel_reduction_mean_is_the_old_lossy_fallback():

@@ -46,6 +46,23 @@ model:
     dropout: 0.3                 # matches the DB5 setting that is working
     kv_wavelet_level: 0          # 1 halves the temporal K/V; see the note in
                                  # backbone.py before turning it on
+    # Load bearing here in a way it is not elsewhere: with channel_embedding
+    # 'none' the slot embedding is the ONLY thing that distinguishes one channel
+    # from another, and the usual 0.02 leaves it at 3% of the token magnitude --
+    # small enough that the model never finds it. On a synthetic task whose
+    # classes differ only in which channel carries which amplitude, 25 epochs:
+    #
+    #   0.02 -> acc 0.281, AUROC 0.523    (chance is 0.25)
+    #   0.05 -> acc 0.297, AUROC 0.534
+    #   0.10 -> acc 0.500, AUROC 0.725
+    #   0.30 -> acc 0.938, AUROC 0.998
+    #   0.50 -> acc 0.953, AUROC 0.999
+    #   1.00 -> acc 0.984, AUROC 1.000
+    #
+    # The measured token RMS is 0.62, so the plateau is where the identity
+    # vector is comparable to the content it labels. 0.5 sits inside it rather
+    # than at either end; it is not a tuned optimum.
+    pos_embed_init: 0.5
 pretrain:
   use_reference_consistency: false
   use_covariance: false
