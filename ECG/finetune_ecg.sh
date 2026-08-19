@@ -98,7 +98,8 @@ echo "ECG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
   --pooling mean \
   --head_hidden_dim 1024 \
   --head_dropout 0.1 \
-  --seed 42 \
+  --select_by "${SELECT_BY:-loss}" \
+  --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}"
 
 echo "ECG fine-tuning completed. Results saved to ${OUTPUT_DIR}"
