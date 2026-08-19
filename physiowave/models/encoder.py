@@ -106,6 +106,21 @@ class EncoderConfig:
     importance_ratio: float = 0.6
     num_classes: Optional[int] = None
     pooling: str = "mean"
+    #: How ``[B, K, S, D]`` becomes ``[B, D]`` for the head.
+    #:
+    #: ``mean``          mean of the summary tokens, which ``num_summary_tokens``
+    #:                   learned queries produce by cross-attending over the whole
+    #:                   lattice. Expressive, and montage-independent, which is
+    #:                   what the multimodal path needs.
+    #: ``first``         the first summary token.
+    #: ``lattice_mean``  plain mean over every channel and patch, bypassing the
+    #:                   summary attention entirely. This is what the legacy model
+    #:                   does, and on a task whose class is a roughly stationary
+    #:                   amplitude pattern across channels it is a much stronger
+    #:                   prior: averaging over time cannot latch onto the
+    #:                   idiosyncrasies of the particular repetitions in the
+    #:                   training split, and a learned query can. Summary tokens
+    #:                   are still produced for downstream consumers.
     #: Dropout before the classification layer. The legacy fine-tuning path has
     #: had this since the beginning (``--head_dropout``, 0.1 by default) and this
     #: encoder had no equivalent, so a downstream run here was training a bare
@@ -120,6 +135,9 @@ class EncoderConfig:
         self.tare.embed_dim = self.embed_dim
         self.compression.embed_dim = self.embed_dim
         self.backbone.embed_dim = self.embed_dim
+        if self.pooling not in ("mean", "first", "lattice_mean"):
+            raise ValueError(
+                f"pooling must be 'mean', 'first' or 'lattice_mean', got {self.pooling!r}")
         if self.channel_reduction not in ("none", "mean"):
             raise ValueError(
                 f"channel_reduction must be 'none' or 'mean', got {self.channel_reduction!r}")
@@ -282,7 +300,12 @@ class PhysioWaveEncoder(nn.Module):
         q = self.summary_query.unsqueeze(0).expand(B, -1, -1)
         summary, _ = self.summary_attn(q, flat, flat)
         summary = self.summary_norm(summary)              # [B, n_summary, D]
-        pooled = summary.mean(dim=1) if self.cfg.pooling == "mean" else summary[:, 0]
+        if self.cfg.pooling == "lattice_mean":
+            pooled = feats.mean(dim=(1, 2))               # [B, D]
+        elif self.cfg.pooling == "mean":
+            pooled = summary.mean(dim=1)
+        else:
+            pooled = summary[:, 0]
 
         out: Dict[str, object] = {
             "summary_tokens": summary,

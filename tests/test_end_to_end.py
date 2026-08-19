@@ -353,3 +353,44 @@ def test_token_benchmark_runs(tmp_path):
     row = benchmark_variant(cfg, C=19, T=256, batch_size=2, warmup=1, iters=2)
     assert row["tokens"] == 8 * 8 and row["token_compression_ratio"] > 1
     assert row["params"] > 0 and row["samples_per_sec"] > 0
+
+
+def test_lattice_mean_pooling_bypasses_the_summary_attention():
+    """Summary tokens are still produced, but they must not reach the logits.
+
+    The point of the option is that the head sees an unweighted average over the
+    lattice, not a learned selection from it -- so if perturbing the summary
+    query moved the logits, the option would not be doing its job.
+    """
+    cfg = load_config("pretrain/semg_lattice", ["model.pooling=lattice_mean"])
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+    C, T = 16, 512
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    torch.manual_seed(0)
+    x = torch.randn(2, C, T)
+    with torch.no_grad():
+        before = enc(x, meta)["logits"].clone()
+        enc.summary_query.add_(torch.randn_like(enc.summary_query))
+        after = enc(x, meta)["logits"]
+    assert torch.allclose(before, after, atol=1e-5)
+
+
+def test_summary_pooling_does_depend_on_the_query():
+    cfg = load_config("pretrain/semg_lattice", ["model.pooling=mean"])
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+    C, T = 16, 512
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    torch.manual_seed(0)
+    x = torch.randn(2, C, T)
+    with torch.no_grad():
+        before = enc(x, meta)["logits"].clone()
+        enc.summary_query.add_(torch.randn_like(enc.summary_query))
+        after = enc(x, meta)["logits"]
+    assert not torch.allclose(before, after, atol=1e-5)
+
+
+def test_unknown_pooling_is_rejected():
+    with pytest.raises(ValueError, match="pooling"):
+        EncoderConfig(pooling="attention")

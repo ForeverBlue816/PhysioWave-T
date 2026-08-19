@@ -67,6 +67,7 @@ echo "EMG fine-tuning (WAST+TARE): task=${TASK} data=${DATA_DIR} out=${OUTPUT_DI
        model.backbone.depth="${DEPTH:-4}" \
        model.embed_dim="${EMBED_DIM:-256}" \
        model.wast.embed_dim="${EMBED_DIM:-256}" \
+       model.pooling="${POOLING:-mean}" \
   --num-workers "${NUM_WORKERS:-8}" \
   --precision "${PRECISION:-bf16}" \
   --select-by "${SELECT_BY:-balanced_acc}" \
