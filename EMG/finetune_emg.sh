@@ -60,6 +60,17 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "EMG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
 
+# warmup_epochs >= epochs makes WarmupCosineSchedule spend the entire run
+# ramping up, so the cosine decay never happens and the result says nothing
+# about the learning rate that was requested.
+if [[ "${WARMUP_EPOCHS:-5}" -ge "${EPOCHS:-5}" ]]; then
+    _w=$(( ${EPOCHS:-5} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
+    echo "WARNING: WARMUP_EPOCHS=${WARMUP_EPOCHS:-5} >= EPOCHS=${EPOCHS:-5}; " \
+         "using ${_w} instead (the cosine decay would otherwise never start)." >&2
+    WARMUP_EPOCHS="${_w}"
+fi
+
+
 # ---------------------------------------------------------------------------
 # The architecture block must match EMG/pretrain_emg.sh exactly.
 # ---------------------------------------------------------------------------
@@ -69,34 +80,34 @@ echo "EMG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
   --test_file "${TEST_FILE}" \
   ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
   --in_channels "${IN_CHANNELS:-8}" \
-  --max_level 3 \
-  --wave_kernel_size 16 \
+  --max_level "${MAX_LEVEL:-3}" \
+  --wave_kernel_size "${WAVE_KERNEL_SIZE:-16}" \
   --wavelet_names sym4 sym5 db6 coif3 bior4.4 \
   --use_separate_channel \
   --patch_size "${PATCH_SIZE:-64}" \
-  --embed_dim 256 \
-  --depth 6 \
-  --num_heads 8 \
-  --mlp_ratio 4.0 \
-  --dropout 0.1 \
+  --embed_dim "${EMBED_DIM:-256}" \
+  --depth "${DEPTH:-6}" \
+  --num_heads "${NUM_HEADS:-8}" \
+  --mlp_ratio "${MLP_RATIO:-4.0}" \
+  --dropout "${DROPOUT:-0.1}" \
   --use_pos_embed \
   --pos_embed_type 2d \
   --batch_size "${BATCH_SIZE:-32}" \
   --epochs "${EPOCHS:-5}" \
   --lr "${LR:-2e-4}" \
-  --weight_decay 1e-3 \
-  --grad_clip 1.0 \
+  --weight_decay "${WEIGHT_DECAY:-1e-3}" \
+  --grad_clip "${GRAD_CLIP:-1.0}" \
   --use_amp \
   --num_workers "${NUM_WORKERS:-8}" \
   --world_size "${NUM_GPUS}" \
-  --scheduler cosine \
-  --warmup_epochs 2 \
+  --scheduler "${SCHEDULER:-cosine}" \
+  --warmup_epochs "${WARMUP_EPOCHS:-5}" \
   --num_classes "${NUM_CLASSES:-6}" \
   --pooling mean \
-  --head_dropout 0.1 \
-  --head_hidden_dim 512 \
-  --label_smoothing 0.1 \
-  --seed 42 \
+  --head_dropout "${HEAD_DROPOUT:-0.1}" \
+  --head_hidden_dim "${HEAD_HIDDEN_DIM:-512}" \
+  --label_smoothing "${LABEL_SMOOTHING:-0.1}" \
+  --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}"
 
 echo "Fine-tuning completed. Results saved to ${OUTPUT_DIR}"
