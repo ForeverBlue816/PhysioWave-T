@@ -107,6 +107,7 @@ fi
   --head_dropout "${HEAD_DROPOUT:-0.1}" \
   --head_hidden_dim "${HEAD_HIDDEN_DIM:-512}" \
   --label_smoothing "${LABEL_SMOOTHING:-0.1}" \
+  --select_by "${SELECT_BY:-loss}" \
   --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}"
 

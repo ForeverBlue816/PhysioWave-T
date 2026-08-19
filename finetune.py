@@ -530,6 +530,7 @@ def main_worker(rank, world_size, args):
         if rank == 0:
             print(f"Using OneCycle Scheduler")
 
+    best_selection = float('-inf')     # see --select-by below
     best_val_loss = float('inf')
     best_val_acc = 0.0
     best_balanced_acc = 0.0
@@ -576,7 +577,23 @@ def main_worker(rank, world_size, args):
             history['learning_rates'].append(current_lr)
         
         if rank == 0:
-            if val_loss < best_val_loss:
+            # Which validation number decides the checkpoint. Loss is the
+            # historical default but disagrees with accuracy once the model
+            # starts overfitting: it keeps rising from the epoch the model
+            # turns overconfident, while accuracy carries on improving for
+            # tens of epochs. On an imbalanced label set balanced accuracy is
+            # the honest target, since plain accuracy rewards leaning on the
+            # frequent classes.
+            _selection = {
+                'loss': -val_loss,
+                'acc': val_acc,
+                'balanced_acc': val_balanced_acc,
+                'kappa': val_kappa,
+                'weighted_f1': val_weighted_f1,
+                'auroc': val_auroc,
+            }[args.select_by]
+            if _selection > best_selection:
+                best_selection = _selection
                 best_val_loss = val_loss
                 best_val_acc = val_acc
                 best_balanced_acc = val_balanced_acc
@@ -610,7 +627,8 @@ def main_worker(rank, world_size, args):
             }, os.path.join(args.output_dir, "latest_model.pth"))
 
     if rank == 0:
-        print(f"\nBest Validation: Loss={best_val_loss:.4f}, Acc={best_val_acc:.4f}, "
+        print(f"\n(model selected on val {args.select_by})")
+        print(f"Best Validation: Loss={best_val_loss:.4f}, Acc={best_val_acc:.4f}, "
               f"BalAcc={best_balanced_acc:.4f}, Kappa={best_kappa:.4f}, "
               f"WF1={best_weighted_f1:.4f}, AUROC={best_auroc:.4f} at Epoch {best_epoch}")
         
@@ -718,6 +736,13 @@ def main():
     
     # Model parameters - Classification Head
     parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')
+    parser.add_argument('--select_by', type=str, default='loss',
+                        choices=['loss', 'acc', 'balanced_acc', 'kappa',
+                                 'weighted_f1', 'auroc'],
+                        help='Validation metric that decides which epoch is kept as '
+                             'best_model.pth. Default loss, for backwards '
+                             'compatibility; balanced_acc is the right choice on an '
+                             'imbalanced label set.')
     parser.add_argument('--head_hidden_dim', type=int, default=None, help='Classification head hidden dimension')
     parser.add_argument('--head_dropout', type=float, default=0.1, help='Classification head dropout')
     parser.add_argument('--pooling', type=str, default='mean',
