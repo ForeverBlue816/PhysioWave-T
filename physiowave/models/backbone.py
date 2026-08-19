@@ -52,6 +52,19 @@ class BackboneConfig:
     #: whole axis. Both subbands are kept and packed into the feature dimension,
     #: so the halving discards nothing -- unlike a stride-2 pool, which drops the
     #: high-frequency half outright.
+    #: How tokens mix.
+    #:
+    #: ``factorized``  temporal attention within each channel, then slot
+    #:                 attention within each time step. O(K*S^2 + S*K^2), which
+    #:                 is what makes a long lattice affordable.
+    #: ``full``        one attention over all K*S tokens, the way the legacy
+    #:                 model does it. O((K*S)^2) and no cheaper, but a single
+    #:                 layer can relate channel i at time t to channel j at time
+    #:                 t' -- a pair the factorized form can only reach across
+    #:                 two layers, and only through an intermediate that has
+    #:                 already been averaged over one axis. On sEMG the class is
+    #:                 exactly such a cross-channel, cross-time pattern.
+    mixing: str = "factorized"      # 'factorized' | 'full'
     kv_wavelet_level: int = 0
     #: How the two subbands are recombined after each halving.
     #:
@@ -282,15 +295,25 @@ class FactorizedBlock(nn.Module):
         # the thing this architecture exists to stop doing.
         self.kv_wave = WaveletKV(D, cfg.kv_wavelet_level, cfg.kv_mix) \
             if cfg.kv_wavelet_level else None
-        self.n2 = make_norm(cfg.norm, D)
-        self.slot_attn = MultiHeadAttention(D, cfg.slot_heads, cfg.dropout, use_rope=False,
-                                            qk_norm=cfg.qk_norm)
+        self.full = cfg.mixing == "full"
+        # Not allocated in 'full': one attention already spans both axes, and an
+        # unused module would still be counted in the parameter budget the
+        # comparison is supposed to hold fixed.
+        self.n2 = None if self.full else make_norm(cfg.norm, D)
+        self.slot_attn = None if self.full else MultiHeadAttention(
+            D, cfg.slot_heads, cfg.dropout, use_rope=False, qk_norm=cfg.qk_norm)
         self.n3 = make_norm(cfg.norm, D)
         self.mlp = make_ffn(cfg)
 
     def forward(self, x: torch.Tensor, time_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """``[B, K, S, D] -> [B, K, S, D]``."""
         B, K, S, D = x.shape
+        if self.full:
+            if time_mask is not None:
+                raise ValueError("mixing='full' does not take a time mask")
+            h = self.n1(x).reshape(B, K * S, D)
+            x = x + self.time_attn(h).view(B, K, S, D)
+            return x + self.mlp(self.n3(x))
         h = self.n1(x).reshape(B * K, S, D)
         tm = None
         if time_mask is not None:

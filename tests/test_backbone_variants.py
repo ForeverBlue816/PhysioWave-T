@@ -97,3 +97,74 @@ def test_gradients_reach_every_parameter():
     m(torch.randn(2, 4, 8, 128)).square().mean().backward()
     dead = [n for n, p in m.named_parameters() if p.grad is None or p.grad.abs().max() == 0]
     assert not dead, dead
+
+
+def test_both_mixings_reach_a_cross_channel_cross_time_pair():
+    """Records what the factorization does and does not cost.
+
+    It is tempting to say the factorized block cannot relate (channel i, time t)
+    to (channel j, time t'). It can, inside a single block: temporal attention
+    spreads channel i along time, and the slot attention that follows spreads
+    that across channels at t'. The two compose. What the factorization actually
+    costs is that the path is forced through an intermediate already averaged
+    along one axis, where 'full' scores the pair directly -- a difference in how
+    the pattern is represented, not in whether it is reachable.
+
+    This test exists so that claim stays honest: an earlier version of it
+    asserted unreachability and was false.
+    """
+    from physiowave.models.backbone import BackboneConfig, FactorizedBlock
+
+    B, K, S, D = 1, 4, 6, 16
+    torch.manual_seed(0)
+    x = torch.randn(B, K, S, D)
+    bumped = x.clone()
+    bumped[0, 0, 0] += 5.0                     # channel 0, time 0
+
+    moved = {}
+    for mixing in ("factorized", "full"):
+        blk = FactorizedBlock(BackboneConfig(embed_dim=D, num_heads=2, slot_heads=2,
+                                             dropout=0.0, mixing=mixing)).eval()
+        with torch.no_grad():
+            a, b = blk(x), blk(bumped)
+        moved[mixing] = (a[0, 2, 4] - b[0, 2, 4]).abs().max().item()
+
+    assert moved["factorized"] > 1e-4, moved
+    assert moved["full"] > 1e-4, moved
+
+
+def test_the_two_mixings_are_different_functions():
+    from physiowave.models.backbone import BackboneConfig, FactorizedBlock
+
+    torch.manual_seed(0)
+    x = torch.randn(1, 4, 6, 16)
+    outs = []
+    for mixing in ("factorized", "full"):
+        torch.manual_seed(0)
+        blk = FactorizedBlock(BackboneConfig(embed_dim=16, num_heads=2, slot_heads=2,
+                                             dropout=0.0, mixing=mixing)).eval()
+        with torch.no_grad():
+            outs.append(blk(x))
+    assert not torch.allclose(outs[0], outs[1], atol=1e-4)
+
+
+def test_full_mixing_drops_the_slot_attention():
+    from physiowave.models.backbone import BackboneConfig, FactorizedBlock
+
+    full = FactorizedBlock(BackboneConfig(embed_dim=16, num_heads=2, slot_heads=2,
+                                          mixing="full"))
+    fact = FactorizedBlock(BackboneConfig(embed_dim=16, num_heads=2, slot_heads=2,
+                                          mixing="factorized"))
+    assert full.slot_attn is None and fact.slot_attn is not None
+    n = lambda m: sum(p.numel() for p in m.parameters())      # noqa: E731
+    assert n(full) < n(fact), "an unused module must not sit in the budget"
+
+
+def test_full_mixing_keeps_the_lattice_shape():
+    from physiowave.models.backbone import BackboneConfig, FactorizedBackbone
+
+    bb = FactorizedBackbone(BackboneConfig(embed_dim=32, depth=2, num_heads=4,
+                                           slot_heads=2, mixing="full")).eval()
+    x = torch.randn(2, 8, 12, 32)
+    with torch.no_grad():
+        assert bb(x).shape == x.shape
