@@ -354,8 +354,15 @@ def parse_args(argv=None):
     p.add_argument("--patience", type=int, default=0,
                    help="stop when --select-by has not improved for this many epochs")
     p.add_argument("--min-delta", type=float, default=0.0)
-    p.add_argument("--set", nargs="*", default=[], help="config overrides, key=value")
-    return p.parse_args(argv)
+    # 'extend' rather than the default 'store': the launch scripts pass a --set of
+    # their own and EXTRA can carry another, and with 'store' the second silently
+    # replaces the first -- an override that looks applied and is not.
+    # default=None because argparse mutates a shared list default in place.
+    p.add_argument("--set", nargs="*", action="extend", default=None,
+                   help="config overrides, key=value; repeatable")
+    args = p.parse_args(argv)
+    args.set = args.set or []
+    return args
 
 
 def resolve_files(args) -> Tuple[str, Optional[str], Optional[str]]:

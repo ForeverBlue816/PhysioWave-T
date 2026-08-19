@@ -257,18 +257,35 @@ class TensorBoardWriter:
 
 
 def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> torch.optim.Optimizer:
-    """AdamW with weight decay disabled on norms, biases and 1-D parameters.
+    """AdamW with weight decay disabled on norms, biases, embeddings and 1-D tensors.
 
     Decaying a LayerNorm gain or a learnable wavelet filter towards zero is not a
     regularisation you want: it would pull the filters away from a valid wavelet
     basis, so those tensors are put in the no-decay group.
+
+    Embeddings and learned query/mask tokens are excluded for a sharper reason.
+    They are identity, not weights: the backbone's slot embedding is what tells
+    one channel from another, and when no channel metadata encoder is present it
+    is the *only* thing that does. Decay shrinks it toward the one value that
+    makes every channel identical -- regularising away the signal rather than the
+    capacity to overfit it. This is the usual ViT convention (pos_embed and
+    cls_token are no-decay) and it matters more here than it does there.
     """
+    embedding_params = {
+        id(p)
+        for m in model.modules() if isinstance(m, torch.nn.Embedding)
+        for p in m.parameters(recurse=False)
+    }
+    POSITIONAL = ("embed", "_query", "_token", "anchor")
     decay, no_decay = [], []
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
-        if p.ndim <= 1 or name.endswith(".bias") or "norm" in name.lower() \
-                or "dec_lo" in name or "dec_hi" in name or "anchor" in name:
+        lowered = name.lower()
+        if p.ndim <= 1 or name.endswith(".bias") or "norm" in lowered \
+                or "dec_lo" in name or "dec_hi" in name \
+                or id(p) in embedding_params \
+                or any(tag in lowered for tag in POSITIONAL):
             no_decay.append(p)
         else:
             decay.append(p)

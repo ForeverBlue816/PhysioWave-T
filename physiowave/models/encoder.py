@@ -106,6 +106,11 @@ class EncoderConfig:
     importance_ratio: float = 0.6
     num_classes: Optional[int] = None
     pooling: str = "mean"
+    #: Dropout before the classification layer. The legacy fine-tuning path has
+    #: had this since the beginning (``--head_dropout``, 0.1 by default) and this
+    #: encoder had no equivalent, so a downstream run here was training a bare
+    #: LayerNorm+Linear on top of pooled features with no regularisation at all.
+    head_dropout: float = 0.0
 
     def __post_init__(self) -> None:
         if self.modality not in MODALITIES:
@@ -171,8 +176,11 @@ class PhysioWaveEncoder(nn.Module):
         self.summary_norm = nn.LayerNorm(D)
         self.quality_head = nn.Sequential(nn.LayerNorm(D), nn.Linear(D, D // 2), nn.GELU(),
                                           nn.Linear(D // 2, 1))
-        self.head = nn.Sequential(nn.LayerNorm(D), nn.Linear(D, cfg.num_classes)) \
-            if cfg.num_classes else None
+        self.head = nn.Sequential(
+            nn.LayerNorm(D),
+            nn.Dropout(cfg.head_dropout) if cfg.head_dropout > 0 else nn.Identity(),
+            nn.Linear(D, cfg.num_classes),
+        ) if cfg.num_classes else None
         # Reconstruction heads for pretraining.
         P = cfg.wast.patch_size
         self.recon_raw = nn.Sequential(nn.LayerNorm(D), nn.Linear(D, P))

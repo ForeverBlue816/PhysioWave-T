@@ -63,6 +63,7 @@ def build_encoder_config(cfg: Dict[str, Any]) -> EncoderConfig:
         importance_ratio=float(cfg.pop("importance_ratio", 0.6)),
         num_classes=cfg.pop("num_classes", None),
         pooling=cfg.pop("pooling", "mean"),
+        head_dropout=float(cfg.pop("head_dropout", 0.0)),
     )
     if cfg:
         raise ValueError(f"Unknown model config keys: {sorted(cfg)}")

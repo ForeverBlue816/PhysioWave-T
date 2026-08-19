@@ -62,6 +62,11 @@ echo "EMG fine-tuning (WAST+TARE): task=${TASK} data=${DATA_DIR} out=${OUTPUT_DI
   --weight-decay "${WEIGHT_DECAY:-0.05}" \
   --warmup-epochs "${WARMUP_EPOCHS:-5}" \
   --label-smoothing "${LABEL_SMOOTHING:-0.1}" \
+  --set model.backbone.dropout="${DROPOUT:-0.3}" \
+       model.head_dropout="${HEAD_DROPOUT:-0.3}" \
+       model.backbone.depth="${DEPTH:-4}" \
+       model.embed_dim="${EMBED_DIM:-256}" \
+       model.wast.embed_dim="${EMBED_DIM:-256}" \
   --num-workers "${NUM_WORKERS:-8}" \
   --precision "${PRECISION:-bf16}" \
   --select-by "${SELECT_BY:-balanced_acc}" \

@@ -39,8 +39,13 @@ model:
     tokenizer: fold              # subbands into the feature axis, no synthesis
     fold_raw_residual: true      # start at a plain patch embedding, gate the
     fold_gate_init: 0.1          # wavelet path in
+  # The legacy DB5 run that reaches 72% has 4.97 M parameters. A FactorizedBlock
+  # carries two attentions (temporal and slot) where a legacy block carries one,
+  # so matching that budget means depth 4, not 6: depth 4 / dim 256 is 4.88 M.
+  head_dropout: 0.3              # the legacy run's --head_dropout; this encoder
+                                 # had no equivalent and trained a bare Linear
   backbone:
-    depth: 6
+    depth: 4
     num_heads: 8
     slot_heads: 4
     dropout: 0.3                 # matches the DB5 setting that is working
