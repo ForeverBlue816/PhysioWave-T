@@ -44,6 +44,13 @@ class BERTWaveletTransformer(nn.Module):
                  norm='layernorm',      # 'layernorm' | 'rmsnorm'
                  ffn='mlp',             # 'mlp' | 'swiglu'
                  qk_norm=False,
+                 # Fold the scale axis out of Spec(X) before patching, so the
+                 # backbone sees C*S tokens instead of (J+1)*C*S. Everything
+                 # else -- the per-channel wavelet filters, the basis selector,
+                 # the 2-D position embedding, the full attention, the pooling
+                 # and the head -- is untouched, which is what makes this a
+                 # single-variable change against the legacy numbers.
+                 scale_fold='none',     # 'none' | 'learned' | 'mean'
                  # Position encoding parameters
                  use_pos_embed=True,
                  pos_embed_type='2d',
@@ -86,6 +93,22 @@ class BERTWaveletTransformer(nn.Module):
             ffn_drop=0.1
         )
         
+        # 1b. Scale folding. Spec(X) is [B, (J+1)*C, T] laid out scale-major:
+        # J detail bands then the approximation, each [B, C, T] (see
+        # wavelet_modules.SoftGateWaveletDecomp.forward). Reducing over the
+        # scale axis is a learned generalisation of the inverse transform --
+        # the bands are recombined into one row per channel rather than each
+        # becoming its own row of tokens.
+        self.scale_fold = scale_fold
+        if scale_fold == 'learned':
+            # Initialised to a uniform average, i.e. the plain reconstruction,
+            # so training starts from the inverse transform and departs from it.
+            self.scale_weight = nn.Parameter(
+                torch.full((max_level + 1, in_channels), 1.0 / (max_level + 1)))
+        elif scale_fold not in ('none', 'mean'):
+            raise ValueError(
+                f"scale_fold must be 'none', 'learned' or 'mean', got {scale_fold!r}")
+
         # 2. Patch embedding module
         self.patch_embed = PatchEmbed(
             input_channels=1,
@@ -271,10 +294,29 @@ class BERTWaveletTransformer(nn.Module):
         
         return tokens
 
+    def fold_scales(self, wave_spec):
+        """``[B, (J+1)*C, T] -> [B, C, T]``, or a pass-through when disabled.
+
+        The layout is scale-major: rows are band 0 for every channel, then band
+        1 for every channel, and so on. Reshaping to ``[B, J+1, C, T]`` is
+        therefore the correct grouping; ``[B, C, J+1, T]`` would mix bands of
+        different channels together and still produce a tensor of the right
+        shape.
+        """
+        if self.scale_fold == 'none':
+            return wave_spec
+        B, FC, T = wave_spec.shape
+        J1 = self.max_level + 1
+        assert FC % J1 == 0, f"{FC} rows is not a multiple of {J1} bands"
+        bands = wave_spec.view(B, J1, FC // J1, T)
+        if self.scale_fold == 'mean':
+            return bands.mean(dim=1)
+        return (bands * self.scale_weight.view(1, J1, -1, 1)).sum(dim=1)
+
     def forward_features(self, x):
         """Extract features (encoder part)"""
         # 1. Wavelet decomposition
-        wave_spec = self.wavelet_decomp(x)
+        wave_spec = self.fold_scales(self.wavelet_decomp(x))
         wave_2d = wave_spec.unsqueeze(1)
         
         # 2. Patch embedding and position encoding
@@ -291,7 +333,7 @@ class BERTWaveletTransformer(nn.Module):
             mask_ratio = self.mask_ratio
             
         # Wavelet decomposition
-        wave_spec = self.wavelet_decomp(x)
+        wave_spec = self.fold_scales(self.wavelet_decomp(x))
         wave_2d = wave_spec.unsqueeze(1)
         
         # Patch embedding and position encoding

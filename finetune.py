@@ -437,6 +437,7 @@ def main_worker(rank, world_size, args):
         norm=args.norm,
         ffn=args.ffn,
         qk_norm=args.qk_norm,
+        scale_fold=args.scale_fold,
         use_pos_embed=args.use_pos_embed,
         pos_embed_type=args.pos_embed_type,
         task_type='classification',
@@ -450,7 +451,7 @@ def main_worker(rank, world_size, args):
         # than anything the output directory records, and an ablation that
         # silently kept the defaults would look identical to one that took effect.
         print(f"Transformer block: norm={args.norm} ffn={args.ffn} "
-              f"qk_norm={args.qk_norm} rope=True", flush=True)
+              f"qk_norm={args.qk_norm} rope=True | scale_fold={args.scale_fold}", flush=True)
 
     # Initialize weights
     if hasattr(model, 'initialize_weights'):
@@ -781,6 +782,12 @@ def main():
                              'parameter count stays level with the GELU MLP')
     parser.add_argument('--qk_norm', action='store_true',
                         help='RMS-normalise q and k per head, bounding the attention logits')
+    parser.add_argument('--scale_fold', type=str, default='none',
+                        choices=['none', 'mean', 'learned'],
+                        help="fold Spec(X)'s scale axis before patching, so the backbone "
+                             "sees C*S tokens instead of (J+1)*C*S. 'learned' starts as a "
+                             "uniform average -- the plain inverse transform -- and departs "
+                             "from it. Nothing else about the model changes.")
     
     # Model parameters - Classification Head
     parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')

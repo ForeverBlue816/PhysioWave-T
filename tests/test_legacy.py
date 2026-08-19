@@ -187,3 +187,55 @@ def test_the_two_dataset_classes_read_identical_tensors(tmp_path):
         xn, yn = new[i]
         xo, yo = old[i]
         assert torch.equal(xn, xo) and int(yn) == int(yo), i
+
+
+def test_scale_fold_reduces_the_token_count_by_the_band_count():
+    """(J+1)*C*S tokens become C*S, and nothing else about the model moves."""
+    from model import create_wavelet_classifier
+
+    kw = dict(in_channels=8, max_level=3, embed_dim=64, depth=1, num_heads=4,
+              num_classes=5, patch_size=(1, 32), wavelet_names=["db4", "sym4"])
+    x = torch.randn(2, 8, 128)
+    counts, params = {}, {}
+    for fold in ("none", "mean", "learned"):
+        m = create_wavelet_classifier(**kw, scale_fold=fold).eval()
+        with torch.no_grad():
+            tok = m.prepare_tokens(m.fold_scales(m.wavelet_decomp(x)).unsqueeze(1))
+        counts[fold] = tok.shape[1]
+        params[fold] = sum(p.numel() for p in m.parameters())
+    assert counts["none"] == (3 + 1) * counts["mean"], counts
+    assert counts["mean"] == counts["learned"]
+    # The fold weight is (J+1)*C scalars; the budget must not move meaningfully.
+    assert abs(params["learned"] - params["none"]) == (3 + 1) * 8
+
+
+def test_scale_fold_groups_bands_not_channels():
+    """Spec(X) is scale-major; folding the wrong axis would still typecheck.
+
+    A tensor whose bands differ but whose channels do not must survive folding
+    with per-channel structure intact -- if the reshape grouped channels instead
+    of bands, distinct channels would be averaged into each other.
+    """
+    from model import create_wavelet_classifier
+
+    m = create_wavelet_classifier(in_channels=4, max_level=2, embed_dim=32, depth=1,
+                                  num_heads=4, num_classes=3, patch_size=(1, 32),
+                                  wavelet_names=["db4"], scale_fold="mean").eval()
+    B, C, T, J1 = 1, 4, 64, 3
+    # Band b, channel c carries the constant value c. Averaging over bands must
+    # therefore return exactly [0, 1, 2, 3] per channel.
+    spec = torch.zeros(B, J1 * C, T)
+    for b in range(J1):
+        for c in range(C):
+            spec[0, b * C + c] = float(c)
+    out = m.fold_scales(spec)
+    assert out.shape == (B, C, T)
+    assert torch.allclose(out[0, :, 0], torch.arange(C, dtype=torch.float32))
+
+
+def test_unknown_scale_fold_is_rejected():
+    from model import create_wavelet_classifier
+
+    with pytest.raises(ValueError, match="scale_fold"):
+        create_wavelet_classifier(in_channels=4, max_level=2, num_classes=3,
+                                  scale_fold="idwt")

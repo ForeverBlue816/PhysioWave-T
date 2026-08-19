@@ -94,6 +94,7 @@ fi
   --norm "${NORM:-layernorm}" \
   --ffn "${FFN:-mlp}" \
   ${QK_NORM:+--qk_norm} \
+  --scale_fold "${SCALE_FOLD:-none}" \
   --use_pos_embed \
   --pos_embed_type 2d \
   --batch_size "${BATCH_SIZE:-32}" \
