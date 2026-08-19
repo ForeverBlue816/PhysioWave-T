@@ -148,14 +148,19 @@ class RoPEAttention(nn.Module):
         qkv = self.qkv(x).reshape(B,N,3,self.num_heads,self.hd).permute(2,0,3,1,4)
         q,k,v = qkv[0],qkv[1],qkv[2]
         
+        # Before RoPE, matching physiowave/models/backbone.py. RoPE is a rotation
+        # and preserves the norm, but the learnable per-element gain does not
+        # commute with it, so the two orders are not the same operator -- and two
+        # orders would mean "legacy + QK-norm" and the extension were measuring
+        # different things.
+        q = self.q_norm(q); k = self.k_norm(k)
+        
         # Apply RoPE
         if self.rope_dim>0 and self.rope_dim<=self.hd:
             qr,rem = q[...,:self.rope_dim],q[...,self.rope_dim:]
             kr,_   = k[...,:self.rope_dim],k[...,self.rope_dim:]
             qr = self.rope_q(qr,seq_len=N); kr = self.rope_k(kr,seq_len=N)
             q = torch.cat([qr,rem],dim=-1); k = torch.cat([kr,_],dim=-1)
-        
-        q = self.q_norm(q); k = self.k_norm(k)
         
         # Attention computation
         attn = (q @ k.transpose(-2,-1))*self.scale
