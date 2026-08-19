@@ -239,3 +239,52 @@ def test_fold_rejects_pre_patch_placement():
 
     with pytest.raises(ValueError, match="post_patch"):
         WASTConfig(tokenizer="fold", placement="pre_patch")
+
+
+def test_per_channel_filters_match_the_shared_bank_at_init():
+    """Identical initial filters must give identical tokens.
+
+    This is the check that the channel bookkeeping is right. ``analyse`` flattens
+    to ``((b*C + c)*S + s)`` and rebuilds by stacking on axis 1; getting that
+    order wrong would pair each channel's signal with another channel's filters
+    and still produce a plausible-looking tensor.
+    """
+    from physiowave.wavelet.wast import WAST, WASTConfig
+
+    B, C, T, P = 2, 5, 256, 64
+    torch.manual_seed(0)
+    x = torch.randn(B, C, T)
+    for mode in ("synthesis", "fold"):
+        shared = WAST(WASTConfig(patch_size=P, level=3, embed_dim=32,
+                                 tokenizer=mode)).eval()
+        perch = WAST(WASTConfig(patch_size=P, level=3, embed_dim=32, tokenizer=mode,
+                                channel_filters=True, max_channels=8)).eval()
+        perch.load_state_dict({k: v for k, v in shared.state_dict().items()
+                               if k in perch.state_dict()}, strict=False)
+        with torch.no_grad():
+            a, b = shared(x)["tokens"], perch(x)["tokens"]
+        assert torch.equal(a, b), mode
+
+
+def test_a_channels_filter_only_moves_its_own_tokens():
+    from physiowave.wavelet.wast import WAST, WASTConfig
+
+    tok = WAST(WASTConfig(patch_size=64, level=3, embed_dim=32, tokenizer="fold",
+                          channel_filters=True, max_channels=8)).eval()
+    torch.manual_seed(0)
+    x = torch.randn(2, 5, 256)
+    with torch.no_grad():
+        base = tok(x)["tokens"].clone()
+        tok.channel_wt[3].dec_lo.add_(0.05)
+        moved = (tok(x)["tokens"] - base).abs().amax(dim=(0, 2, 3))
+    assert moved[3] > 1e-4, moved
+    assert moved[[0, 1, 2, 4]].max() == 0.0, moved
+
+
+def test_too_many_channels_for_the_bank_count_is_an_error():
+    from physiowave.wavelet.wast import WAST, WASTConfig
+
+    tok = WAST(WASTConfig(patch_size=64, level=2, embed_dim=32,
+                          channel_filters=True, max_channels=2)).eval()
+    with pytest.raises(ValueError, match="max_channels"):
+        tok(torch.randn(1, 4, 128))

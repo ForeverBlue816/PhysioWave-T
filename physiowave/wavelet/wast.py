@@ -83,6 +83,20 @@ class WASTConfig:
     #: ``raw``        no wavelet at all: project the patch.  The floor the other
     #:                two have to beat.
     tokenizer: str = "synthesis"        # 'synthesis' | 'fold' | 'raw'
+    #: One learnable filter bank per channel instead of one shared by all.
+    #:
+    #: The legacy tokenizer has always done this -- its wavelet convolutions use
+    #: ``groups=in_channels``, so every channel gets its own filters. WAST shares
+    #: a single bank across the whole montage, which is the right default for a
+    #: scalp recording where the electrodes see one field. A forearm ring is the
+    #: opposite case: each electrode sits over a different muscle with different
+    #: spectral content, and one bank has to compromise across all of them.
+    #:
+    #: Banks are initialised from the same wavelet and diverge during training,
+    #: which is also what the legacy filters do. Indexed by channel position, so
+    #: this is montage-specific by construction.
+    channel_filters: bool = False
+    max_channels: int = 64              # 'channel_filters' bank count
     #: 'fold' only: the raw patch is projected too and the folded wavelet token
     #: is added through a gate initialised here, so training starts at a plain
     #: patch embedding and earns its way into the multi-scale path.
@@ -187,12 +201,17 @@ class WAST(nn.Module):
     def __init__(self, cfg: WASTConfig) -> None:
         super().__init__()
         self.cfg = cfg
-        self.wt = WaveletTransform1D(
-            wavelet=cfg.wavelet,
-            level=cfg.level,
-            boundary_mode=cfg.boundary_mode,
-            learnable=cfg.learnable_filters,
-        )
+        def _bank() -> WaveletTransform1D:
+            return WaveletTransform1D(
+                wavelet=cfg.wavelet,
+                level=cfg.level,
+                boundary_mode=cfg.boundary_mode,
+                learnable=cfg.learnable_filters,
+            )
+
+        self.wt = _bank()               # shared bank; also the source of lengths
+        self.channel_wt = nn.ModuleList(
+            _bank() for _ in range(cfg.max_channels)) if cfg.channel_filters else None
         lens = coeff_lengths(cfg.patch_size, cfg.level)
         self.coeff_lens: List[int] = lens
         self.subbands = nn.ModuleList(
@@ -306,7 +325,7 @@ class WAST(nn.Module):
             raw_patches = self.patchify(x)                  # [B, C, S, P]
             S = raw_patches.shape[2]
             flat = raw_patches.reshape(B * C * S, P)        # [N, P]
-            raw_coeffs = self.wt.analysis(flat)             # sums to P
+            raw_coeffs = self.analyse(flat, B, C, S, P)
             assert sum(c.shape[-1] for c in raw_coeffs) == P, (
                 "WAST analysis broke critical sampling"
             )
@@ -323,7 +342,7 @@ class WAST(nn.Module):
                     # exists.
                     patches = raw_patches
                 else:
-                    rec = self.wt.synthesis(coeffs_out, P)  # [N, P]
+                    rec = self.synthesise(coeffs_out, B, C, S, P)
                     patches = rec.view(B, C, S, P)
 
         energies = band_energies(raw_coeffs, B, C, S) if self.cfg.placement == "post_patch" \
@@ -361,6 +380,37 @@ class WAST(nn.Module):
             "patch_scores": scores,
             "num_patches": S,
         }
+
+    def analyse(self, flat: torch.Tensor, B: int, C: int, S: int,
+                P: int) -> List[torch.Tensor]:
+        """``[B*C*S, P] -> per-band ``[B*C*S, P_k]``, honouring per-channel banks.
+
+        ``flat`` is indexed ``((b * C + c) * S + s)``, so a per-channel result is
+        rebuilt by stacking on axis 1 and flattening again -- getting that order
+        wrong would silently pair each channel's signal with another's filters.
+        """
+        if self.channel_wt is None:
+            return self.wt.analysis(flat)
+        if C > len(self.channel_wt):
+            raise ValueError(
+                f"channel_filters holds {len(self.channel_wt)} banks but the signal "
+                f"has {C} channels; raise wast.max_channels")
+        per_channel = [self.channel_wt[c].analysis(
+            flat.view(B, C, S, P)[:, c].reshape(B * S, P)) for c in range(C)]
+        return [torch.stack([per_channel[c][k].view(B, S, -1) for c in range(C)],
+                            dim=1).reshape(B * C * S, -1)
+                for k in range(len(per_channel[0]))]
+
+    def synthesise(self, coeffs: List[torch.Tensor], B: int, C: int, S: int,
+                   P: int) -> torch.Tensor:
+        """Inverse of :meth:`analyse`, with the same channel bookkeeping."""
+        if self.channel_wt is None:
+            return self.wt.synthesis(coeffs, P)
+        out = []
+        for c in range(C):
+            per_band = [ck.view(B, C, S, -1)[:, c].reshape(B * S, -1) for ck in coeffs]
+            out.append(self.channel_wt[c].synthesis(per_band, P).view(B, S, P))
+        return torch.stack(out, dim=1).reshape(B * C * S, P)
 
     def subbands_for(self, T: int) -> nn.ModuleList:
         """Subband processors for ``pre_patch`` placement (lengths depend on ``T``)."""
