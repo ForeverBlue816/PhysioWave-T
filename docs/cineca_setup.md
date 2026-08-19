@@ -167,6 +167,10 @@ sbatch --export=ALL,MODALITY=semg            scripts/slurm/cineca_pretrain.sbatc
 
 # RALF fusion; encoders are discovered from $FAST/yanlchen/runs automatically
 sbatch scripts/slurm/cineca_fusion.sbatch
+
+# Downstream fine-tuning, one node
+sbatch --export=ALL,MODALITY=emg,TASK=db5,IN_CHANNELS=16,NUM_CLASSES=53,EPOCHS=100 \
+       scripts/slurm/cineca_finetune.sbatch
 ```
 
 Both templates refuse to start when the configured corpus has no `*.h5` files,
