@@ -136,9 +136,18 @@ def parse_args(argv=None):
     p.add_argument("--exercises", type=int, nargs="+", default=[1, 2, 3], choices=[1, 2, 3])
     p.add_argument("--subjects", type=int, nargs="+", default=None,
                    help="subject numbers to include (default: every one found)")
+    p.add_argument("--split-by", choices=["repetition", "subject"], default="repetition",
+                   help="'repetition' is the subject-dependent protocol most DB5 papers "
+                        "report (87-93%%); 'subject' is leave-one-subject-out, which is "
+                        "far harder (published LOSO baselines sit near 40%%) and is the "
+                        "setting that actually says something about generalisation")
     p.add_argument("--train-reps", type=int, nargs="+", default=[1, 3, 4, 6])
     p.add_argument("--val-reps", type=int, nargs="+", default=[2])
     p.add_argument("--test-reps", type=int, nargs="+", default=[5])
+    p.add_argument("--val-subjects", type=int, nargs="+", default=[9],
+                   help="--split-by subject only")
+    p.add_argument("--test-subjects", type=int, nargs="+", default=[10],
+                   help="--split-by subject only")
     p.add_argument("--normalize", choices=["maxabs", "zscore", "scale", "none"],
                    default="maxabs")
     p.add_argument("--no-rest", action="store_true",
@@ -160,13 +169,25 @@ def main(argv=None) -> int:
               f"fine-tuning would die in patchify().", file=sys.stderr)
         return 1
 
-    overlap = set(args.train_reps) & set(args.val_reps) | \
-              set(args.train_reps) & set(args.test_reps) | \
-              set(args.val_reps) & set(args.test_reps)
+    if args.split_by == "repetition":
+        overlap = set(args.train_reps) & set(args.val_reps) | \
+                  set(args.train_reps) & set(args.test_reps) | \
+                  set(args.val_reps) & set(args.test_reps)
+        unit = "repetitions"
+    else:
+        overlap = set(args.val_subjects) & set(args.test_subjects)
+        unit = "subjects"
     if overlap:
-        print(f"ERROR: repetitions {sorted(overlap)} appear in more than one split; "
+        print(f"ERROR: {unit} {sorted(overlap)} appear in more than one split; "
               f"that leaks test data into training.", file=sys.stderr)
         return 1
+
+    subj_split = {}
+    if args.split_by == "subject":
+        for sj in args.val_subjects:
+            subj_split[sj] = "val"
+        for sj in args.test_subjects:
+            subj_split[sj] = "test"
 
     rep_split = {}
     for name, reps in (("train", args.train_reps), ("val", args.val_reps),
@@ -222,7 +243,12 @@ def main(argv=None) -> int:
                 continue
             if label_raw == 0 and args.no_rest:
                 continue
-            split = rep_split.get(r)
+            if args.split_by == "subject":
+                # Every repetition of a held-out subject goes to that split, and
+                # a training subject contributes all of its repetitions.
+                split = subj_split.get(subject, "train")
+            else:
+                split = rep_split.get(r)
             if split is None:
                 continue
             label = 0 if label_raw == 0 else label_raw + offset
@@ -295,8 +321,11 @@ def main(argv=None) -> int:
         "normalize": args.normalize,
         "num_classes": num_classes,
         "counts": counts,
-        "splits_by_repetition": {"train": args.train_reps, "val": args.val_reps,
-                                 "test": args.test_reps},
+        "split_by": args.split_by,
+        "splits": ({"train": args.train_reps, "val": args.val_reps, "test": args.test_reps}
+                   if args.split_by == "repetition"
+                   else {"val_subjects": args.val_subjects,
+                         "test_subjects": args.test_subjects}),
         # original DB5 id (0 = rest, 1..52 = movements) -> contiguous training label
         "label_map": {str(k): v for k, v in remap.items()},
     }
