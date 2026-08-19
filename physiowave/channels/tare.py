@@ -27,6 +27,7 @@ from the physics of scalp recording (constraint C in ``docs/terminology.md``):
 from __future__ import annotations
 
 import logging
+import zlib
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence
 
@@ -106,13 +107,44 @@ class FourierPositionEncoding(nn.Module):
         return torch.cat([xyz, proj.sin().flatten(-2), proj.cos().flatten(-2)], dim=-1)
 
 
-def _name_index(name: str, vocab: Dict[str, int]) -> int:
-    """Map a channel label to a vocabulary index; 0 is the unknown-name slot."""
-    return vocab.get(canonical_name(name), 0)
+def _name_index(name: str, vocab: Dict[str, int], table_size: int) -> int:
+    """Map a channel label to a vocabulary index; 0 is the unnamed slot.
+
+    A label the template montage does not know -- ``ch00`` on an sEMG ring, a
+    lead label, anything outside the 10-20/10-10 families -- is hashed into the
+    slots above the template vocabulary rather than sharing slot 0 with every
+    other unrecognised label.  Collapsing them gave every channel of a non-EEG
+    montage the *same* embedding, and since such a montage also has no template
+    coordinates, the encoder was left with nothing that distinguished one
+    channel from another: the whole model became invariant to permuting the
+    channel axis.  See ``tests/test_channels.py::test_unknown_names_stay_distinct``.
+
+    Identity still comes from the label, never from the position, so rule 2 of
+    the module docstring holds: permuting the signal and its metadata together
+    permutes the embeddings and changes nothing else.
+
+    crc32 rather than the built-in ``hash``: the latter is salted per process,
+    and two DDP ranks that disagreed about which row a channel owns would
+    all-reduce gradients for different embeddings.
+    """
+    canon = canonical_name(name)
+    if canon in vocab:
+        return vocab[canon]
+    if not canon:
+        return 0                                    # genuinely unnamed
+    reserved = len(vocab) + 1
+    span = table_size - reserved
+    if span <= 0:                                   # table too small to hash into
+        return 0
+    return reserved + zlib.crc32(canon.encode("utf-8")) % span
 
 
 def build_name_vocab() -> Dict[str, int]:
-    """Vocabulary over the template montage labels; index 0 is reserved."""
+    """Vocabulary over the template montage labels; index 0 is reserved.
+
+    Labels outside it are not in this mapping at all -- :func:`_name_index`
+    hashes them into the slots above ``len(vocab)``.
+    """
     return {n: i + 1 for i, n in enumerate(sorted(TEMPLATE_POSITIONS.keys()))}
 
 
@@ -188,7 +220,8 @@ class ChannelEncoder(nn.Module):
 
     # -- metadata -> tensors ---------------------------------------------------
     def _name_ids(self, names: Sequence[str], device) -> torch.Tensor:
-        return torch.tensor([_name_index(n, self.vocab) for n in names],
+        table = self.name_embed.num_embeddings
+        return torch.tensor([_name_index(n, self.vocab, table) for n in names],
                             dtype=torch.long, device=device)
 
     @staticmethod

@@ -19,9 +19,15 @@ ECG
     derivation of a small number of body-surface electrodes).  Forcing a spline
     fit on chest-lead positions would produce a meaningless operator.
 limb sEMG
-    Muscle / electrode-position metadata and array or ring adjacency, with a
-    missing-channel mask.  SSL is disabled here too: an sEMG electrode array is a
-    (usually linear or circumferential) grid on a limb, not a sphere.
+    Wavelet tokenisation and token reduction only: ``channel_embedding:
+    channel_id`` and no spatial frontend (see ``configs/pretrain/semg.yaml``).
+    Both spatial branches need electrode coordinates and a forearm ring has
+    none -- SSL because an array on a limb is not a sphere, GL because with no
+    coordinates its geometric graph is uniform and the branch degenerates into a
+    common-average reference.  TARE is off for the same reason: with neither a
+    coordinate nor a label it recognises it returns one vector for every
+    channel, and the encoder loses the ability to tell electrodes apart at all.
+    A free vector per channel index claims no geometry and keeps the identity.
     **Region check:** this encoder is for *limb / skeletal* sEMG.  Facial EMG has
     different generators, different bandwidth and different artefact structure,
     and must not be mixed into the limb sEMG pretraining corpus; the dataset
@@ -49,6 +55,23 @@ logger = logging.getLogger(__name__)
 
 MODALITIES = ("eeg", "ecg", "semg")
 
+#: How the per-channel embedding the compressor is conditioned on is produced.
+#:
+#: ``tare``        the metadata encoder: coordinates, labels, reference scheme.
+#: ``channel_id``  a free vector per channel *index*, no metadata at all.  The
+#:                 weakest thing that still tells the model which electrode is
+#:                 which, and the right choice for an array whose geometry is not
+#:                 in the montage tables -- a forearm sEMG ring, say, where TARE
+#:                 has neither a coordinate nor a label it recognises and returns
+#:                 the same vector for every channel.  Indexed by position, so it
+#:                 is montage-specific by construction: it cannot transfer to a
+#:                 permuted or differently sized array.
+#: ``none``        no channel embedding.  Note that this leaves the encoder
+#:                 *invariant* to permuting the channel axis, because WAST shares
+#:                 its parameters across channels and the compressor then has
+#:                 nothing left that distinguishes one channel from another.
+CHANNEL_EMBEDDINGS = ("tare", "channel_id", "none")
+
 
 @dataclass
 class EncoderConfig:
@@ -66,6 +89,8 @@ class EncoderConfig:
     use_spatial_frontend: bool = True
     use_tare: bool = True
     use_compression: bool = True
+    channel_embedding: str = "tare"     # 'tare' | 'channel_id' | 'none'
+    max_channels: int = 256             # table size for 'channel_id'
     mask_ratio: float = 0.5
     masking_strategy: str = "frequency_guided"      # 'frequency_guided' | 'random'
     importance_ratio: float = 0.6
@@ -80,6 +105,16 @@ class EncoderConfig:
         self.tare.embed_dim = self.embed_dim
         self.compression.embed_dim = self.embed_dim
         self.backbone.embed_dim = self.embed_dim
+        if self.channel_embedding not in CHANNEL_EMBEDDINGS:
+            raise ValueError(
+                f"channel_embedding must be one of {CHANNEL_EMBEDDINGS}, "
+                f"got {self.channel_embedding!r}")
+        # ``use_tare: false`` is the older spelling of the tokenizer-only ablation
+        # and keeps meaning "no channel embedding at all".
+        if not self.use_tare and self.channel_embedding == "tare":
+            self.channel_embedding = "none"
+        if self.channel_embedding != "tare":
+            self.use_tare = False
         if self.modality in ("ecg", "semg"):
             # See the module docstring: no spherical scalp geometry exists here.
             self.spatial.ssl.enabled = False
@@ -101,7 +136,18 @@ class PhysioWaveEncoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.wast = WAST(cfg.wast)
-        self.tare = ChannelEncoder(cfg.tare) if cfg.use_tare else None
+        self.tare = ChannelEncoder(cfg.tare) if cfg.channel_embedding == "tare" else None
+        if cfg.channel_embedding == "channel_id":
+            self.channel_id = nn.Embedding(cfg.max_channels, cfg.embed_dim)
+            nn.init.normal_(self.channel_id.weight, std=0.02)
+            # TARE ends in a LayerNorm, and the compressor's chan_proj is scaled
+            # for what that delivers. Without the same normalisation here a
+            # std=0.02 table reaches the attention logits ~50x weaker than the
+            # branch it replaces, and starts far enough below the token
+            # magnitudes that channel identity is nearly invisible at init.
+            self.channel_id_norm = nn.LayerNorm(cfg.embed_dim)
+        else:
+            self.channel_id = None
         self.spatial = SpatialFrontend(cfg.spatial) if cfg.use_spatial_frontend else None
         self.compressor = ChannelCompressor(cfg.compression) if cfg.use_compression else None
         self.backbone = FactorizedBackbone(cfg.backbone)
@@ -167,6 +213,12 @@ class PhysioWaveEncoder(nn.Module):
 
         if self.tare is not None:
             chan_emb = self.tare(meta, device=x.device)   # [C, D]
+        elif self.channel_id is not None:
+            if C > self.channel_id.num_embeddings:
+                raise ValueError(
+                    f"channel_id embedding holds {self.channel_id.num_embeddings} rows "
+                    f"but the signal has {C} channels; raise model.max_channels")
+            chan_emb = self.channel_id_norm(self.channel_id(torch.arange(C, device=x.device)))
         else:
             chan_emb = torch.zeros(C, self.cfg.embed_dim, device=x.device, dtype=tokens.dtype)
 

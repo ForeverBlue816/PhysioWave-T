@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 import torch
 
@@ -45,6 +47,54 @@ def test_unknown_coordinates_fallback_warns(montage_19, caplog):
         e = enc(ChannelMeta(names, bad))
     assert torch.isfinite(e).all()
     assert "unknown-coordinate fallback" in caplog.text
+
+
+def test_unknown_names_stay_distinct():
+    """A montage the template does not know must still have distinguishable channels.
+
+    An sEMG ring has no template coordinates and no template labels, so the name
+    branch is the only thing left that can tell one electrode from another. When
+    every unrecognised label shared slot 0 the encoder returned sixteen identical
+    embeddings and the model as a whole became invariant to permuting the channel
+    axis -- which on a forearm array discards the signal, not a nuisance.
+    """
+    names = [f"ch{i:02d}" for i in range(16)]
+    enc = _encoder()
+    e = enc(ChannelMeta(names, torch.zeros(16, 3)))
+    assert torch.isfinite(e).all()
+    rows = {tuple(round(v, 6) for v in r.tolist()) for r in e}
+    assert len(rows) == len(names), f"only {len(rows)} distinct embeddings for {len(names)} channels"
+
+
+def test_unknown_name_slots_are_process_stable():
+    """The hash must not move between processes: DDP ranks share one embedding table."""
+    import subprocess
+    import sys
+
+    from physiowave.channels.tare import _name_index, build_name_vocab
+
+    vocab = build_name_vocab()
+    here = [_name_index(f"ch{i:02d}", vocab, 512) for i in range(8)]
+    # A different PYTHONHASHSEED is what would move a built-in hash().
+    out = subprocess.run(
+        [sys.executable, "-c",
+         "from physiowave.channels.tare import build_name_vocab, _name_index;"
+         "v = build_name_vocab();"
+         "print([_name_index(f'ch{i:02d}', v, 512) for i in range(8)])"],
+        capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": "12345"},
+        check=True,
+    )
+    assert eval(out.stdout.strip()) == here
+
+
+def test_known_labels_keep_their_template_slot(montage_19):
+    """Hashing the unknowns must not disturb the labels the template does know."""
+    from physiowave.channels.tare import _name_index, build_name_vocab
+
+    vocab = build_name_vocab()
+    names, _ = montage_19
+    for n in names:
+        assert _name_index(n, vocab, 512) == vocab[n], n
 
 
 def test_permutation_equivariance(montage_19):

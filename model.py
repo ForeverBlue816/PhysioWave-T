@@ -39,6 +39,11 @@ class BERTWaveletTransformer(nn.Module):
                  mlp_ratio=4.0,
                  dropout=0.1,
                  rope_dim=None,
+                 # Transformer block variants. The defaults reproduce the
+                 # original block exactly, so each is an ablation row.
+                 norm='layernorm',      # 'layernorm' | 'rmsnorm'
+                 ffn='mlp',             # 'mlp' | 'swiglu'
+                 qk_norm=False,
                  # Position encoding parameters
                  use_pos_embed=True,
                  pos_embed_type='2d',
@@ -107,7 +112,10 @@ class BERTWaveletTransformer(nn.Module):
             num_heads=num_heads,
             mlp_ratio=mlp_ratio,
             dropout=dropout,
-            rope_dim=rope_dim
+            rope_dim=rope_dim,
+            norm=norm,
+            ffn=ffn,
+            qk_norm=qk_norm
         )
         
         # 6. Task head modules

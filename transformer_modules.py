@@ -1,6 +1,13 @@
 """
 Transformer Core Modules
 Contains RoPE attention, Transformer blocks, Patch embedding, etc.
+
+The block has three switches -- ``norm``, ``ffn`` and ``qk_norm`` -- whose
+defaults ('layernorm', 'mlp', False) reproduce the original block exactly, so
+each is an ablation row rather than a change to what the legacy path is.
+RMSNorm and SwiGLU are imported from the extension's backbone rather than
+reimplemented: two copies of a normaliser would eventually disagree, and then
+"legacy + RMSNorm" and "extension" would not be measuring the same thing.
 """
 
 import math
@@ -8,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+
+from physiowave.models.backbone import RMSNorm, SwiGLU, make_norm
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -106,7 +115,8 @@ class RoPEAttention(nn.Module):
     Multi-head Attention with RoPE
     Better position modeling compared to standard attention
     """
-    def __init__(self, dim, num_heads=8, rope_dim=None, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, rope_dim=None, attn_drop=0., proj_drop=0.,
+                 qk_norm=False):
         super().__init__()
         assert dim%num_heads==0
         self.num_heads, self.dim = num_heads, dim
@@ -117,6 +127,11 @@ class RoPEAttention(nn.Module):
         self.rope_dim = rope_dim or self.hd
         self.rope_q = RotaryEmbedding(self.rope_dim)
         self.rope_k = RotaryEmbedding(self.rope_dim)
+        # Bounding the norm of q and k bounds the attention logits, which is what
+        # keeps the loss from plateauing early at the higher learning rates.
+        # Identity by default, so the block is bit-for-bit the original one.
+        self.q_norm = RMSNorm(self.hd) if qk_norm else nn.Identity()
+        self.k_norm = RMSNorm(self.hd) if qk_norm else nn.Identity()
         
     def forward(self,x,mask=None):
         """
@@ -140,6 +155,8 @@ class RoPEAttention(nn.Module):
             qr = self.rope_q(qr,seq_len=N); kr = self.rope_k(kr,seq_len=N)
             q = torch.cat([qr,rem],dim=-1); k = torch.cat([kr,_],dim=-1)
         
+        q = self.q_norm(q); k = self.k_norm(k)
+        
         # Attention computation
         attn = (q @ k.transpose(-2,-1))*self.scale
         if mask is not None: attn = attn+mask
@@ -154,19 +171,30 @@ class TransformerBlock(nn.Module):
     Transformer Block
     Pre-Norm structure, contains RoPE attention and MLP
     """
-    def __init__(self, dim, num_heads=4, mlp_ratio=4.0, dropout=0.1, rope_dim=None):
+    def __init__(self, dim, num_heads=4, mlp_ratio=4.0, dropout=0.1, rope_dim=None,
+                 norm='layernorm', ffn='mlp', qk_norm=False):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
-        self.attn = RoPEAttention(dim, num_heads, rope_dim)
+        self.norm1 = make_norm(norm, dim)
+        self.attn = RoPEAttention(dim, num_heads, rope_dim, qk_norm=qk_norm)
         self.drop = nn.Dropout(dropout)
-        self.norm2 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim,int(dim*mlp_ratio)), 
-            nn.GELU(), 
-            nn.Dropout(dropout),
-            nn.Linear(int(dim*mlp_ratio),dim),
-            nn.Dropout(dropout)
-        )
+        self.norm2 = make_norm(norm, dim)
+        if ffn == 'swiglu':
+            # 2/3 of the MLP width, rounded up to a multiple of 8: SwiGLU has
+            # three projections to the MLP's two, so without the scaling the
+            # comparison would measure parameter count rather than gating.
+            hidden = int(dim*mlp_ratio*2/3)
+            hidden += (-hidden) % 8
+            self.mlp = SwiGLU(dim, hidden, dropout)
+        elif ffn == 'mlp':
+            self.mlp = nn.Sequential(
+                nn.Linear(dim,int(dim*mlp_ratio)), 
+                nn.GELU(), 
+                nn.Dropout(dropout),
+                nn.Linear(int(dim*mlp_ratio),dim),
+                nn.Dropout(dropout)
+            )
+        else:
+            raise ValueError(f"unknown ffn {ffn!r}; expected 'mlp' or 'swiglu'")
         
     def forward(self,x):
         """
@@ -297,13 +325,15 @@ class TransformerEncoder(nn.Module):
     Transformer Encoder
     Composed of multiple TransformerBlocks
     """
-    def __init__(self, embed_dim, depth, num_heads, mlp_ratio=4.0, dropout=0.1, rope_dim=None):
+    def __init__(self, embed_dim, depth, num_heads, mlp_ratio=4.0, dropout=0.1, rope_dim=None,
+                 norm='layernorm', ffn='mlp', qk_norm=False):
         super().__init__()
         self.blocks = nn.ModuleList([
-            TransformerBlock(embed_dim, num_heads, mlp_ratio, dropout, rope_dim)
+            TransformerBlock(embed_dim, num_heads, mlp_ratio, dropout, rope_dim,
+                             norm=norm, ffn=ffn, qk_norm=qk_norm)
             for _ in range(depth)
         ])
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = make_norm(norm, embed_dim)
         
     def forward(self, x):
         """

@@ -103,6 +103,61 @@ def test_channel_permutation_leaves_the_representation_almost_unchanged(meta_64)
     assert rel < 5e-2, f"permutation changed the pooled representation by {rel:.3e}"
 
 
+def test_semg_encoder_is_not_channel_permutation_invariant():
+    """The sEMG path must be able to tell one electrode from another.
+
+    WAST shares its parameters across channels, so the per-channel embedding is
+    the *only* thing that breaks the symmetry. On a forearm ring TARE has no
+    coordinate and no label it recognises and hands back the same vector for
+    every channel, which leaves the whole encoder invariant to permuting the
+    channel axis -- and on an array where "which electrode fired" is the label,
+    that discards the signal rather than a nuisance. ``channel_embedding:
+    channel_id`` is what the sEMG config uses instead.
+    """
+    cfg = load_config("pretrain/semg")
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+    assert enc.tare is None and enc.channel_id is not None
+
+    C, T = 16, 256
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    torch.manual_seed(0)
+    x = torch.randn(2, C, T)
+    p = torch.randperm(C)
+    with torch.no_grad():
+        a = enc(x, meta)["logits"]
+        b = enc(x[:, p], meta)["logits"]
+    spread = (a - b).abs().max().item()
+    assert spread > 1e-3, f"permuting the channels changed the logits by only {spread:.2e}"
+
+
+def test_channel_embedding_none_is_permutation_invariant():
+    """The counterpart: with no channel embedding the symmetry is exact.
+
+    This is what the sEMG path used to do by accident, and it is what makes the
+    test above worth having.
+    """
+    cfg = EncoderConfig(modality="semg", embed_dim=32, num_summary_tokens=2,
+                        channel_embedding="none", use_spatial_frontend=False,
+                        num_classes=5, wast=WASTConfig(embed_dim=32, patch_size=32, level=2))
+    enc = PhysioWaveEncoder(cfg).eval()
+    C, T = 8, 128
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    torch.manual_seed(0)
+    x = torch.randn(2, C, T)
+    p = torch.randperm(C)
+    with torch.no_grad():
+        a = enc(x, meta)["logits"]
+        b = enc(x[:, p], meta)["logits"]
+    assert (a - b).abs().max().item() < 1e-4
+
+
+def test_use_tare_false_still_means_no_channel_embedding():
+    """The tokenizer-only ablation keeps its meaning; model/wast.yaml relies on it."""
+    cfg = EncoderConfig(modality="eeg", use_tare=False)
+    assert cfg.channel_embedding == "none"
+
+
 def test_pretrain_objective_uses_the_ssl_anchor(meta_64):
     enc = PhysioWaveEncoder(_cfg())
     obj = PretrainObjective(PretrainObjectiveConfig())

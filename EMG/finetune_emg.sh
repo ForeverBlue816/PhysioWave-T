@@ -90,6 +90,9 @@ fi
   --num_heads "${NUM_HEADS:-8}" \
   --mlp_ratio "${MLP_RATIO:-4.0}" \
   --dropout "${DROPOUT:-0.1}" \
+  --norm "${NORM:-layernorm}" \
+  --ffn "${FFN:-mlp}" \
+  ${QK_NORM:+--qk_norm} \
   --use_pos_embed \
   --pos_embed_type 2d \
   --batch_size "${BATCH_SIZE:-32}" \
@@ -111,7 +114,8 @@ fi
   --patience "${PATIENCE:-0}" \
   --min_delta "${MIN_DELTA:-0.0}" \
   --seed "${SEED:-42}" \
-  --output_dir "${OUTPUT_DIR}"
+  --output_dir "${OUTPUT_DIR}" \
+  ${EXTRA:-}
 
 echo "Fine-tuning completed. Results saved to ${OUTPUT_DIR}"
 echo "Best model checkpoint: ${OUTPUT_DIR}/best_model.pth"

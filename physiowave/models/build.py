@@ -55,6 +55,8 @@ def build_encoder_config(cfg: Dict[str, Any]) -> EncoderConfig:
         use_spatial_frontend=cfg.pop("use_spatial_frontend", True),
         use_tare=cfg.pop("use_tare", True),
         use_compression=cfg.pop("use_compression", True),
+        channel_embedding=cfg.pop("channel_embedding", "tare"),
+        max_channels=int(cfg.pop("max_channels", 256)),
         mask_ratio=float(cfg.pop("mask_ratio", 0.5)),
         masking_strategy=cfg.pop("masking_strategy", "frequency_guided"),
         importance_ratio=float(cfg.pop("importance_ratio", 0.6)),

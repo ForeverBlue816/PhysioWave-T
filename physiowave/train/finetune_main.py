@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -73,28 +74,52 @@ logger = logging.getLogger(__name__)
 SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc")
 
 
-def progress(iterable, desc: str, mode: str, is_main: bool):
-    """Wrap a loader in a tqdm bar, or leave it alone.
+PROGRESS_MODES = ("auto", "bar", "log", "none")
 
-    'auto' means a bar on an interactive terminal and nothing under sbatch: a
-    bar redraws with carriage returns, which a log file records as one
-    enormous line, and the periodic log lines are what is actually readable
-    after the fact.
+
+def resolve_progress(mode: str) -> str:
+    """Turn ``auto`` into the mode that suits the stream we are writing to.
+
+    torchrun leaves the workers' stdout and stderr alone unless ``--redirects``
+    is passed (it defaults to ``0``), so a worker's ``isatty()`` really does
+    report whether a human is watching: True under an interactive shell, False
+    under sbatch, ``> log``, or ``tee``. That is the right thing to branch on,
+    because a tqdm bar redraws with carriage returns and a log file records the
+    whole run as one enormous line.
+
+    Redirected runs get ``log`` rather than silence: the complaint a bar answers
+    is "how far along is this", and a periodic line carrying the percentage and
+    an ETA answers it in a form that survives being written to a file.
     """
-    if not is_main or mode == "none":
-        return iterable
-    if mode == "auto" and not sys.stderr.isatty():
+    if mode != "auto":
+        return mode
+    return "bar" if sys.stderr.isatty() else "log"
+
+
+def progress(iterable, desc: str, mode: str, is_main: bool):
+    """Wrap a loader in a tqdm bar on rank 0, or leave it alone."""
+    if not is_main or mode != "bar":
         return iterable
     try:
         from tqdm.auto import tqdm
     except ImportError:
         return iterable
-    return tqdm(iterable, desc=desc, ncols=110, leave=False)
+    return tqdm(iterable, desc=desc, ncols=110, leave=False, mininterval=0.5)
 
 
 def set_postfix(bar, **kw) -> None:
     if hasattr(bar, "set_postfix"):
         bar.set_postfix(**kw, refresh=False)
+
+
+def fmt_eta(seconds: float) -> str:
+    """``h:mm:ss`` for anything an epoch loop is likely to produce."""
+    if not (seconds == seconds) or seconds < 0 or seconds == float("inf"):
+        return "?"
+    seconds = int(seconds)
+    h, rem = divmod(seconds, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h:d}:{m:02d}:{sec:02d}" if h else f"{m:d}:{sec:02d}"
 
 
 class LabelledWindows(Dataset):
@@ -247,6 +272,8 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
     model.train()
     loss_meter, acc_meter = AverageMeter(), AverageMeter()
     bar = progress(loader, f"train {epoch}", progress_mode, is_main)
+    total = len(loader)
+    started = time.monotonic()
     for step, (x, y) in enumerate(bar):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with autocast_ctx(device, amp_dtype):
@@ -270,10 +297,16 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
         acc_meter.update(float((logits.argmax(-1) == y).float().mean().item()), y.numel())
         set_postfix(bar, loss=f"{loss_meter.avg:.4f}", acc=f"{acc_meter.avg:.4f}",
                     lr=f"{optimizer.param_groups[0]['lr']:.2e}")
-        if is_main and log_every and step % log_every == 0 and bar is loader:
-            logger.info("epoch %d step %d/%d loss %.4f acc %.4f lr %.2e",
-                        epoch, step, len(loader), loss_meter.avg, acc_meter.avg,
-                        optimizer.param_groups[0]["lr"])
+        if is_main and progress_mode == "log" and log_every and step % log_every == 0:
+            # The percentage and ETA are the part a bar would have given; they
+            # are what makes a periodic line answer "how much longer" in a log
+            # file, where a redrawing bar cannot go.
+            done = step + 1
+            eta = (time.monotonic() - started) / done * (total - done)
+            logger.info("epoch %d step %d/%d (%3.0f%%) loss %.4f acc %.4f lr %.2e eta %s",
+                        epoch, step, total, 100.0 * done / max(total, 1),
+                        loss_meter.avg, acc_meter.avg,
+                        optimizer.param_groups[0]["lr"], fmt_eta(eta))
     return {"loss": loss_meter.avg, "acc": acc_meter.avg}
 
 
@@ -311,9 +344,10 @@ def parse_args(argv=None):
     p.add_argument("--log-every", type=int, default=50,
                    help="periodic in-epoch log lines; 0 disables. Ignored while a "
                         "progress bar is showing the same numbers.")
-    p.add_argument("--progress", default="auto", choices=["auto", "bar", "none"],
-                   help="'auto' shows a bar on a terminal and stays quiet under sbatch, "
-                        "where a redrawing bar becomes one very long line in the log")
+    p.add_argument("--progress", default="auto", choices=list(PROGRESS_MODES),
+                   help="'auto' shows a tqdm bar on a terminal and periodic log lines "
+                        "with a percentage and an ETA when the stream is redirected, "
+                        "where a redrawing bar would become one enormous line")
     p.add_argument("--select-by", default="balanced_acc", choices=SELECTION_METRICS,
                    help="validation metric that decides best.pth; balanced accuracy by "
                         "default because downstream label sets are rarely balanced")
@@ -344,6 +378,7 @@ def main(argv=None) -> int:
     set_seed(args.seed + info.rank)
     logging.basicConfig(level=logging.INFO if info.is_main else logging.WARNING,
                         format="%(asctime)s %(levelname)s %(message)s")
+    args.progress = resolve_progress(args.progress)
 
     train_path, val_path, test_path = resolve_files(args)
     cfg = load_config(args.config, args.set)
@@ -430,6 +465,7 @@ def main(argv=None) -> int:
     history: List[Dict[str, Any]] = []
     best_score, best_epoch, stale = float("-inf"), -1, 0
 
+    run_started = time.monotonic()
     for epoch in range(args.epochs):
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
@@ -453,9 +489,12 @@ def main(argv=None) -> int:
             else:
                 stale += 1
             if info.is_main:
-                logger.info("epoch %d train_loss %.4f val_loss %.4f val_acc %.4f "
-                            "val_bal %.4f val_auroc %.4f%s", epoch, tr["loss"], va["loss"],
-                            va["acc"], va["balanced_acc"], va["auroc"],
+                done = epoch + 1
+                eta = (time.monotonic() - run_started) / done * (args.epochs - done)
+                logger.info("epoch %d/%d train_loss %.4f val_loss %.4f val_acc %.4f "
+                            "val_bal %.4f val_auroc %.4f eta %s%s",
+                            epoch, args.epochs - 1, tr["loss"], va["loss"],
+                            va["acc"], va["balanced_acc"], va["auroc"], fmt_eta(eta),
                             "  *" if improved else "")
         history.append(row)
         if info.is_main:

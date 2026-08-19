@@ -434,6 +434,9 @@ def main_worker(rank, world_size, args):
         num_heads=args.num_heads,
         mlp_ratio=args.mlp_ratio,
         dropout=args.dropout,
+        norm=args.norm,
+        ffn=args.ffn,
+        qk_norm=args.qk_norm,
         use_pos_embed=args.use_pos_embed,
         pos_embed_type=args.pos_embed_type,
         task_type='classification',
@@ -442,6 +445,13 @@ def main_worker(rank, world_size, args):
         pooling=args.pooling
     ).to(device)
     
+    if rank == 0:
+        # State the block that is actually running: these are CLI defaults rather
+        # than anything the output directory records, and an ablation that
+        # silently kept the defaults would look identical to one that took effect.
+        print(f"Transformer block: norm={args.norm} ffn={args.ffn} "
+              f"qk_norm={args.qk_norm} rope=True", flush=True)
+
     # Initialize weights
     if hasattr(model, 'initialize_weights'):
         model.initialize_weights()
@@ -761,6 +771,16 @@ def main():
     parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
     parser.add_argument('--mlp_ratio', type=float, default=4.0, help='MLP ratio')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
+    # Transformer block variants. The defaults reproduce the original block
+    # exactly, so turning one on is an ablation row rather than a new model.
+    parser.add_argument('--norm', type=str, default='layernorm',
+                        choices=['layernorm', 'rmsnorm'],
+                        help='block normaliser; rmsnorm drops the mean subtraction and the bias')
+    parser.add_argument('--ffn', type=str, default='mlp', choices=['mlp', 'swiglu'],
+                        help="feed-forward; swiglu's width is scaled by 2/3 so the "
+                             'parameter count stays level with the GELU MLP')
+    parser.add_argument('--qk_norm', action='store_true',
+                        help='RMS-normalise q and k per head, bounding the attention logits')
     
     # Model parameters - Classification Head
     parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')

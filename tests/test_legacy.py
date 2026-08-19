@@ -85,3 +85,50 @@ def test_legacy_with_channel_id():
     # It is index-based, so it cannot accept a different montage size at all.
     with pytest.raises(AssertionError, match="montage-specific"):
         model(torch.randn(2, 12, 128), task="features")
+
+
+def test_default_block_is_the_unmodified_original():
+    """norm/ffn/qk_norm defaults must reproduce the original block exactly.
+
+    The switches exist so each modernisation is an ablation row. If a default
+    ever flipped, every "legacy" number in the paper would quietly become a
+    different architecture's.
+    """
+    import torch.nn as nn
+
+    from transformer_modules import TransformerBlock
+
+    blk = TransformerBlock(dim=32, num_heads=4)
+    assert isinstance(blk.norm1, nn.LayerNorm) and isinstance(blk.norm2, nn.LayerNorm)
+    assert isinstance(blk.attn.q_norm, nn.Identity) and isinstance(blk.attn.k_norm, nn.Identity)
+    assert isinstance(blk.mlp, nn.Sequential)
+    linears = [m for m in blk.mlp if isinstance(m, nn.Linear)]
+    assert len(linears) == 2 and linears[0].out_features == int(32 * 4.0)
+
+
+def test_modern_block_variants_build_and_stay_the_same_size():
+    """SwiGLU is scaled to keep the comparison about gating, not parameter count."""
+    from model import create_wavelet_classifier
+
+    kw = dict(in_channels=8, max_level=2, embed_dim=64, depth=2, num_heads=4, num_classes=5)
+    base = create_wavelet_classifier(**kw)
+    modern = create_wavelet_classifier(norm="rmsnorm", ffn="swiglu", qk_norm=True, **kw)
+    n = lambda m: sum(p.numel() for p in m.parameters())          # noqa: E731
+    assert abs(n(modern) - n(base)) / n(base) < 0.02, (n(base), n(modern))
+
+    x = torch.randn(2, 8, 256)
+    for m in (base, modern):
+        m.eval()
+        with torch.no_grad():
+            out = m(x)
+        out = out if torch.is_tensor(out) else out["logits"]
+        assert torch.isfinite(out).all()
+
+
+def test_unknown_block_variants_are_rejected():
+    from transformer_modules import TransformerBlock
+
+    with pytest.raises(ValueError, match="ffn"):
+        TransformerBlock(dim=32, num_heads=4, ffn="gelu-glu")
+    with pytest.raises(ValueError, match="norm"):
+        TransformerBlock(dim=32, num_heads=4, norm="batchnorm")
