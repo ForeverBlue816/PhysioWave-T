@@ -99,6 +99,8 @@ echo "ECG fine-tuning: task=${TASK} data=${DATA_DIR} out=${OUTPUT_DIR}"
   --head_hidden_dim 1024 \
   --head_dropout 0.1 \
   --select_by "${SELECT_BY:-loss}" \
+  --patience "${PATIENCE:-0}" \
+  --min_delta "${MIN_DELTA:-0.0}" \
   --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}"
 

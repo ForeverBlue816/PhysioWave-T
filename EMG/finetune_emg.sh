@@ -108,6 +108,8 @@ fi
   --head_hidden_dim "${HEAD_HIDDEN_DIM:-512}" \
   --label_smoothing "${LABEL_SMOOTHING:-0.1}" \
   --select_by "${SELECT_BY:-loss}" \
+  --patience "${PATIENCE:-0}" \
+  --min_delta "${MIN_DELTA:-0.0}" \
   --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}"
 

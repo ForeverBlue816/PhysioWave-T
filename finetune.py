@@ -531,6 +531,7 @@ def main_worker(rank, world_size, args):
             print(f"Using OneCycle Scheduler")
 
     best_selection = float('-inf')     # see --select-by below
+    epochs_without_improvement = 0
     best_val_loss = float('inf')
     best_val_acc = 0.0
     best_balanced_acc = 0.0
@@ -576,6 +577,7 @@ def main_worker(rank, world_size, args):
             history['val_auroc'].append(val_auroc)
             history['learning_rates'].append(current_lr)
         
+        improved = False
         if rank == 0:
             # Which validation number decides the checkpoint. Loss is the
             # historical default but disagrees with accuracy once the model
@@ -592,7 +594,8 @@ def main_worker(rank, world_size, args):
                 'weighted_f1': val_weighted_f1,
                 'auroc': val_auroc,
             }[args.select_by]
-            if _selection > best_selection:
+            improved = _selection > best_selection + args.min_delta
+            if improved:
                 best_selection = _selection
                 best_val_loss = val_loss
                 best_val_acc = val_acc
@@ -625,6 +628,31 @@ def main_worker(rank, world_size, args):
                 'val_acc': val_acc,
                 'args': vars(args),
             }, os.path.join(args.output_dir, "latest_model.pth"))
+
+        # Early stopping.
+        #
+        # Rank 0 decides and the answer is broadcast, because the ranks must
+        # leave the loop together: one rank breaking while the others continue
+        # leaves them blocked forever in the next gradient all-reduce, and the
+        # job sits burning its allocation until the wall clock kills it.
+        #
+        # Note the interaction with the cosine schedule -- stopping early means
+        # the learning rate never finishes decaying, so the final weights are
+        # from a point the schedule considered mid-flight. best_model.pth is
+        # the epoch that actually scored best, so the reported numbers are
+        # unaffected; it is `latest_model.pth` that is left mid-anneal.
+        if args.patience > 0:
+            stop_signal = torch.zeros(1, device=device)
+            if rank == 0:
+                epochs_without_improvement = 0 if improved else epochs_without_improvement + 1
+                if epochs_without_improvement >= args.patience:
+                    print(f"Early stop at epoch {epoch}: val {args.select_by} has not "
+                          f"improved by more than {args.min_delta} in {args.patience} "
+                          f"epochs (best was epoch {best_epoch}).")
+                    stop_signal[0] = 1.0
+            dist.broadcast(stop_signal, src=0)
+            if stop_signal.item() > 0:
+                break
 
     if rank == 0:
         print(f"\n(model selected on val {args.select_by})")
@@ -736,6 +764,13 @@ def main():
     
     # Model parameters - Classification Head
     parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')
+    parser.add_argument('--patience', type=int, default=0,
+                        help='Stop when the --select_by metric has not improved for this '
+                             'many epochs. 0 disables early stopping (the default, so '
+                             'existing commands are unaffected).')
+    parser.add_argument('--min_delta', type=float, default=0.0,
+                        help='Improvement below this does not reset the patience counter '
+                             'and does not update best_model.pth.')
     parser.add_argument('--select_by', type=str, default='loss',
                         choices=['loss', 'acc', 'balanced_acc', 'kappa',
                                  'weighted_f1', 'auroc'],
