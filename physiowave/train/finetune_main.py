@@ -190,19 +190,29 @@ def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: to
         "weighted_f1": float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
                        if len(y_true) else 0.0,
     }
-    # AUROC needs every class to appear in the split and at least two of them.
+    # AUROC is one-vs-rest over the classes that actually occur. Dropping the
+    # absent columns leaves rows that no longer sum to one, which sklearn
+    # rejects, so they are renormalised -- without this a single unrepresented
+    # class turns the whole metric into nan, which on a 53-class split is the
+    # common case rather than the corner one.
     try:
-        if len(present) > 2:
-            metrics["auroc"] = float(roc_auc_score(
-                y_true, y_prob[:, present], multi_class="ovr", average="macro",
-                labels=present))
-        elif len(present) == 2:
-            metrics["auroc"] = float(roc_auc_score(y_true, y_prob[:, present[1]]))
+        if len(present) >= 2:
+            sub = y_prob[:, present]
+            sub = sub / np.clip(sub.sum(axis=1, keepdims=True), 1e-12, None)
+            if len(present) == 2:
+                metrics["auroc"] = float(roc_auc_score(y_true, sub[:, 1],
+                                                       labels=present))
+            else:
+                metrics["auroc"] = float(roc_auc_score(
+                    y_true, sub, multi_class="ovr", average="macro", labels=present))
         else:
             metrics["auroc"] = float("nan")
     except ValueError as exc:                      # degenerate split
         logger.warning("AUROC unavailable: %s", exc)
         metrics["auroc"] = float("nan")
+    if len(present) < num_classes:
+        logger.warning("%d of %d classes absent from this split; AUROC is over the "
+                       "%d present", num_classes - len(present), num_classes, len(present))
     return metrics
 
 

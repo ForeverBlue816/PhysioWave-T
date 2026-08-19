@@ -219,6 +219,20 @@ def dwt(
     return coeffs
 
 
+def _no_autocast(device: torch.device):
+    """Disable autocast for a region.
+
+    Every linear-algebra call in this module builds a small dense operator out
+    of the learnable filters and then factorises it. Under an autocast region
+    the ops that build the operator are cast to the autocast dtype regardless
+    of the ``dtype=`` asked for, and ``linalg.inv``/``linalg.cond`` have no
+    bf16 kernel at all -- so the failure is a hard error rather than a silent
+    loss of precision. Even where a kernel exists, a dense inverse in bf16 is
+    the last place to spend the mantissa.
+    """
+    return torch.autocast(device_type=device.type, enabled=False)
+
+
 def analysis_matrix(
     patch_len: int,
     wavelet_filters: Dict[str, torch.Tensor],
@@ -343,9 +357,11 @@ class WaveletTransform1D(nn.Module):
     def _live_inverse(self, P: int, device, dtype) -> torch.Tensor:
         """Differentiable ``(A^{-1})^T`` recomputed from the current filters."""
         op_dev = self._operator_device(device)
-        A = analysis_matrix(P, self.filters, self.level, self.boundary_mode,
-                            device=op_dev, dtype=torch.float32)
-        return torch.linalg.inv(A).transpose(0, 1).to(device=device, dtype=dtype)
+        with _no_autocast(op_dev):
+            A = analysis_matrix(P, self.filters, self.level, self.boundary_mode,
+                                device=op_dev, dtype=torch.float32)
+            inv_t = torch.linalg.inv(A.float()).transpose(0, 1)
+        return inv_t.to(device=device, dtype=dtype)
 
     def _cached_inverse(self, P: int, device, dtype) -> torch.Tensor:
         """``(A^{-1})^T`` so that ``x = c @ (A^{-1})^T``; cached per ``(P, device, dtype)``."""
@@ -356,9 +372,11 @@ class WaveletTransform1D(nn.Module):
         with torch.no_grad():
             filt = {k: v.detach() for k, v in self.filters.items()}
             op_dev = self._operator_device(device)
-            A = analysis_matrix(P, filt, self.level, self.boundary_mode,
-                                device=op_dev, dtype=torch.float64)
-            inv_t = torch.linalg.inv(A).transpose(0, 1).contiguous().to(device=device, dtype=dtype)
+            with _no_autocast(op_dev):
+                A = analysis_matrix(P, filt, self.level, self.boundary_mode,
+                                    device=op_dev, dtype=torch.float64)
+                inv_t = torch.linalg.inv(A).transpose(0, 1).contiguous()
+            inv_t = inv_t.to(device=device, dtype=dtype)
         self._inv_cache[key] = inv_t
         return inv_t
 
@@ -373,7 +391,8 @@ class WaveletTransform1D(nn.Module):
 
     def condition_number(self, patch_len: int) -> float:
         """Condition number of the current analysis operator."""
-        with torch.no_grad():
+        dev = next(iter(self.filters.values())).device
+        with torch.no_grad(), _no_autocast(dev):
             A = analysis_matrix(patch_len, {k: v.detach() for k, v in self.filters.items()},
                                 self.level, self.boundary_mode, dtype=torch.float64)
             return float(torch.linalg.cond(A).item())
