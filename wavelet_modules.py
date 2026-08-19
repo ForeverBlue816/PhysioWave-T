@@ -8,6 +8,7 @@ including learnable filters that adapt to signal characteristics and cross-scale
 feature fusion mechanisms.
 """
 
+import logging
 import math
 import torch
 import torch.nn as nn
@@ -256,7 +257,8 @@ class CrossScaleCAFFN(nn.Module):
         super().__init__()
         self.base = ChannelAggregationFFN(embed_dims, ffn_ratio, kernel_size, dropout)
         # Multi-head attention for cross-scale feature fusion
-        self.attn = nn.MultiheadAttention(embed_dims, num_heads=4, batch_first=True)
+        self.attn = nn.MultiheadAttention(embed_dims, num_heads=heads_dividing(embed_dims),
+                                          batch_first=True)
         # Learnable scaling factor for attention output
         self.scale = nn.Parameter(torch.tensor(0.1))
         
@@ -287,6 +289,22 @@ class CrossScaleCAFFN(nn.Module):
         return out
 
 
+def heads_dividing(width, requested=4):
+    """Largest head count no greater than ``requested`` that divides ``width``.
+
+    Both attention blocks below split a width that comes from the electrode
+    count, not from a power-of-two embedding dimension, so a montage the author
+    did not try can make the split impossible: 14 sEMG channels against the
+    hardcoded 4 heads leaves 3.5 per head and the reshape throws. Falling back
+    to the nearest workable count keeps every channel layout runnable, at the
+    cost of fewer heads on widths with awkward factors.
+    """
+    for h in range(min(requested, width), 0, -1):
+        if width % h == 0:
+            return h
+    return 1
+
+
 class MultiHeadGate(nn.Module):
     """
     Multi-Head Gating Mechanism
@@ -297,7 +315,11 @@ class MultiHeadGate(nn.Module):
     """
     def __init__(self, in_ch, num_heads=4):
         super().__init__()
-        self.num_heads = num_heads
+        self.num_heads = heads_dividing(in_ch, num_heads)
+        if self.num_heads != num_heads:
+            logging.getLogger(__name__).info(
+                "MultiHeadGate: %d channels is not divisible by %d heads; using %d.",
+                in_ch, num_heads, self.num_heads)
         self.q = nn.Linear(in_ch, in_ch)
         self.k = nn.Linear(in_ch, in_ch)
         self.v = nn.Linear(in_ch, in_ch)
