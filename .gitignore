@@ -2,11 +2,11 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
-outputs/
-results/
-manifests/
-cache/
+/outputs/
+/results/
+/manifests/
+/cache/
 *.pth
 *.h5
 .DS_Store
-data/
+/data/
