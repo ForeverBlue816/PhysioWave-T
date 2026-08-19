@@ -132,6 +132,10 @@ def parse_args(argv=None):
                         "that overlapping windows mostly buy disk. Halve it for more data.")
     p.add_argument("--patch-size", type=int, default=64)
     p.add_argument("--subjects", type=int, nargs="+", default=None)
+    p.add_argument("--channel-probe", type=int, default=5,
+                   help="how many files to scan when deciding which columns are "
+                        "electrodes; the union is taken, so one session with a dead "
+                        "electrode cannot shrink the set")
     p.add_argument("--split-by", choices=["session", "repetition", "subject"],
                    default="session",
                    help="'session' is what DB6 was designed to measure: train on early "
@@ -193,9 +197,29 @@ def main(argv=None) -> int:
         print(f"ERROR: no .mat files under {args.root}", file=sys.stderr)
         return 1
 
+    # Fix the channel set once, from the union of live columns over the first
+    # few files, then take those same columns everywhere. Deciding per file
+    # makes the array shape depend on which electrodes happened to work that
+    # session; deciding from one file makes the whole run hostage to whichever
+    # file is read first.
+    probe = files[:args.channel_probe]
+    union: set = set()
+    n_cols = 0
+    for probe_path in probe:
+        probe_emg = np.asarray(loadmat(probe_path, variable_names=["emg"])["emg"],
+                               dtype=np.float32)
+        n_cols = probe_emg.shape[1]
+        union |= set(live_channels(probe_emg).tolist())
+    keep = np.array(sorted(union), dtype=int)
+    channels = len(keep)
+    print(f"channel set from {len(probe)} probed files: {channels} of {n_cols} columns "
+          f"(dropped {sorted(set(range(n_cols)) - union)})")
+    if channels != EXPECTED_ELECTRODES:
+        print(f"WARNING: {channels} channels, DB6 documents {EXPECTED_ELECTRODES}",
+              file=sys.stderr)
+
     buckets = {"train": ([], []), "val": ([], []), "test": ([], [])}
     used = 0
-    channels = None
 
     for path in files:
         m = FNAME_RE.search(os.path.basename(path))
@@ -211,22 +235,31 @@ def main(argv=None) -> int:
         stim = np.asarray(mat["restimulus"], dtype=np.int64).ravel()
         rep = np.asarray(mat["rerepetition"], dtype=np.int64).ravel()
 
-        keep = live_channels(emg)
-        if channels is None:
-            channels = len(keep)
-            print(f"  detected {channels} live channels of {emg.shape[1]} "
-                  f"(dropped columns {sorted(set(range(emg.shape[1])) - set(keep.tolist()))})")
-        elif len(keep) != channels:
-            print(f"  skip {os.path.basename(path)}: {len(keep)} live channels, "
-                  f"expected {channels}", file=sys.stderr)
+        if emg.shape[1] <= keep.max():
+            print(f"  skip {os.path.basename(path)}: {emg.shape[1]} columns, the channel "
+                  f"set needs at least {keep.max() + 1}", file=sys.stderr)
             continue
-        if channels != EXPECTED_ELECTRODES:
-            print(f"  WARNING: {channels} live channels, DB6 documents "
-                  f"{EXPECTED_ELECTRODES}", file=sys.stderr)
+        live_here = set(live_channels(emg).tolist())
+        flat = [int(c) for c in keep if c not in live_here]
+        if flat:
+            # An electrode that came loose for one session is a fact about that
+            # recording, not a reason to drop it: the column is kept, flat, so
+            # the array shape stays fixed and the session still contributes.
+            print(f"  note {os.path.basename(path)}: channels {flat} flat here; keeping "
+                  f"the session with those channels zeroed", file=sys.stderr)
+        extra = sorted(live_here - set(keep.tolist()))
+        if extra:
+            print(f"  WARNING {os.path.basename(path)}: columns {extra} carry signal but "
+                  f"sit outside the channel set; the electrode layout differs from the "
+                  f"probed files", file=sys.stderr)
 
-        top = int(stim.max())
-        if top != NUM_GRASPS:
-            print(f"  WARNING {os.path.basename(path)}: restimulus tops out at {top}, "
+        # DB6's 7 grasps keep their indices from the full NinaPro movement set,
+        # so restimulus runs to 11 with gaps. The count of distinct non-zero
+        # labels is what is worth checking; the maximum says nothing. The gaps
+        # are closed by the contiguous remap before anything is written.
+        distinct = int((np.unique(stim) != 0).sum())
+        if distinct != NUM_GRASPS:
+            print(f"  WARNING {os.path.basename(path)}: {distinct} distinct grasps, "
                   f"expected {NUM_GRASPS}", file=sys.stderr)
 
         emg = emg[:, keep].T                       # (C, N)
