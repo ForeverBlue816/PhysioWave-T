@@ -215,6 +215,39 @@ MSG
 # 5. Helpers
 # --------------------------------------------------------------------------- #
 
+# Catch an OUTPUT_DIR that came from a variable the caller's shell had not set.
+#
+# `OUTPUT_DIR=$PW_CKPT_ROOT/run bash EMG/finetune_emg.sh` expands PW_CKPT_ROOT in
+# the *caller's* shell, which happens before this file is sourced by the launcher
+# -- so a shell that has not sourced it produces `/run`, and the failure is a
+# permission error from mkdir at the filesystem root, several lines away from the
+# cause. Fail here instead, with the fix in the message.
+pw_check_output_dir() {
+    local dir="${1:-}"
+    [[ -n "${dir}" ]] || return 0
+    local parent
+    parent="$(dirname "${dir}")"
+    if [[ "${parent}" == "/" ]]; then
+        cat >&2 <<MSG
+ERROR: OUTPUT_DIR is '${dir}' -- directly under the filesystem root.
+
+  This is almost always an unset variable: OUTPUT_DIR=\$PW_CKPT_ROOT/name is
+  expanded by your shell before this script runs, and \$PW_CKPT_ROOT is empty
+  unless you have sourced the environment yourself:
+
+    source scripts/cineca_env.sh
+
+  Then re-run. Or leave OUTPUT_DIR unset and let the launcher choose it.
+MSG
+        return 1
+    fi
+    if [[ ! -d "${parent}" ]]; then
+        echo "ERROR: OUTPUT_DIR '${dir}' -- parent '${parent}' does not exist" >&2
+        return 1
+    fi
+    return 0
+}
+
 # Directory holding the corpora for one modality.  `emg` and `semg` are the same
 # data: the registry calls it semg, the on-disk layout the user asked for is emg.
 pw_data_dir() {

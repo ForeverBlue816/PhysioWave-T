@@ -43,6 +43,7 @@ PRETRAINED_MODEL="${PRETRAINED_MODEL:-${PW_CKPT_ROOT}/pretrain_emg/best_model.pt
 
 # Output directory for fine-tuning results
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/finetune_emg_${TASK}}"
+pw_check_output_dir "${OUTPUT_DIR}" || exit 1
 
 for f in "${TRAIN_FILE}" "${VAL_FILE}" "${TEST_FILE}"; do
     [[ -f "${f}" ]] || { echo "ERROR: missing ${f}" >&2; exit 1; }

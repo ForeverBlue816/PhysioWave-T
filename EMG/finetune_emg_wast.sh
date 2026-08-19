@@ -33,6 +33,7 @@ NUM_GPUS="${NUM_GPUS:-4}"
 TASK="${TASK:-db6}"
 DATA_DIR="${DATA_DIR:-${PW_DATA_EMG}/${TASK}}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/finetune_wast_${TASK}}"
+pw_check_output_dir "${OUTPUT_DIR}" || exit 1
 
 for f in train val test; do
     [[ -f "${DATA_DIR}/${f}.h5" ]] || {

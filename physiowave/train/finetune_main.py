@@ -386,6 +386,19 @@ def main(argv=None) -> int:
     model_cfg["num_classes"] = args.num_classes
     cfg["model"] = model_cfg
 
+    if info.is_main:
+        # Say this before the read, not after. LabelledWindows pulls the whole
+        # file into RAM and every rank holds its own copy, so a few GB of
+        # densely-strided windows is minutes of complete silence otherwise --
+        # indistinguishable from a hung job, which is how an allocation gets
+        # killed and rerun for no reason.
+        sizes = " ".join(
+            f"{os.path.basename(p)} {os.path.getsize(p) / 2**30:.2f} GiB"
+            for p in (train_path, val_path, test_path)
+            if p and os.path.exists(p))
+        logger.info("loading %s into memory on each of %d rank(s): %s",
+                    os.path.dirname(train_path) or ".", info.world_size, sizes)
+
     train_set = LabelledWindows(train_path)
     C, T = train_set.num_channels, train_set.window
     if info.is_main:
