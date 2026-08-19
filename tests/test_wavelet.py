@@ -169,3 +169,73 @@ def test_fgm_scores_are_detached():
     m = WAST(WASTConfig(patch_size=64, embed_dim=32, level=2))
     out = m(torch.randn(2, 4, 256))
     assert not out["patch_scores"].requires_grad
+
+
+def test_fold_tokenizer_is_token_neutral_and_uses_every_band():
+    """'fold' packs subbands into features, so the token count is the patch count.
+
+    And every band must actually reach the token: a tokenizer that silently
+    dropped the coarsest scale would still have the right shape.
+    """
+    from physiowave.wavelet.wast import WAST, WASTConfig, split_embedding
+
+    cfg = WASTConfig(patch_size=64, level=3, embed_dim=64, tokenizer="fold")
+    tok = WAST(cfg).eval()
+    B, C, T = 2, 5, 256
+    with torch.no_grad():
+        out = tok(torch.randn(B, C, T))
+    S = T // cfg.patch_size
+    assert out["tokens"].shape == (B, C, S, 64)
+    assert sum(tok.band_dims) == 64 and len(tok.band_dims) == cfg.level + 1
+
+    # Zeroing one band's projection must change the token -- for every band.
+    x = torch.randn(B, C, T)
+    with torch.no_grad():
+        base = tok(x)["tokens"].clone()
+        for i, proj in enumerate(tok.band_projs):
+            w = proj.weight.clone()
+            proj.weight.zero_()
+            moved = (tok(x)["tokens"] - base).abs().max().item()
+            proj.weight.copy_(w)
+            assert moved > 1e-6, f"band {i} does not reach the token"
+
+
+def test_split_embedding_is_exact_and_gives_every_band_room():
+    from physiowave.wavelet.wast import split_embedding
+
+    for dim in (16, 64, 256, 257):
+        for lens in ([8, 8, 16, 32], [4, 4, 8], [32, 32]):
+            dims = split_embedding(dim, lens)
+            assert sum(dims) == dim and all(d >= 1 for d in dims)
+    with pytest.raises(ValueError):
+        split_embedding(3, [8, 8, 16, 32])
+
+
+def test_fold_gate_starts_where_the_config_says():
+    import math
+
+    from physiowave.wavelet.wast import WAST, WASTConfig
+
+    tok = WAST(WASTConfig(patch_size=32, level=2, embed_dim=32, tokenizer="fold",
+                          fold_gate_init=0.1))
+    assert math.isclose(float(torch.tanh(tok.fold_gate.detach())), 0.1, abs_tol=1e-6)
+
+
+def test_every_tokenizer_produces_the_same_token_count():
+    from physiowave.wavelet.wast import WAST, WASTConfig
+
+    B, C, T, P = 2, 4, 256, 64
+    counts = {}
+    for mode in ("raw", "synthesis", "fold"):
+        tok = WAST(WASTConfig(patch_size=P, level=3, embed_dim=32, tokenizer=mode)).eval()
+        with torch.no_grad():
+            counts[mode] = tuple(tok(torch.randn(B, C, T))["tokens"].shape)
+    assert len(set(counts.values())) == 1, counts
+    assert counts["fold"] == (B, C, T // P, 32)
+
+
+def test_fold_rejects_pre_patch_placement():
+    from physiowave.wavelet.wast import WASTConfig
+
+    with pytest.raises(ValueError, match="post_patch"):
+        WASTConfig(tokenizer="fold", placement="pre_patch")

@@ -91,6 +91,16 @@ class EncoderConfig:
     use_compression: bool = True
     channel_embedding: str = "tare"     # 'tare' | 'channel_id' | 'none'
     max_channels: int = 256             # table size for 'channel_id'
+    #: What happens to the channel axis when ``use_compression`` is False.
+    #:
+    #: ``none``  keep it: the backbone's slot axis becomes the channel axis and
+    #:           the lattice stays ``C * S``. The backbone already attends along
+    #:           that axis, so nothing needs compressing for it to work.
+    #: ``mean``  average the channels into a single slot. This is the older
+    #:           fallback and it throws the entire channel–time lattice away for
+    #:           ``1 * S`` tokens; it also makes the encoder permutation
+    #:           invariant. Kept only so the earlier ablation stays runnable.
+    channel_reduction: str = "none"     # 'none' | 'mean'
     mask_ratio: float = 0.5
     masking_strategy: str = "frequency_guided"      # 'frequency_guided' | 'random'
     importance_ratio: float = 0.6
@@ -105,6 +115,9 @@ class EncoderConfig:
         self.tare.embed_dim = self.embed_dim
         self.compression.embed_dim = self.embed_dim
         self.backbone.embed_dim = self.embed_dim
+        if self.channel_reduction not in ("none", "mean"):
+            raise ValueError(
+                f"channel_reduction must be 'none' or 'mean', got {self.channel_reduction!r}")
         if self.channel_embedding not in CHANNEL_EMBEDDINGS:
             raise ValueError(
                 f"channel_embedding must be one of {CHANNEL_EMBEDDINGS}, "
@@ -181,8 +194,13 @@ class PhysioWaveEncoder(nn.Module):
         )
 
     def token_stats(self, C: int, T: int) -> Dict[str, float]:
-        K = self.cfg.compression.num_queries if self.compressor is not None else C
-        return self.wast.token_report(C, T, K)
+        kv_stride = 2 ** self.cfg.backbone.kv_wavelet_level
+        if self.compressor is not None:
+            return self.wast.token_report(C, T, self.cfg.compression.num_queries, kv_stride)
+        if self.cfg.channel_reduction == "mean":
+            return self.wast.token_report(C, T, 1, kv_stride)
+        # No channel compression: the lattice survives, so there is no K to report.
+        return self.wast.token_report(C, T, None, kv_stride)
 
     # -- forward ---------------------------------------------------------------
     def forward(
@@ -226,9 +244,17 @@ class PhysioWaveEncoder(nn.Module):
         if self.compressor is not None:
             comp = self.compressor(tokens, chan_emb, xyz, chan_mask, A)
             latent, attn = comp["tokens"], comp["attn"]   # [B, K, S, D]
+        elif self.cfg.channel_reduction == "none":
+            # Keep the full channel-time lattice. The backbone's slot axis is the
+            # channel axis here, and its slot embedding is what tells one channel
+            # from another -- so this path needs no channel embedding of its own.
+            if chan_mask is not None:
+                tokens = tokens * chan_mask.to(tokens.dtype).view(1, C, 1, 1)
+            latent, attn = tokens, None
         else:
-            # No compression: average over channels so the interface still yields
-            # [B, K, S, D] with K = 1 rather than re-expanding the sequence.
+            # Average over channels so the interface still yields [B, K, S, D]
+            # with K = 1. This discards the channel axis entirely; see the note
+            # on EncoderConfig.channel_reduction.
             m = torch.ones(C, device=x.device, dtype=tokens.dtype) if chan_mask is None \
                 else chan_mask.to(tokens.dtype)
             latent = (tokens * m.view(1, C, 1, 1)).sum(1, keepdim=True) / m.sum().clamp_min(1.0)

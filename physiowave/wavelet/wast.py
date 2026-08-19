@@ -36,8 +36,9 @@ patching.  It sees longer support at coarse scales but couples patches, so
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence
 
 import torch
 import torch.nn as nn
@@ -69,15 +70,61 @@ class WASTConfig:
     residual_scale_init: float = 0.1
     norm_patches: bool = True
     use_band_features: bool = True      # inject per-band log-energy into the token
+    #: How a patch becomes a token.  All three produce ``C * S`` tokens; they
+    #: differ in what a token is built from, so they are the A/B/C rungs of the
+    #: tokenizer ablation.
+    #:
+    #: ``synthesis``  DWT -> per-subband processing -> IDWT -> project the
+    #:                reconstructed patch.  The original WAST.
+    #: ``fold``       DWT -> per-subband processing -> project each subband into
+    #:                its own slice of the embedding -> mix.  The scales never
+    #:                re-mix in the time domain, so each keeps a private
+    #:                subspace; nothing is upsampled and no token is added.
+    #: ``raw``        no wavelet at all: project the patch.  The floor the other
+    #:                two have to beat.
+    tokenizer: str = "synthesis"        # 'synthesis' | 'fold' | 'raw'
+    #: 'fold' only: the raw patch is projected too and the folded wavelet token
+    #: is added through a gate initialised here, so training starts at a plain
+    #: patch embedding and earns its way into the multi-scale path.
+    fold_raw_residual: bool = True
+    fold_gate_init: float = 0.1
 
     def __post_init__(self) -> None:
         if self.placement not in ("post_patch", "pre_patch"):
             raise ValueError("placement must be 'post_patch' or 'pre_patch'")
+        if self.tokenizer not in ("synthesis", "fold", "raw"):
+            raise ValueError(
+                f"tokenizer must be 'synthesis', 'fold' or 'raw', got {self.tokenizer!r}")
+        if self.tokenizer == "fold" and self.placement != "post_patch":
+            raise ValueError("tokenizer='fold' packs a patch's own subbands and "
+                             "requires placement='post_patch'")
         if self.patch_size % (2 ** self.level) != 0:
             raise ValueError(
                 f"patch_size={self.patch_size} must be divisible by "
                 f"2**level={2 ** self.level} for a critically sampled transform"
             )
+
+
+def split_embedding(embed_dim: int, coeff_lens: Sequence[int]) -> List[int]:
+    """Divide ``embed_dim`` among the subbands in proportion to their length.
+
+    A finer scale carries more coefficients and therefore more of the patch's
+    variance, so it gets more of the embedding; every band is guaranteed at
+    least one dimension, and the remainder lands on the coarsest band. The parts
+    sum to ``embed_dim`` exactly -- the concatenation below has no room to be
+    off by one.
+    """
+    total = sum(coeff_lens)
+    if embed_dim < len(coeff_lens):
+        raise ValueError(f"embed_dim={embed_dim} cannot be split across "
+                         f"{len(coeff_lens)} subbands")
+    dims = [max(1, (embed_dim * L) // total) for L in coeff_lens]
+    slack = embed_dim - sum(dims)
+    dims[0] += slack                                  # cA_J absorbs the rounding
+    if dims[0] < 1:                                   # only if rounding overshot
+        raise ValueError(f"cannot split embed_dim={embed_dim} across {coeff_lens}")
+    assert sum(dims) == embed_dim
+    return dims
 
 
 class SubbandProcessor(nn.Module):
@@ -156,6 +203,18 @@ class WAST(nn.Module):
         self.patch_norm = nn.LayerNorm(cfg.patch_size) if cfg.norm_patches else nn.Identity()
         self.proj = nn.Linear(cfg.patch_size, cfg.embed_dim)
         self.band_weights = nn.Parameter(torch.zeros(len(lens)))
+
+        # -- 'fold': one private slice of the embedding per subband ------------
+        self.band_dims: List[int] = []
+        if cfg.tokenizer == "fold":
+            self.band_dims = split_embedding(cfg.embed_dim, lens)
+            self.band_norms = nn.ModuleList(nn.LayerNorm(L) for L in lens)
+            self.band_projs = nn.ModuleList(
+                nn.Linear(L, d) for L, d in zip(lens, self.band_dims, strict=True))
+            self.fold_mix = nn.Linear(cfg.embed_dim, cfg.embed_dim)
+            # atanh(gate_init), so tanh() of the parameter starts at gate_init.
+            g = float(min(max(cfg.fold_gate_init, -0.999), 0.999))
+            self.fold_gate = nn.Parameter(torch.full((1,), math.atanh(g)))
         # Per-band log-energy features.  Analysis followed by synthesis is an exact
         # inverse, so without this path the choice of wavelet basis would only
         # reach the token through the subband gates.  Feeding the (differentiable,
@@ -175,22 +234,41 @@ class WAST(nn.Module):
     def num_patches(self, T: int) -> int:
         return T // self.cfg.patch_size
 
-    def token_report(self, C: int, T: int, K: Optional[int] = None) -> Dict[str, float]:
-        """Token accounting for the legacy vs WAST vs WAST+compression paths."""
+    def token_report(self, C: int, T: int, K: Optional[int] = None,
+                     kv_stride: int = 1) -> Dict[str, float]:
+        """Token accounting for the legacy vs WAST vs compressed paths.
+
+        The number worth reporting is ``N_out``: what the backbone carries and
+        what the head eventually pools. ``N_kv`` is separate on purpose --
+        compressing the keys of an attention is not the same act as deleting
+        tokens from the representation, and collapsing the two into one
+        "compression ratio" is how a table ends up claiming information was kept
+        when it was not.
+        """
         S = self.num_patches(T)
         J = self.cfg.level
-        n_old = (J + 1) * C * S
-        n_wast = C * S
+        n_old = (J + 1) * C * S            # legacy: one token per (scale, channel, patch)
+        n_lattice = C * S                  # the channel-time lattice the input arrives as
+        n_out = n_lattice if K is None else K * S
         report = {
             "S": S, "C": C, "J": J,
+            "N_patch_in": n_lattice,
             "N_old_legacy": n_old,
-            "N_wast": n_wast,
-            "compression_vs_legacy": n_old / max(n_wast, 1),
+            "N_wast": n_lattice,
+            "N_out": n_out,
+            # What removing the per-scale token expansion bought, on its own.
+            "scale_token_reduction": n_old / max(n_lattice, 1),
+            "compression_vs_legacy": n_old / max(n_lattice, 1),
+            "N_kv": max(n_out // max(kv_stride, 1), 1) if kv_stride > 1 else n_out,
+            "kv_stride": kv_stride,
         }
         if K is not None:
             report["K"] = K
-            report["N_new"] = K * S
-            report["compression_vs_legacy_with_compression"] = n_old / max(K * S, 1)
+            report["N_new"] = n_out
+            # Channel compression on top -- reported separately because it is a
+            # different claim: the lattice itself got smaller.
+            report["channel_compression"] = n_lattice / max(n_out, 1)
+            report["compression_vs_legacy_with_compression"] = n_old / max(n_out, 1)
         return report
 
     def patchify(self, x: torch.Tensor) -> torch.Tensor:
@@ -232,9 +310,21 @@ class WAST(nn.Module):
             assert sum(c.shape[-1] for c in raw_coeffs) == P, (
                 "WAST analysis broke critical sampling"
             )
-            coeffs_out = [sb(c) for sb, c in zip(self.subbands, raw_coeffs, strict=True)]
-            rec = self.wt.synthesis(coeffs_out, P)          # [N, P]
-            patches = rec.view(B, C, S, P)
+            if self.cfg.tokenizer == "raw":
+                coeffs_out = raw_coeffs
+                patches = raw_patches
+            else:
+                coeffs_out = [sb(c) for sb, c in zip(self.subbands, raw_coeffs, strict=True)]
+                if self.cfg.tokenizer == "fold":
+                    # No synthesis: the subbands stay separate all the way into
+                    # the embedding. Reconstructing first would re-mix the scales
+                    # in the time domain, and a linear projection of the mixture
+                    # cannot undo that -- which is the whole reason this rung
+                    # exists.
+                    patches = raw_patches
+                else:
+                    rec = self.wt.synthesis(coeffs_out, P)  # [N, P]
+                    patches = rec.view(B, C, S, P)
 
         energies = band_energies(raw_coeffs, B, C, S) if self.cfg.placement == "post_patch" \
             else self._pre_patch_energies(raw_coeffs, B, C, S, P)
@@ -244,6 +334,15 @@ class WAST(nn.Module):
 
         h = self.patch_norm(patches)
         tokens = self.proj(h)                               # [B, C, S, D]
+        if self.cfg.tokenizer == "fold":
+            parts = [proj(norm(c)) for c, norm, proj
+                     in zip(coeffs_out, self.band_norms, self.band_projs, strict=True)]
+            wave = self.fold_mix(torch.cat(parts, dim=-1))  # [N, D]
+            wave = wave.view(B, C, S, self.cfg.embed_dim)
+            if self.cfg.fold_raw_residual:
+                tokens = tokens + torch.tanh(self.fold_gate) * wave
+            else:
+                tokens = wave
         if self.band_feat is not None:
             # Differentiable band energies (the detached copy above is only for FgM).
             be = torch.stack(

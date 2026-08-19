@@ -158,6 +158,85 @@ def test_use_tare_false_still_means_no_channel_embedding():
     assert cfg.channel_embedding == "none"
 
 
+def test_lattice_config_keeps_every_channel_time_token():
+    """The variant's whole claim: only the scale axis is compressed.
+
+    N_out must equal the number of patches the tokenizer was handed, and the
+    reduction against legacy must be exactly J+1 -- the per-scale copies -- with
+    nothing coming from the channel axis.
+    """
+    cfg = load_config("pretrain/semg_lattice")
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+    assert enc.tare is None and enc.compressor is None and enc.spatial is None
+
+    C, T = 16, 512
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    with torch.no_grad():
+        out = enc(torch.randn(2, C, T), meta)
+    st = out["token_stats"]
+    assert st["N_out"] == st["N_patch_in"] == C * st["S"]
+    assert st["scale_token_reduction"] == st["J"] + 1
+    assert out["tokens"].shape[1] == C, "the channel axis must survive the backbone"
+
+
+def test_lattice_config_still_tells_channels_apart():
+    """No TARE and no channel_id here -- the backbone's slot embedding is the identity."""
+    cfg = load_config("pretrain/semg_lattice")
+    cfg["model"]["num_classes"] = 5
+    enc = build_model(cfg).eval()
+    C, T = 16, 512
+    meta = ChannelMeta([f"ch{i:02d}" for i in range(C)], torch.zeros(C, 3))
+    torch.manual_seed(0)
+    x = torch.randn(2, C, T)
+    p = torch.randperm(C)
+    with torch.no_grad():
+        a, b = enc(x, meta)["logits"], enc(x[:, p], meta)["logits"]
+    assert (a - b).abs().max().item() > 1e-3
+
+
+def test_channel_reduction_mean_is_the_old_lossy_fallback():
+    cfg = EncoderConfig(modality="semg", embed_dim=32, use_compression=False,
+                        channel_reduction="mean", use_spatial_frontend=False,
+                        channel_embedding="none", num_classes=4,
+                        wast=WASTConfig(embed_dim=32, patch_size=32, level=2))
+    enc = PhysioWaveEncoder(cfg).eval()
+    with torch.no_grad():
+        out = enc(torch.randn(2, 8, 128),
+                  ChannelMeta([f"ch{i}" for i in range(8)], torch.zeros(8, 3)))
+    assert out["tokens"].shape[1] == 1, "'mean' collapses the channel axis"
+
+
+def test_wavelet_kv_shrinks_the_keys_and_not_the_tokens():
+    from physiowave.models.backbone import BackboneConfig, FactorizedBackbone, WaveletKV
+
+    x = torch.randn(2, 6, 16, 32)
+    for level in (0, 1, 2):
+        bb = FactorizedBackbone(BackboneConfig(embed_dim=32, depth=1, num_heads=4,
+                                               slot_heads=2, kv_wavelet_level=level)).eval()
+        with torch.no_grad():
+            y = bb(x)
+        assert y.shape == x.shape, f"level {level} changed the token lattice"
+
+    kv = WaveletKV(32, 2).eval()
+    with torch.no_grad():
+        out, stride = kv(torch.randn(1, 16, 32))
+    assert out.shape[1] == 4 and stride == 4.0
+
+
+def test_wavelet_kv_reports_the_stride_it_achieved():
+    """An odd length stops the halving early; the stride must follow, not assume."""
+    from physiowave.models.backbone import WaveletKV
+
+    kv = WaveletKV(16, 2).eval()
+    with torch.no_grad():
+        out, stride = kv(torch.randn(1, 6, 16))       # 6 -> 3, then 3 is odd
+    assert out.shape[1] == 3 and stride == 2.0
+    with torch.no_grad():
+        out, stride = kv(torch.randn(1, 5, 16))       # cannot halve at all
+    assert out.shape[1] == 5 and stride == 1.0
+
+
 def test_pretrain_objective_uses_the_ssl_anchor(meta_64):
     enc = PhysioWaveEncoder(_cfg())
     obj = PretrainObjective(PretrainObjectiveConfig())
@@ -207,7 +286,8 @@ def test_config_system_composes_and_rejects_typos():
 
 
 @pytest.mark.parametrize("name", ["model/wast", "model/wast_tare", "pretrain/eeg",
-                                  "pretrain/ecg", "pretrain/semg"])
+                                  "pretrain/ecg", "pretrain/semg",
+                                  "pretrain/semg_lattice"])
 def test_every_config_builds_and_runs(name):
     cfg = load_config(name, ["model.backbone.depth=1", "model.embed_dim=32",
                              "model.wast.patch_size=32", "model.wast.embed_dim=32",
