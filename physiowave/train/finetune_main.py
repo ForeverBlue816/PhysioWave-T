@@ -73,6 +73,30 @@ logger = logging.getLogger(__name__)
 SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc")
 
 
+def progress(iterable, desc: str, mode: str, is_main: bool):
+    """Wrap a loader in a tqdm bar, or leave it alone.
+
+    'auto' means a bar on an interactive terminal and nothing under sbatch: a
+    bar redraws with carriage returns, which a log file records as one
+    enormous line, and the periodic log lines are what is actually readable
+    after the fact.
+    """
+    if not is_main or mode == "none":
+        return iterable
+    if mode == "auto" and not sys.stderr.isatty():
+        return iterable
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        return iterable
+    return tqdm(iterable, desc=desc, ncols=110, leave=False)
+
+
+def set_postfix(bar, **kw) -> None:
+    if hasattr(bar, "set_postfix"):
+        bar.set_postfix(**kw, refresh=False)
+
+
 class LabelledWindows(Dataset):
     """The (N, C, T) + (N,) HDF5 the converters write, held in memory.
 
@@ -135,8 +159,9 @@ def forward_logits(model: nn.Module, x: torch.Tensor, meta: ChannelMeta) -> torc
 
 @torch.no_grad()
 def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: torch.device,
-             amp_dtype: torch.dtype, criterion: nn.Module,
-             num_classes: int) -> Dict[str, float]:
+             amp_dtype: torch.dtype, criterion: nn.Module, num_classes: int,
+             desc: str = "eval", progress_mode: str = "none",
+             is_main: bool = False) -> Dict[str, float]:
     """Metrics over the whole split, gathered across ranks."""
     from sklearn.metrics import (balanced_accuracy_score, cohen_kappa_score, f1_score,
                                  roc_auc_score)
@@ -144,7 +169,7 @@ def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: to
     model.eval()
     loss_meter = AverageMeter()
     probs_all, target_all = [], []
-    for x, y in loader:
+    for x, y in progress(loader, desc, progress_mode, is_main):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with autocast_ctx(device, amp_dtype):
             logits = forward_logits(model, x, meta)
@@ -218,10 +243,11 @@ def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: to
 
 def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer, scheduler,
                     scaler, grad_clip: float, epoch: int, log_every: int,
-                    is_main: bool) -> Dict[str, float]:
+                    is_main: bool, progress_mode: str = "auto") -> Dict[str, float]:
     model.train()
     loss_meter, acc_meter = AverageMeter(), AverageMeter()
-    for step, (x, y) in enumerate(loader):
+    bar = progress(loader, f"train {epoch}", progress_mode, is_main)
+    for step, (x, y) in enumerate(bar):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with autocast_ctx(device, amp_dtype):
             logits = forward_logits(model, x, meta)
@@ -242,7 +268,9 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
 
         loss_meter.update(loss.item(), y.numel())
         acc_meter.update(float((logits.argmax(-1) == y).float().mean().item()), y.numel())
-        if is_main and log_every and step % log_every == 0:
+        set_postfix(bar, loss=f"{loss_meter.avg:.4f}", acc=f"{acc_meter.avg:.4f}",
+                    lr=f"{optimizer.param_groups[0]['lr']:.2e}")
+        if is_main and log_every and step % log_every == 0 and bar is loader:
             logger.info("epoch %d step %d/%d loss %.4f acc %.4f lr %.2e",
                         epoch, step, len(loader), loss_meter.avg, acc_meter.avg,
                         optimizer.param_groups[0]["lr"])
@@ -280,7 +308,12 @@ def parse_args(argv=None):
                    help="override the automatic pick; useful when the default "
                         "accelerator is the thing under suspicion")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--log-every", type=int, default=50)
+    p.add_argument("--log-every", type=int, default=50,
+                   help="periodic in-epoch log lines; 0 disables. Ignored while a "
+                        "progress bar is showing the same numbers.")
+    p.add_argument("--progress", default="auto", choices=["auto", "bar", "none"],
+                   help="'auto' shows a bar on a terminal and stays quiet under sbatch, "
+                        "where a redrawing bar becomes one very long line in the log")
     p.add_argument("--select-by", default="balanced_acc", choices=SELECTION_METRICS,
                    help="validation metric that decides best.pth; balanced accuracy by "
                         "default because downstream label sets are rarely balanced")
@@ -402,12 +435,12 @@ def main(argv=None) -> int:
             train_sampler.set_epoch(epoch)
         tr = train_one_epoch(model, train_loader, meta, device, amp_dtype, criterion,
                              optimizer, scheduler, scaler, args.grad_clip, epoch,
-                             args.log_every, info.is_main)
+                             args.log_every, info.is_main, args.progress)
         row = {"epoch": epoch, **{f"train_{k}": v for k, v in tr.items()}}
 
         if val_loader is not None:
             va = evaluate(model, val_loader, meta, device, amp_dtype, criterion,
-                          args.num_classes)
+                          args.num_classes, f"val {epoch}", args.progress, info.is_main)
             row.update({f"val_{k}": v for k, v in va.items()})
             score = -va["loss"] if args.select_by == "loss" else va[args.select_by]
             improved = score > best_score + args.min_delta
@@ -450,7 +483,8 @@ def main(argv=None) -> int:
             if info.distributed:
                 for p in core.parameters():
                     dist.broadcast(p.data, src=0)
-        te = evaluate(model, test_loader, meta, device, amp_dtype, criterion, args.num_classes)
+        te = evaluate(model, test_loader, meta, device, amp_dtype, criterion,
+                      args.num_classes, "test", args.progress, info.is_main)
         results["test"] = te
         if info.is_main:
             logger.info("TEST acc %.4f bal %.4f kappa %.4f wf1 %.4f auroc %.4f",

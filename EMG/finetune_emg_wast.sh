@@ -67,6 +67,7 @@ echo "EMG fine-tuning (WAST+TARE): task=${TASK} data=${DATA_DIR} out=${OUTPUT_DI
   --patience "${PATIENCE:-0}" \
   --min-delta "${MIN_DELTA:-0.0}" \
   --seed "${SEED:-42}" \
+  --progress "${PROGRESS:-auto}" \
   ${EXTRA:-}
 
 echo "Done. Results in ${OUTPUT_DIR} (results.json, history.json, best.pth)"
