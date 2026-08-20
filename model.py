@@ -53,6 +53,8 @@ class BERTWaveletTransformer(nn.Module):
                  scale_fold='none',     # see wavelet_modules.ScaleFold
                  fold_patch_len=None,   # None -> patch_size[1]; 0 -> whole window
                  fold_synthesis=0,      # odd kernel for a per-scale synthesis filter
+                 fold_synthesis_norm=False,   # fix its DC gain, isolating shape
+                 fold_share_channels=False,   # static weights become [S, 1]
                  fold_shrinkage=False,  # learned soft-threshold before folding
                  fold_scale_dropout=0.0,
                  fold_gamma=0.1,
@@ -115,6 +117,8 @@ class BERTWaveletTransformer(nn.Module):
             in_channels=in_channels,
             patch_len=patch_size[1] if fold_patch_len is None else fold_patch_len,
             synthesis_kernel=fold_synthesis,
+            synthesis_norm=fold_synthesis_norm,
+            share_channels=fold_share_channels,
             shrinkage=fold_shrinkage,
             scale_dropout=fold_scale_dropout,
             gamma_init=fold_gamma,

@@ -467,6 +467,8 @@ def main_worker(rank, world_size, args):
         scale_fold=args.scale_fold,
         fold_patch_len=args.fold_patch_len,
         fold_synthesis=args.fold_synthesis,
+        fold_synthesis_norm=args.fold_synthesis_norm,
+        fold_share_channels=args.fold_share_channels,
         fold_shrinkage=args.fold_shrinkage,
         fold_scale_dropout=args.fold_scale_dropout,
         fold_gamma=args.fold_gamma,
@@ -856,6 +858,16 @@ def main():
                              '0 disables it. The bands reach the fold after soft gating '
                              'and nearest upsampling, so they are not phase-aligned; a '
                              'scalar weight cannot correct that and a 3-tap filter can.')
+    parser.add_argument('--fold_synthesis_norm', action='store_true',
+                        help='constrain each synthesis kernel to unit DC gain, so it can '
+                             'reshape a band but not rescale it. Trained unconstrained, '
+                             'the kernels move mostly in gain (1.40x on the finest detail '
+                             'band against 1.13x on the approximation), so this is what '
+                             'separates the two effects.')
+    parser.add_argument('--fold_share_channels', action='store_true',
+                        help="learned/softmax folds only: one weight per scale instead of "
+                             "per (scale, channel). 4 parameters rather than 4*C, and "
+                             "channel-count independent like the dynamic fold.")
     parser.add_argument('--fold_shrinkage', action='store_true',
                         help='any folding mode: soft-threshold each band before folding, '
                              'with a learned threshold against a MAD noise estimate. '

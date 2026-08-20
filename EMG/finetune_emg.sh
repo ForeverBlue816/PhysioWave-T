@@ -97,6 +97,8 @@ fi
   --scale_fold "${SCALE_FOLD:-none}" \
   ${FOLD_PATCH_LEN:+--fold_patch_len "${FOLD_PATCH_LEN}"} \
   --fold_synthesis "${FOLD_SYNTHESIS:-0}" \
+  ${FOLD_SYNTHESIS_NORM:+--fold_synthesis_norm} \
+  ${FOLD_SHARE_CHANNELS:+--fold_share_channels} \
   ${FOLD_SHRINKAGE:+--fold_shrinkage} \
   --fold_scale_dropout "${FOLD_SCALE_DROPOUT:-0.0}" \
   --fold_gamma "${FOLD_GAMMA:-0.1}" \

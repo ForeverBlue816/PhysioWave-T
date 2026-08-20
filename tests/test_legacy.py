@@ -430,3 +430,36 @@ def test_synthesis_filter_actually_filters_once_it_moves():
     # Smoothing must reduce sample-to-sample variation, not merely perturb it.
     rough = lambda t: t.diff(dim=-1).abs().mean()
     assert rough(after) < rough(before)
+
+
+def test_synthesis_norm_removes_gain_but_keeps_shape():
+    """Unit-DC kernels are what separate "reshapes a band" from "rescales it"."""
+    from wavelet_modules import ScaleFold
+
+    torch.manual_seed(0)
+    x = torch.randn(2, 12, 64)
+    # The kernel the DB5 run actually learned on its finest detail band.
+    trained = torch.tensor([0.1339, 1.1538, 0.1117])
+    free = ScaleFold("mean", 3, 4, synthesis_kernel=3).eval()
+    unit = ScaleFold("mean", 3, 4, synthesis_kernel=3, synthesis_norm=True).eval()
+    for f in (free, unit):
+        with torch.no_grad():
+            f.synth.weight.copy_(trained.view(1, 1, 3).expand(3, 1, 3).contiguous())
+    a, b = free(x), unit(x)
+    # Same shape, different scale: the ratio is the kernel's DC gain.
+    assert torch.allclose(a, b * trained.sum(), atol=1e-4)
+    assert (a.std() / b.std() - trained.sum()).abs() < 1e-3
+
+
+def test_share_channels_makes_the_static_folds_channel_independent():
+    from wavelet_modules import ScaleFold
+
+    shared = {C: sum(p.numel() for p in
+                     ScaleFold("learned", 4, C, share_channels=True).parameters())
+              for C in (8, 16, 64)}
+    assert set(shared.values()) == {4}, shared
+    fold = ScaleFold("learned", 4, 16, share_channels=True)
+    assert fold(torch.randn(2, 64, 32)).shape == (2, 16, 32)
+    # Still a plain average at init, like every other row of the ladder.
+    x = torch.randn(2, 64, 32)
+    assert torch.allclose(fold(x), x.view(2, 4, 16, 32).mean(1), atol=1e-6)

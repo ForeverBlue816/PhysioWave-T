@@ -500,7 +500,8 @@ class ScaleFold(nn.Module):
     MODES = ('none', 'mean', 'learned', 'softmax', 'dynamic')
 
     def __init__(self, mode='none', num_scales=4, in_channels=8, patch_len=64,
-                 synthesis_kernel=0, shrinkage=False, scale_dropout=0.0,
+                 synthesis_kernel=0, synthesis_norm=False, share_channels=False,
+                 shrinkage=False, scale_dropout=0.0,
                  gamma_init=0.1, hidden=16, eps=1e-6):
         super().__init__()
         if mode not in self.MODES:
@@ -509,6 +510,7 @@ class ScaleFold(nn.Module):
         self.num_scales = num_scales
         self.patch_len = int(patch_len or 0)
         self.scale_dropout = float(scale_dropout)
+        self.synthesis_norm = bool(synthesis_norm)
         self.eps = eps
 
         # Reported back to the caller after every forward, never consumed here.
@@ -522,7 +524,13 @@ class ScaleFold(nn.Module):
             # Uniform average at init: for 'learned' that is literally 1/S, for
             # 'softmax' it is equal logits.
             init = 1.0 / num_scales if mode == 'learned' else 0.0
-            self.scale_weight = nn.Parameter(torch.full((num_scales, in_channels), init))
+            # share_channels collapses the weight to one number per scale. The
+            # trained synthesis filters turn out to differ across scales mostly
+            # in their DC gain, which is exactly what this expresses -- with 4
+            # parameters instead of 4*C, and without the per-channel freedom
+            # that the static modes could be overfitting.
+            width = 1 if share_channels else in_channels
+            self.scale_weight = nn.Parameter(torch.full((num_scales, width), init))
 
         if mode == 'dynamic':
             self.stat_norm = nn.LayerNorm(num_scales)
@@ -629,7 +637,15 @@ class ScaleFold(nn.Module):
     def _synthesise(self, bands):
         B, S, C, T = bands.shape
         x = bands.permute(0, 2, 1, 3).reshape(B * C, S, T)
-        return self.synth(x).view(B, C, S, T).permute(0, 2, 1, 3)
+        w = self.synth.weight
+        if self.synthesis_norm:
+            # Fix H(0) = 1 so the filter can only reshape a band, never rescale
+            # it. Trained without this, the taps move mostly in gain, so the
+            # two effects are not separable from a single run.
+            g = w.sum(dim=-1, keepdim=True)
+            w = w / torch.where(g.abs() < self.eps, torch.full_like(g, self.eps), g)
+        y = F.conv1d(x, w, padding=self.synth.padding[0], groups=S)
+        return y.view(B, C, S, T).permute(0, 2, 1, 3)
 
     # -- forward ----------------------------------------------------------- #
     def forward(self, spec):
@@ -666,4 +682,5 @@ class ScaleFold(nn.Module):
     def extra_repr(self):
         return (f"mode={self.mode}, scales={self.num_scales}, "
                 f"patch_len={self.patch_len or 'window'}, "
+                f"synthesis_norm={self.synthesis_norm}, "
                 f"scale_dropout={self.scale_dropout}")
