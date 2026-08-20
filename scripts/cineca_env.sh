@@ -79,7 +79,27 @@ if [[ "${PW_ON_CINECA}" -eq 1 ]]; then
         :
     else
         pw_module_is_loaded profile || module load profile/deeplrn
-        module load "${PW_CINECA_AI}"
+        if ! module load "${PW_CINECA_AI}" 2>&1; then
+            # module prints its own error and returns non-zero, and the script
+            # used to carry straight on. ${PW_VENV} is built with
+            # --system-site-packages on top of this module, so without it the
+            # venv activates fine and then `import torch` fails somewhere much
+            # later -- typically inside torchrun, after the job is allocated.
+            echo "" >&2
+            echo "WARNING: ${PW_CINECA_AI} did not load." >&2
+            echo "  ${PW_VENV} is a venv built --system-site-packages on top of it," >&2
+            echo "  so torch comes from the module. Without it the venv still" >&2
+            echo "  activates and the failure surfaces later, usually as an" >&2
+            echo "  ImportError inside torchrun once the job is running." >&2
+            echo "" >&2
+            echo "  Find what is actually available and pin it:" >&2
+            echo "      module avail cineca-ai" >&2
+            echo "      export PW_CINECA_AI=cineca-ai/<version>" >&2
+            echo "" >&2
+            echo "  Preparation and download need no CUDA, so this is harmless" >&2
+            echo "  for those steps. Fix it before training." >&2
+            echo "" >&2
+        fi
     fi
 
     # ----------------------------------------------------------------------- #
@@ -89,6 +109,19 @@ if [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     if [[ "${VIRTUAL_ENV:-}" == "${PW_VENV}" ]]; then
         :                                   # already active; re-sourcing stacks PATH
     elif [[ -f "${PW_VENV}/bin/activate" ]]; then
+        # Replacing a *different* virtualenv is silent otherwise, and the only
+        # visible trace is the prompt changing. That has cost real time twice
+        # on the P300 preparation: `source $HOME/pwprep/bin/activate` followed
+        # by this script leaves pwprep inactive, and the next command fails on
+        # `import mne` with no hint about why. This script has to win -- the
+        # training launchers source it precisely to get ${PW_VENV} -- so say
+        # what happened rather than change who wins.
+        if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+            echo "NOTE: replacing the active virtualenv ${VIRTUAL_ENV} with ${PW_VENV}." >&2
+            echo "      If you wanted the other one, source it AFTER this script:" >&2
+            echo "        source scripts/cineca_env.sh          # first, for PW_DATA_*" >&2
+            echo "        source ${VIRTUAL_ENV}/bin/activate    # second" >&2
+        fi
         # shellcheck disable=SC1091
         source "${PW_VENV}/bin/activate"
     else
