@@ -114,3 +114,17 @@ def test_the_configured_eeg_model_is_the_size_and_shape_it_claims():
     # The fold carries no channel-shaped parameter, so this transfers to a
     # montage with a different electrode count.
     assert sum(p.numel() for p in m.fold.parameters()) == 301
+
+
+@pytest.mark.parametrize("n", [3, 4, 5, 6, 10, 20, 64])
+def test_no_split_is_ever_empty(n):
+    """An empty validation split does not raise -- it silently disables
+    model selection, and the run looks normal the whole way through."""
+    s = sleep.holdout_split(list(range(n)))
+    assert all(len(v) >= 1 for v in s.values()), (n, s)
+    assert sum(len(v) for v in s.values()) == n
+
+
+def test_too_few_subjects_is_refused_with_a_usable_message():
+    with pytest.raises(SystemExit, match="at least 3 subjects"):
+        sleep.holdout_split([0, 2])

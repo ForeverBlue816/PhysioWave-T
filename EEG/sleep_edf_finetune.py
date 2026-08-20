@@ -134,9 +134,21 @@ def holdout_split(subjects: list[int], seed: int = 7) -> dict[str, list[int]]:
     own neighbouring epochs on both sides and report a number that says
     nothing about a new sleeper.
     """
+    if len(subjects) < 3:
+        raise SystemExit(
+            f"a subject-level train/val/test split needs at least 3 subjects, got "
+            f"{len(subjects)}. For a pipeline smoke test use 3 or more, e.g. "
+            f"--subjects 0,2,4."
+        )
     rng = np.random.default_rng(seed)
     order = np.array(subjects)[rng.permutation(len(subjects))]
-    n_tr, n_va = int(0.6 * len(order)), int(0.2 * len(order))
+    # Rounding down twice empties the validation split for small subject counts
+    # -- 4 subjects would give 2/0/2 -- and an empty val set does not fail, it
+    # silently disables model selection. One subject each is the floor.
+    n_tr = max(1, int(0.6 * len(order)))
+    n_va = max(1, int(0.2 * len(order)))
+    n_tr = min(n_tr, len(order) - 2)
+    n_va = min(n_va, len(order) - n_tr - 1)
     return {
         "train": sorted(order[:n_tr].tolist()),
         "val": sorted(order[n_tr:n_tr + n_va].tolist()),

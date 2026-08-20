@@ -37,7 +37,67 @@ point that somewhere with room:
 export MNE_DATA=$SCRATCH/mne_data      # ~8 GB for the full SC set
 ```
 
-## 2. Build the HDF5 files
+## 2. Where each step has to run
+
+On Leonardo the download and the training do not belong on the same node.
+Compute nodes generally have no route to the internet; login nodes do. Check
+before committing to anything:
+
+```bash
+curl -sI --max-time 10 https://physionet.org | head -1
+```
+
+If that prints `HTTP/2 200` you have a route; if it hangs or fails, you are on
+a node without one, and `--stage cache` has to run somewhere else.
+
+| step | where | needs |
+|---|---|---|
+| `--stage cache` | **login node** | internet, ~8 GB of `$MNE_DATA`, no GPU |
+| `--stage split` | either | the cache, no internet, no GPU |
+| `finetune_sleep.sh` | **compute node** | GPUs, no internet |
+
+The cache stage is single-threaded per subject and 64 subjects take a while, so
+run it detached:
+
+```bash
+nohup python EEG/sleep_edf_finetune.py --out-dir $PW_DATA_EEG/sleep_edf \
+      --stage cache > ~/sleep_cache.log 2>&1 &
+tail -f ~/sleep_cache.log
+```
+
+It writes one `.npz` per subject and skips what is already there, so an
+interrupted run resumes. Disjoint subject ranges are safe to run in parallel
+because each writes its own file:
+
+```bash
+for r in "0,2,4,5,6,7,8,9,11,12,13,14,15,16" "17,18,19,21,22,23,24,25,26,29,30,31,32,33" \
+         "34,35,37,38,40,42,44,45,46,47,48,49,51,52" "53,54,55,56,57,58,59,61,62,63,64,65,66,71" \
+         "72,73,74,75,76,77,81,82"; do
+    nohup python EEG/sleep_edf_finetune.py --out-dir $PW_DATA_EEG/sleep_edf \
+          --stage cache --subjects "$r" >> ~/sleep_cache.log 2>&1 &
+done
+```
+
+Cache one subject serially first, so MNE's own setup happens once rather than
+five times at once.
+
+## 2b. Smoke test the whole pipeline first
+
+Three subjects is enough to prove every stage works, and it takes minutes
+rather than hours:
+
+```bash
+python EEG/sleep_edf_finetune.py --out-dir /tmp/sleep_smoke --subjects 0,2,4
+
+DATA_DIR=/tmp/sleep_smoke OUTPUT_DIR=$SCRATCH/runs/sleep_smoke \
+  EPOCHS=2 WARMUP_EPOCHS=0 BATCH_SIZE=16 NUM_GPUS=1 \
+  bash EEG/finetune_sleep.sh
+```
+
+If that reaches a `[Test]` line, the remaining risk is only the size of the
+download.
+
+## 3. Build the HDF5 files
 
 ```bash
 python EEG/sleep_edf_finetune.py --out-dir $PW_DATA_EEG/sleep_edf
@@ -87,7 +147,7 @@ python EEG/sleep_edf_finetune.py --out-dir $PW_DATA_EEG/sleep_edf_f0 \
     --stage split --split eegpt-fold --fold 0
 ```
 
-## 3. Train
+## 4. Train
 
 ```bash
 bash EEG/finetune_sleep.sh 2>&1 | tee ~/sleep_edf.log
@@ -106,7 +166,7 @@ Defaults, all overridable by environment variable:
 | `SELECT_BY` | `balanced_acc` | the metric EEGPT reports |
 | `EPOCHS` | 40 | EEGPT's budget |
 
-## 4. Why the wavelet set changed
+## 5. Why the wavelet set changed
 
 `WAVE_INIT_MODE=pad` centres a wavelet's native taps in the kernel and pads
 with zeros. The original code stretched them by linear interpolation, which
@@ -151,7 +211,7 @@ env $BASE WAVE_INIT_MODE=pad WAVELET_NAMES="sym4 sym5 db6 sym8 db8" \
   OUTPUT_DIR=$R/db5_padinit bash EMG/finetune_emg.sh
 ```
 
-## 5. Reading the result
+## 6. Reading the result
 
 ```bash
 python scripts/inspect_checkpoint.py $OUTPUT_DIR/best_model.pth \
