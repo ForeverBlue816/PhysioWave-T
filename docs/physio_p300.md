@@ -121,8 +121,39 @@ python EEG/physio_p300_finetune.py \
 Two stages. `--stage cache` decodes each subject into one `.npz`; `--stage
 split` turns those into HDF5 for one LOSO fold. The default runs both, and the
 cache lives under `--edf-dir` so **the nine folds share one decode** — only the
-split re-runs per fold. Budget roughly 3 s per run, ~20 runs per subject, four
+split re-runs per fold. Budget roughly 3 s per run, ~20 runs per subject, two
 subjects in parallel by default (`--jobs`).
+
+### If the decode gets killed on the login node
+
+Observed: `BrokenProcessPool` on two of nine subjects, which means a worker was
+**killed** rather than that it raised — there is no traceback because no Python
+exception happened. On a login node that is the per-user cgroup. The peak is
+`mne.Epochs(preload=True)` holding a whole run at 2048 Hz in float64, about
+0.5 GiB per worker before the filter and resample make their copies.
+
+Three ways out, in order of preference:
+
+```bash
+# 1. Decode on a compute node. It needs no internet, only the EDFs.
+srun -N1 -n1 -c8 -t 0:30:00 -A <account> -p <partition>      $HOME/pwprep/bin/python EEG/physio_p300_finetune.py      --edf-dir $PW_DATA_EEG/erpbci --out-dir $PW_DATA_EEG/p300_f0 --stage cache
+
+# 2. Stay on the login node, one subject at a time
+python EEG/physio_p300_finetune.py --edf-dir ... --out-dir ... --stage cache --jobs 1
+```
+
+Either way **nothing is redone**: subjects already cached are skipped, so a
+partial run is resumed rather than restarted. The script also retries a killed
+subject serially on its own before giving up, which recovers most of these
+without intervention.
+
+**The split stage refuses to run on an incomplete cache.** If any subject has
+no `.npz`, nothing is written and the missing ids are named. A split assembled
+from whatever happened to be cached is the failure this file exists to prevent:
+it loads, it trains, and it reports a number for a corpus that is quietly
+missing subjects — and with LOSO, every fold would then be scored on a
+different corpus. `--allow-missing` overrides it, which is only ever right for
+a pipeline smoke test.
 
 ### The preprocessing, matching EEGPT
 

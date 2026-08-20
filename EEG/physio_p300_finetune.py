@@ -335,11 +335,17 @@ def main() -> None:
                         "(subject 1 omitted) instead of the paper's nine")
     p.add_argument("--all-channels", action="store_true",
                    help="keep all 64 EEG channels instead of the 58 EEGPT uses")
-    p.add_argument("--jobs", type=int, default=4,
-                   help="subjects decoded in parallel; each is ~20 runs at ~3 s. "
-                        "Workers are spawned, not forked (see the comment in the "
-                        "cache stage). 1 runs serially in this process, which is "
-                        "the thing to try first if anything looks stuck.")
+    p.add_argument("--allow-missing", action="store_true",
+                   help="write the split even though some subjects have no cache. "
+                        "Only right for a pipeline smoke test -- otherwise every "
+                        "fold is scored on a different corpus.")
+    p.add_argument("--jobs", type=int, default=2,
+                   help="subjects decoded in parallel; each is ~20 runs and holds "
+                        "~0.5 GiB at peak. Default 2 rather than 4 because a login "
+                        "node's cgroup kills the workers before it refuses them. "
+                        "Workers are spawned, not forked (see the cache stage). "
+                        "1 runs serially in this process -- the thing to try first "
+                        "if anything looks stuck or gets killed.")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
@@ -438,10 +444,53 @@ def main() -> None:
                     except Exception as exc:                   # noqa: BLE001
                         print(f"  [{done}/{todo}] subject {s} FAILED", flush=True)
                         _note(s, exc)
+        # A worker that is killed rather than raising takes down the pool, and
+        # every subject still queued behind it fails with the same
+        # BrokenProcessPool -- so the report would blame subjects that were
+        # never even started. Retry them here, one at a time in this process,
+        # where there is no contention for whatever limit did the killing.
+        if failed and args.jobs > 1:
+            retry = [s for s, _ in failed]
+            print(f"\nRetrying {len(retry)} subject(s) serially: "
+                  f"{', '.join(str(s) for s in retry)}", flush=True)
+            still = []
+            for i, s in enumerate(retry, 1):
+                print(f"  [{i}/{len(retry)}] subject {s} ...", flush=True)
+                try:
+                    cache_subject(s, args.edf_dir, cache_dir, channels,
+                                  args.overwrite, VERBOSE)
+                except Exception as exc:                       # noqa: BLE001
+                    still.append((s, repr(exc)))
+            recovered = len(retry) - len(still)
+            if recovered:
+                print(f"  {recovered} recovered on the serial retry.", flush=True)
+            failed = still
+
         if failed:
             print(f"\n{len(failed)} of {len(subjects)} subject(s) failed.", file=sys.stderr)
             for s, e in failed[:10]:
                 print(f"  subject {s}: {e[:160]}", file=sys.stderr)
+            if any("BrokenProcessPool" in e for _, e in failed):
+                # BrokenProcessPool means the worker was killed, not that it
+                # raised: there is no traceback because no Python exception
+                # ever happened. On a login node it is a cgroup limit, and the
+                # peak here is mne.Epochs(preload=True) holding a whole run at
+                # 2048 Hz in float64 -- about 0.5 GiB per worker before the
+                # filter and resample make their copies.
+                print(
+                    "\nBrokenProcessPool means a worker was KILLED, not that it "
+                    "raised -- there is\nno traceback because no Python "
+                    "exception occurred. On a login node that is\nalmost "
+                    "always the per-user memory or CPU-time cgroup.\n\n"
+                    "  Decode on a compute node instead. It needs no internet, "
+                    "only the EDFs:\n\n"
+                    "      srun -N1 -n1 -c8 -t 0:30:00 -A <account> -p <partition> \\\n"
+                    "           $HOME/pwprep/bin/python EEG/physio_p300_finetune.py \\\n"
+                    "           --edf-dir <dir> --out-dir <dir> --stage cache\n\n"
+                    "  Or stay on the login node and drop to --jobs 1.\n"
+                    "  Either way the subjects already cached are skipped, so "
+                    "nothing is redone.",
+                    file=sys.stderr)
             if len(failed) == len(subjects):
                 raise SystemExit(
                     "\nEvery subject failed, so this is the environment or the "
@@ -451,6 +500,30 @@ def main() -> None:
 
     if args.stage in ("split", "all"):
         split = loso_split(subjects, args.fold)
+        # Refuse before writing anything. A split assembled from whatever
+        # happened to be cached is the failure this file exists to prevent: it
+        # loads, it trains, and it reports a number for a corpus that is
+        # quietly missing subjects. The cache stage prints its failures to
+        # stderr, which is one scrollback away from being missed.
+        missing = [s for s in subjects
+                   if not os.path.exists(os.path.join(cache_dir, f"sub{s:02d}.npz"))]
+        if missing and not args.allow_missing:
+            raise SystemExit(
+                f"\n{len(missing)} of {len(subjects)} subject(s) have no cache: "
+                f"{', '.join(str(s) for s in missing)}\n\n"
+                f"  Nothing was written. Rerun the cache stage -- subjects "
+                f"already cached are skipped,\n  so only the missing ones are "
+                f"decoded:\n\n"
+                f"      python EEG/physio_p300_finetune.py --edf-dir {args.edf_dir} \\\n"
+                f"          --out-dir {args.out_dir} --stage cache --jobs 1\n\n"
+                f"  --allow-missing writes the split without them, which is "
+                f"only ever right for a\n  pipeline smoke test: every fold "
+                f"would then be scored on a different corpus."
+            )
+        if missing:
+            print(f"WARNING: --allow-missing, so {len(missing)} subject(s) are "
+                  f"absent from this split: {', '.join(str(s) for s in missing)}",
+                  file=sys.stderr)
         print(f"\nLOSO fold {args.fold} (test subject {split['test'][0]}), by subject:")
         meta = {"split": f"loso-fold{args.fold}", "fs": FS_OUT,
                 "window_samples": WINDOW_SAMPLES, "tmin": TMIN, "tmax": TMAX,
