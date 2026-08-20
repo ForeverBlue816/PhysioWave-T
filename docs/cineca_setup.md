@@ -148,31 +148,39 @@ PYTHON=python bash scripts/run_tpami.sh all --dry-run
 ## Interactive GPU debugging
 
 ```bash
-srun --nodes=1 --ntasks-per-node=1 --cpus-per-task=32 --gres=gpu:4 \
-     --mem=494000 --time=1:00:00 \
-     -A iscrb_wearusfm -p boost_usr_prod --pty /bin/bash
+srun --nodes=1 --gpus=4 --ntasks-per-node=4 --cpus-per-task=8 \
+     --account <account> -p boost_usr_prod --pty /bin/bash
 cd $HOME/PhysioWave-T && source scripts/cineca_env.sh
 bash EEG/pretrain_eeg.sh > ~/eeg.log 2>&1 & nvitop
 ```
 
-**One task, not four.** This shape matches the sbatch scripts in
-`scripts/slurm/`, and it has to: every launch script runs a single
-`torchrun --nproc_per_node=4`, which spawns the four worker processes itself.
-With `--ntasks-per-node=4` Slurm would start four *torchruns*, each spawning
-four workers, and sixteen processes would contend for four GPUs.
+Four tasks of eight CPUs is CINECA's shape for a GPU job, one task per GPU.
+`--pty` attaches the terminal to task 0 only, so this is a single interactive
+shell and a `torchrun --nproc_per_node=4` typed into it is a single torchrun.
 
-The earlier form here — `--gpus=4 --ntasks-per-node=4 --cpus-per-task=8` — also
-stopped being accepted:
+Note that task 0's cgroup is the eight CPUs of *its* task, not the node's
+thirty-two. Four ranks each with `NUM_WORKERS=8` would then put thirty-two
+dataloader workers on eight cores. Either lower `NUM_WORKERS`, or ask for the
+shape the sbatch scripts use, which gives one task the whole node:
+
+```bash
+srun --nodes=1 --ntasks-per-node=1 --cpus-per-task=32 --gres=gpu:4 \
+     --mem=494000 --account <account> -p boost_usr_prod --pty /bin/bash
+```
+
+### When srun refuses
 
 ```
 srun: error: Unable to allocate resources: More processors requested than permitted
 ```
 
-If it comes back, the limits are visible with
+This is an association or QOS limit, and it counts what you are *already*
+holding. Check for a live allocation before rewriting the request:
 
 ```bash
-sacctmgr show assoc user=$USER format=account,partition,qos,maxtres%40
-scontrol show partition boost_usr_prod | tr ' ' '\n' | grep -i "maxcpu\|qos\|tres"
+squeue -u $USER
+sacctmgr show assoc user=$USER format=account,partition,qos,grptres%30,maxtres%30
+sacctmgr show qos format=name,maxtresperuser%30,maxtresperjob%30
 ```
 
 Billing is by CPU hours with one GPU counted as eight CPUs, so a four-GPU node
