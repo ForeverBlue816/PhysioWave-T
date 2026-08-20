@@ -224,6 +224,23 @@ def main() -> None:
     p.add_argument("--overwrite", action="store_true")
     args = p.parse_args()
 
+    # `--out-dir $PW_DATA_EEG/sleep_edf` with PW_DATA_EEG unset expands to
+    # `/sleep_edf` before this process ever starts, and the failure that
+    # follows is a permission error on the filesystem root rather than
+    # anything about the variable. Same guard as the shell launchers'
+    # pw_check_output_dir.
+    for label, path in (("--out-dir", args.out_dir),
+                        ("--cache-dir", args.cache_dir)):
+        if path and os.path.dirname(os.path.abspath(path)) == os.sep:
+            raise SystemExit(
+                f"{label} is '{path}' -- directly under the filesystem root.\n\n"
+                f"  That is almost always an unset variable: your shell expands\n"
+                f"  $PW_DATA_EEG before this script runs, and it is empty unless\n"
+                f"  you have sourced the environment yourself:\n\n"
+                f"      source scripts/cineca_env.sh\n\n"
+                f"  Then re-run, or pass an absolute path."
+            )
+
     cache_dir = args.cache_dir or os.path.join(args.out_dir, "cache")
     os.makedirs(cache_dir, exist_ok=True)
     os.makedirs(args.out_dir, exist_ok=True)

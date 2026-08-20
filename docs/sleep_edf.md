@@ -52,9 +52,40 @@ a node without one, and `--stage cache` has to run somewhere else.
 
 | step | where | needs |
 |---|---|---|
-| `--stage cache` | **login node** | internet, ~8 GB of `$MNE_DATA`, no GPU |
+| `EEG/download_sleep_edf.sh` | **login node** | internet, ~8 GB of `$MNE_DATA` |
+| `--stage cache` | login node (or anywhere, once the EDFs are local) | the EDFs, no GPU |
 | `--stage split` | either | the cache, no internet, no GPU |
 | `finetune_sleep.sh` | **compute node** | GPUs, no internet |
+
+### Fetching the EDFs yourself
+
+MNE downloads one recording at a time with no resume. `wget` is better at this,
+and MNE will use files it finds already in place:
+
+```bash
+export MNE_DATA=$SCRATCH/mne_data
+bash EEG/download_sleep_edf.sh          # ~8 GB, resumable, verified
+```
+
+The verification matters. MNE's `_fetch_one` returns a pre-existing file
+without looking at it:
+
+```python
+destination = op.join(path, fname)
+if op.isfile(destination) and not force_update:
+    return destination, False
+```
+
+The SHA1 it knows is only consulted when pooch actually performs a download, so
+a file truncated by a dropped connection is read as a short recording and shows
+up as a subject with fewer windows rather than as an error. The script checks
+every file against MNE's own `SHA1SUMS` and names anything that fails; delete
+those and rerun to refetch them.
+
+Rerun the script after any interruption — `wget -c -N` resumes, and
+`SKIP_DOWNLOAD=1` re-verifies without refetching.
+
+### Then preprocess
 
 The cache stage is single-threaded per subject and 64 subjects take a while, so
 run it detached:
