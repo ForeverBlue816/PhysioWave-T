@@ -6,8 +6,10 @@ EEG-specific data preparation and launch scripts, alongside `ECG/` and `EMG/`.
 |------|---------|
 | `tueg_pretrain.py` | TUH EEG / Siena EDF → HDF5 windows for pretraining |
 | `tuab_finetune.py` | TUAB EDF → labelled HDF5 for normal-vs-abnormal fine-tuning |
+| `sleep_edf_finetune.py` | Sleep-EDFx SC → labelled HDF5 for 5-class sleep staging, on EEGPT's preprocessing |
 | `pretrain_eeg.sh` | Launch EEG pretraining (extension pipeline) |
 | `finetune_eeg.sh` | Launch downstream fine-tuning (shared `finetune.py`) |
+| `finetune_sleep.sh` | Launch Sleep-EDF sleep staging — see [docs/sleep_edf.md](../docs/sleep_edf.md) |
 
 ## Why EEG is not just "ECG with more channels"
 

@@ -30,6 +30,7 @@ class BERTWaveletTransformer(nn.Module):
                  wave_kernel_size=16,
                  wavelet_names=None,
                  use_separate_channel=True,
+                 wave_init_mode='interp',   # see wavelet_modules.load_wavelet_kernel
                  # Patch embedding parameters
                  patch_size=(1,20),
                  embed_dim=128,
@@ -95,6 +96,7 @@ class BERTWaveletTransformer(nn.Module):
             kernel_size=wave_kernel_size,
             wavelet_names=wavelet_names,
             use_separate_channel=use_separate_channel,
+            init_mode=wave_init_mode,
             ffn_ratio=4.0,
             ffn_kernel_size=3,
             ffn_drop=0.1

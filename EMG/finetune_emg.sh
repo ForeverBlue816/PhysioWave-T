@@ -94,6 +94,7 @@ fi
   --norm "${NORM:-layernorm}" \
   --ffn "${FFN:-mlp}" \
   ${QK_NORM:+--qk_norm} \
+  --wave_init_mode "${WAVE_INIT_MODE:-interp}" \
   --scale_fold "${SCALE_FOLD:-none}" \
   ${FOLD_PATCH_LEN:+--fold_patch_len "${FOLD_PATCH_LEN}"} \
   --fold_synthesis "${FOLD_SYNTHESIS:-0}" \

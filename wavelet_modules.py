@@ -16,18 +16,39 @@ import torch.nn.functional as F
 import pywt
 
 
-def load_wavelet_kernel(wave_name, kernel_size):
+def load_wavelet_kernel(wave_name, kernel_size, mode="interp"):
     """
     Load and initialize wavelet kernel coefficients from PyWavelets.
-    
-    This function extracts the low-pass (dec_lo) and high-pass (dec_hi) 
-    decomposition filters from a specified wavelet family and resamples 
-    them to the desired kernel size while preserving their mathematical properties.
-    
+
     Args:
         wave_name: Name of the wavelet (e.g., 'db6', 'sym4', 'coif3')
         kernel_size: Target size for the convolution kernel
-        
+        mode: how a filter shorter or longer than ``kernel_size`` is fitted.
+
+            ``'interp'`` resamples the taps linearly, rescaling to preserve
+            their sum. This is what the original PhysioWave did and it is kept
+            as the default so existing results reproduce, but it does not
+            produce a wavelet filter bank. Stretching a filter in time
+            compresses it in frequency, so the half-band cutoff moves: sym4
+            fitted to 16 taps cuts at 0.203*pi instead of 0.5*pi, and the
+            power-complementary condition |H_lo|^2 + |H_hi|^2 = 2 fails by
+            1.999 out of a maximum possible 2.0 -- there is a band of the
+            spectrum that neither the lowpass nor the highpass passes. It also
+            costs orthonormality (||h_lo||^2 falls to 0.396) and every
+            wavelet ends up with a different effective group delay, which
+            matters because AdaptiveWaveletSelector mixes several of them.
+
+            ``'pad'`` centres the native taps in a ``kernel_size`` window and
+            pads with zeros. Zeros contribute nothing to any of the defining
+            sums, so ||h||^2, sum(h), the shifted inner products and the
+            frequency response are all exactly the native filter's: measured
+            PR error 0.0000 and cutoff 0.500 for every orthogonal family. It
+            requires ``len(native) <= kernel_size``.
+
+    Filters whose native length already equals ``kernel_size`` are untouched by
+    either mode -- db8 and sym8 are 16 taps, so at the default kernel size they
+    are exact under both.
+
     Returns:
         dec_lo_t: Low-pass filter coefficients (approximation)
         dec_hi_t: High-pass filter coefficients (detail)
@@ -38,6 +59,22 @@ def load_wavelet_kernel(wave_name, kernel_size):
 
     dec_lo_t = torch.tensor(dec_lo, dtype=torch.float)
     dec_hi_t = torch.tensor(dec_hi, dtype=torch.float)
+
+    if mode == "pad":
+        n = dec_lo_t.numel()
+        if n > kernel_size:
+            raise ValueError(
+                f"{wave_name} has {n} taps, which does not fit in kernel_size="
+                f"{kernel_size}. Raise the kernel size or choose a shorter "
+                f"wavelet; padding cannot shorten a filter without destroying it."
+            )
+        # Centred, so filters of different native lengths share a group delay.
+        off = (kernel_size - n) // 2
+        lo = torch.zeros(kernel_size); lo[off:off + n] = dec_lo_t
+        hi = torch.zeros(kernel_size); hi[off:off + n] = dec_hi_t
+        return lo, hi
+    if mode != "interp":
+        raise ValueError(f"mode must be 'interp' or 'pad', got {mode!r}")
 
     # Resample filters to match desired kernel size using interpolation
     if len(dec_lo_t) != kernel_size:
@@ -62,7 +99,8 @@ class LearnableWaveFilter(nn.Module):
     the signal characteristics. This allows the model to learn optimal frequency
     decomposition for specific physiological signals.
     """
-    def __init__(self, in_ch=8, kernel_size=16, wave_init='db6', separate_per_channel=True):
+    def __init__(self, in_ch=8, kernel_size=16, wave_init='db6', separate_per_channel=True,
+                 init_mode='interp'):
         """
         Args:
             in_ch: Number of input channels (e.g., 8 for EMG, 12 for ECG)
@@ -77,7 +115,7 @@ class LearnableWaveFilter(nn.Module):
         self.separate_per_channel = separate_per_channel
 
         # Initialize filters from standard wavelet
-        low_init, high_init = load_wavelet_kernel(wave_init, kernel_size)
+        low_init, high_init = load_wavelet_kernel(wave_init, kernel_size, init_mode)
         
         # Groups parameter determines if filters are shared across channels
         groups = in_ch if separate_per_channel else 1
@@ -124,7 +162,8 @@ class AdaptiveWaveletSelector(nn.Module):
     the optimal combination based on input signal characteristics.
     The selection is done via attention mechanism over signal statistics.
     """
-    def __init__(self, in_ch=8, wavelet_names=None, kernel_size=16, separate_per_channel=True):
+    def __init__(self, in_ch=8, wavelet_names=None, kernel_size=16, separate_per_channel=True,
+                 init_mode='interp'):
         """
         Args:
             in_ch: Number of input channels
@@ -139,7 +178,7 @@ class AdaptiveWaveletSelector(nn.Module):
         
         # Create a bank of learnable wavelet filters
         self.wavelet_filters = nn.ModuleList([
-            LearnableWaveFilter(in_ch, kernel_size, wname, separate_per_channel)
+            LearnableWaveFilter(in_ch, kernel_size, wname, separate_per_channel, init_mode)
             for wname in wavelet_names
         ])
         
@@ -363,7 +402,8 @@ class SoftGateWaveletDecomp(nn.Module):
     Spec(X) that serves as input to the Transformer encoder.
     """
     def __init__(self, in_channels=8, max_level=3, kernel_size=16, wavelet_names=None,
-                 use_separate_channel=True, ffn_ratio=4., ffn_kernel_size=5, ffn_drop=0.1):
+                 use_separate_channel=True, ffn_ratio=4., ffn_kernel_size=5, ffn_drop=0.1,
+                 init_mode='interp'):
         """
         Args:
             in_channels: Number of input channels (e.g., 8 for EMG, 12 for ECG)
@@ -379,7 +419,8 @@ class SoftGateWaveletDecomp(nn.Module):
         self.max_level = max_level
         
         # Adaptive wavelet selector (Section 2.1 - Adaptive Wavelet Selector)
-        self.selector = AdaptiveWaveletSelector(in_channels, wavelet_names, kernel_size, use_separate_channel)
+        self.selector = AdaptiveWaveletSelector(in_channels, wavelet_names, kernel_size,
+                                                use_separate_channel, init_mode)
         
         # Multi-head gating for soft decomposition
         self.gate = MultiHeadGate(in_channels)

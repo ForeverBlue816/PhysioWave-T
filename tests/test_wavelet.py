@@ -288,3 +288,92 @@ def test_too_many_channels_for_the_bank_count_is_an_error():
                           channel_filters=True, max_channels=2)).eval()
     with pytest.raises(ValueError, match="max_channels"):
         tok(torch.randn(1, 4, 128))
+
+
+# --------------------------------------------------------------------------- #
+# Wavelet initialisation
+# --------------------------------------------------------------------------- #
+def _power_complementary_error(lo, hi, n=1024):
+    """max | |H_lo(w)|^2 + |H_hi(w)|^2 - 2 |. Zero for a valid orthogonal pair."""
+    import numpy as np
+
+    P = np.abs(np.fft.rfft(lo, n)) ** 2 + np.abs(np.fft.rfft(hi, n)) ** 2
+    return float(np.abs(P - 2.0).max())
+
+
+def test_interpolating_a_wavelet_to_a_longer_kernel_stops_being_a_filter_bank():
+    """The failure the 'pad' mode exists to avoid, pinned so it cannot be lost.
+
+    Stretching a filter in time compresses it in frequency, so the half-band
+    cutoff moves and the lowpass/highpass pair no longer partitions the
+    spectrum. The error below is against a theoretical maximum of 2.0.
+    """
+    from wavelet_modules import load_wavelet_kernel
+
+    lo, hi = load_wavelet_kernel("sym4", 16, "interp")
+    assert _power_complementary_error(lo.numpy(), hi.numpy()) > 1.9
+    # Energy is not preserved either: a valid orthonormal lowpass has ||h||=1.
+    assert float((lo ** 2).sum()) < 0.5
+
+
+def test_padding_preserves_every_property_that_makes_a_wavelet_a_wavelet():
+    import numpy as np
+
+    from wavelet_modules import load_wavelet_kernel
+
+    for name in ("sym4", "sym5", "db6", "db8", "sym8"):
+        lo, hi = load_wavelet_kernel(name, 16, "pad")
+        lo_np = lo.numpy()
+        assert abs(float(lo.sum()) - 2 ** 0.5) < 1e-5, name          # sum h = sqrt 2
+        assert abs(float(hi.sum())) < 1e-5, name                      # sum g = 0
+        assert abs(float((lo ** 2).sum()) - 1.0) < 1e-5, name         # unit energy
+        assert _power_complementary_error(lo_np, hi.numpy()) < 1e-4, name
+        # Orthonormality: the filter is orthogonal to its even shifts.
+        for k in range(1, 8):
+            assert abs(float(np.dot(lo_np, np.roll(lo_np, 2 * k)))) < 1e-5, (name, k)
+
+
+def test_padded_taps_are_centred_so_wavelets_share_a_group_delay():
+    """AdaptiveWaveletSelector mixes several families in one layer.
+
+    Filters of different native lengths must sit at the same delay, or the
+    selector is blending versions of the signal that are shifted relative to
+    each other.
+    """
+    import numpy as np
+
+    from wavelet_modules import load_wavelet_kernel
+
+    centres = []
+    for name in ("sym4", "sym5", "db6", "db8"):
+        lo = load_wavelet_kernel(name, 16, "pad")[0].numpy()
+        nz = np.nonzero(np.abs(lo) > 1e-12)[0]
+        centres.append((nz[0] + nz[-1]) / 2.0)
+    assert max(centres) - min(centres) <= 0.5, centres
+
+
+def test_a_wavelet_too_long_for_the_kernel_is_rejected_rather_than_squeezed():
+    from wavelet_modules import load_wavelet_kernel
+
+    with pytest.raises(ValueError, match="18 taps"):
+        load_wavelet_kernel("coif3", 16, "pad")     # coif3 is 18 taps
+    with pytest.raises(ValueError, match="interp' or 'pad"):
+        load_wavelet_kernel("db6", 16, "nearest")
+
+
+def test_wave_init_mode_reaches_the_filters():
+    """A flag that does not change the weights is worse than no flag."""
+    import torch
+
+    from model import create_wavelet_classifier
+
+    kw = dict(in_channels=2, max_level=2, embed_dim=32, depth=1, num_heads=4,
+              num_classes=5, patch_size=(1, 50), wave_kernel_size=16,
+              wavelet_names=["sym4"])
+    a = create_wavelet_classifier(**kw, wave_init_mode="interp")
+    b = create_wavelet_classifier(**kw, wave_init_mode="pad")
+    wa = a.wavelet_decomp.selector.wavelet_filters[0].low_filter.weight.detach()
+    wb = b.wavelet_decomp.selector.wavelet_filters[0].low_filter.weight.detach()
+    assert not torch.allclose(wa, wb)
+    assert abs(float((wb[0, 0] ** 2).sum()) - 1.0) < 1e-5     # the padded one is unit norm
+    assert float((wa[0, 0] ** 2).sum()) < 0.5                 # the stretched one is not

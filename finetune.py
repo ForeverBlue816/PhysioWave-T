@@ -455,6 +455,7 @@ def main_worker(rank, world_size, args):
         wave_kernel_size=args.wave_kernel_size,
         wavelet_names=args.wavelet_names,
         use_separate_channel=args.use_separate_channel,
+        wave_init_mode=args.wave_init_mode,
         patch_size=(1, args.patch_size),
         embed_dim=args.embed_dim,
         depth=args.depth,
@@ -485,7 +486,8 @@ def main_worker(rank, world_size, args):
         # than anything the output directory records, and an ablation that
         # silently kept the defaults would look identical to one that took effect.
         print(f"Transformer block: norm={args.norm} ffn={args.ffn} "
-              f"qk_norm={args.qk_norm} rope=True | scale_fold={args.scale_fold}", flush=True)
+              f"qk_norm={args.qk_norm} rope=True | scale_fold={args.scale_fold} "
+              f"| wave_init={args.wave_init_mode}", flush=True)
         if args.scale_fold == 'dynamic':
             blk = args.patch_size if args.fold_patch_len is None else args.fold_patch_len
             print(f"Dynamic fold: block={blk or 'window'} synthesis={args.fold_synthesis} "
@@ -839,6 +841,15 @@ def main():
                              'parameter count stays level with the GELU MLP')
     parser.add_argument('--qk_norm', action='store_true',
                         help='RMS-normalise q and k per head, bounding the attention logits')
+    parser.add_argument('--wave_init_mode', type=str, default='interp',
+                        choices=['interp', 'pad'],
+                        help="how a wavelet shorter than --wave_kernel_size is fitted to "
+                             "it. 'interp' stretches the taps, which is what the original "
+                             "did and which does not give a wavelet filter bank: sym4 at "
+                             "16 taps cuts at 0.203*pi instead of 0.5*pi and fails the "
+                             "power-complementary condition by 1.999 out of 2. 'pad' "
+                             "centres the native taps and zero-pads, which preserves the "
+                             "response exactly but needs every wavelet to fit.")
     parser.add_argument('--scale_fold', type=str, default='none',
                         choices=['none', 'mean', 'learned', 'softmax', 'dynamic'],
                         help="fold Spec(X)'s scale axis before patching, so the backbone "
