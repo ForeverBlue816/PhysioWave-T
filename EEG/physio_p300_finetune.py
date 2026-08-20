@@ -187,13 +187,19 @@ def _epoch_one_run(path: str, channels: list[str]):
 
 
 def cache_subject(subject: int, edf_dir: str, cache_dir: str,
-                  channels: list[str], overwrite: bool = False) -> str | None:
-    """Decode every run of one subject into a single .npz. Returns its path."""
+                  channels: list[str], overwrite: bool = False,
+                  verbose: bool = False) -> str | None:
+    """Decode every run of one subject into a single .npz. Returns its path.
+
+    ``verbose`` is a parameter rather than the module global because the worker
+    processes are started with 'spawn', which re-imports this module in the
+    child and resets the global to its default.
+    """
     out = os.path.join(cache_dir, f"sub{subject:02d}.npz")
     if os.path.exists(out) and not overwrite:
         return out
 
-    if not VERBOSE:
+    if not verbose:
         # 245 runs of MNE's filter-design banner scrolls the progress bar off
         # the screen and buries anything that actually went wrong.
         import mne
@@ -330,7 +336,10 @@ def main() -> None:
     p.add_argument("--all-channels", action="store_true",
                    help="keep all 64 EEG channels instead of the 58 EEGPT uses")
     p.add_argument("--jobs", type=int, default=4,
-                   help="subjects decoded in parallel; each is ~20 runs at ~3 s")
+                   help="subjects decoded in parallel; each is ~20 runs at ~3 s. "
+                        "Workers are spawned, not forked (see the comment in the "
+                        "cache stage). 1 runs serially in this process, which is "
+                        "the thing to try first if anything looks stuck.")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
@@ -370,27 +379,65 @@ def main() -> None:
         print(f"  {len(channels)} channels, {TMIN}..{TMAX} s, IIR 0-{LOWPASS_HZ:.0f} Hz, "
               f"{FS_OUT:.0f} Hz, cropped to {WINDOW_SAMPLES} samples")
         import traceback
-        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-        from tqdm import tqdm
         failed = []
-        with ProcessPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            futures = {pool.submit(cache_subject, s, args.edf_dir, cache_dir,
-                                   channels, args.overwrite): s for s in subjects}
-            for fut in tqdm(as_completed(futures), total=len(futures), ncols=100):
-                s = futures[fut]
+
+        def _note(subject, exc):
+            # One unreadable subject should not cost the corpus, but it must be
+            # named: a silently short dataset looks like a modelling result.
+            # The first failure prints in full, because a bare repr from inside
+            # MNE says nothing about which package raised it.
+            if not failed:
+                print("\n\nFirst failure, in full:\n", file=sys.stderr)
+                traceback.print_exception(type(exc), exc, exc.__traceback__)
+            failed.append((subject, repr(exc)))
+
+        todo = len(subjects)
+        if args.jobs <= 1:
+            # No pool at all. Not just max_workers=1: creating the executor is
+            # what forks, and the fork is the problem below.
+            for i, s in enumerate(subjects, 1):
+                print(f"  [{i}/{todo}] subject {s} ...", flush=True)
                 try:
-                    fut.result()
+                    cache_subject(s, args.edf_dir, cache_dir, channels,
+                                  args.overwrite, VERBOSE)
                 except Exception as exc:                       # noqa: BLE001
-                    # One unreadable subject should not cost the corpus, but it
-                    # must be named: a silently short dataset looks like a
-                    # modelling result. The first failure prints in full,
-                    # because a bare repr from inside MNE says nothing about
-                    # which package raised it.
-                    if not failed:
-                        print("\n\nFirst failure, in full:\n", file=sys.stderr)
-                        traceback.print_exception(type(exc), exc, exc.__traceback__)
-                    failed.append((s, repr(exc)))
+                    _note(s, exc)
+        else:
+            import multiprocessing as mp
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+
+            # 'spawn', not the Linux default 'fork'. preflight() has already
+            # imported MNE in this process, which brings up numpy/scipy and
+            # their BLAS thread pool. fork() copies those threads' locks in
+            # whatever state they were in and does not copy the threads, so the
+            # first BLAS call in the child -- here, the IIR filter -- blocks on
+            # a lock nothing will ever release. The symptom is a progress bar
+            # that sits at 0 forever with the workers idle, which is what this
+            # replaced. macOS defaults to spawn, so the fork path only ever
+            # appears on the cluster.
+            ctx = mp.get_context("spawn")
+            # One BLAS thread per worker. Each child would otherwise start a
+            # pool sized to the whole node and the workers would fight for the
+            # same cores -- slower than serial, on a login node shared with
+            # everyone else.
+            for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                        "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+                os.environ.setdefault(var, "1")
+            done = 0
+            with ProcessPoolExecutor(max_workers=args.jobs, mp_context=ctx) as pool:
+                futures = {pool.submit(cache_subject, s, args.edf_dir, cache_dir,
+                                       channels, args.overwrite, VERBOSE): s
+                           for s in subjects}
+                for fut in as_completed(futures):
+                    s = futures[fut]
+                    done += 1
+                    try:
+                        fut.result()
+                        print(f"  [{done}/{todo}] subject {s} done", flush=True)
+                    except Exception as exc:                   # noqa: BLE001
+                        print(f"  [{done}/{todo}] subject {s} FAILED", flush=True)
+                        _note(s, exc)
         if failed:
             print(f"\n{len(failed)} of {len(subjects)} subject(s) failed.", file=sys.stderr)
             for s, e in failed[:10]:
