@@ -239,3 +239,155 @@ def test_unknown_scale_fold_is_rejected():
     with pytest.raises(ValueError, match="scale_fold"):
         create_wavelet_classifier(in_channels=4, max_level=2, num_classes=3,
                                   scale_fold="idwt")
+
+
+def test_every_fold_mode_reaches_the_same_token_count():
+    """The ladder differs in how the bands combine, not in how many tokens result."""
+    from model import create_wavelet_classifier
+
+    kw = dict(in_channels=8, max_level=3, embed_dim=64, depth=1, num_heads=4,
+              num_classes=5, patch_size=(1, 32), wavelet_names=["db4", "sym4"])
+    x = torch.randn(2, 8, 128)
+    counts = {}
+    for fold in ("none", "mean", "learned", "softmax", "dynamic"):
+        m = create_wavelet_classifier(**kw, scale_fold=fold).eval()
+        with torch.no_grad():
+            counts[fold] = m.prepare_tokens(
+                m.fold_scales(m.wavelet_decomp(x)).unsqueeze(1)).shape[1]
+    assert counts["none"] == 4 * counts["mean"], counts
+    assert len(set(v for k, v in counts.items() if k != "none")) == 1, counts
+
+
+def test_dynamic_fold_starts_exactly_at_the_mean_fold():
+    """Every added mechanism is identity at step 0.
+
+    This is the property that makes the dynamic fold an ablation *of* the mean
+    fold rather than a different model: if it does not hold, a worse number
+    cannot be attributed to the dynamics because the starting point moved too.
+    """
+    from wavelet_modules import ScaleFold
+
+    torch.manual_seed(0)
+    # Bands of very different magnitude, so an accidental renormalisation shows.
+    x = torch.randn(4, 24, 128) * torch.tensor(
+        [4.0, 1.0, 0.2]).repeat_interleave(8).view(1, -1, 1)
+    ref = x.view(4, 3, 8, 128).mean(dim=1)
+    for kwargs in ({}, {"synthesis_kernel": 3}, {"synthesis_kernel": 5},
+                   {"scale_dropout": 0.2}):
+        fold = ScaleFold("dynamic", num_scales=3, in_channels=8, patch_len=32,
+                         **kwargs).eval()
+        assert torch.allclose(fold(x), ref, atol=1e-5), kwargs
+    # Shrinkage is deliberately *near* identity rather than identity: the
+    # threshold starts at softplus(-6) sigma so that it has a gradient.
+    fold = ScaleFold("dynamic", num_scales=3, in_channels=8, patch_len=32,
+                     shrinkage=True).eval()
+    assert torch.allclose(fold(x), ref, atol=1e-2)
+    assert not torch.allclose(fold(x), ref, atol=1e-6)
+
+
+def test_dynamic_fold_has_no_channel_shaped_parameter():
+    """One MLP serves any channel count, which the static modes cannot do."""
+    from wavelet_modules import ScaleFold
+
+    sizes = {}
+    for C in (4, 16, 64):
+        fold = ScaleFold("dynamic", num_scales=4, in_channels=C, patch_len=16,
+                         synthesis_kernel=3, shrinkage=True)
+        sizes[C] = sum(p.numel() for p in fold.parameters())
+        assert fold(torch.randn(2, 4 * C, 64)).shape == (2, C, 64)
+    assert len(set(sizes.values())) == 1, sizes
+    # ... and the static ones do, which is the trade being made.
+    static = {C: sum(p.numel() for p in
+                     ScaleFold("learned", 4, C).parameters()) for C in (4, 16, 64)}
+    assert len(set(static.values())) == 3, static
+
+
+def test_one_weight_is_decided_per_token_the_patcher_will_make():
+    """The weighting block defaults to the patcher's time patch.
+
+    A mismatch would hand the backbone tokens whose scale mixture changes
+    partway through, which is invisible in the shapes and in the loss.
+    """
+    from model import create_wavelet_classifier
+
+    m = create_wavelet_classifier(in_channels=4, max_level=2, embed_dim=32, depth=1,
+                                  num_heads=4, num_classes=3, patch_size=(1, 32),
+                                  wavelet_names=["db4"], scale_fold="dynamic")
+    assert m.fold.patch_len == 32
+    m.fold_scales(m.wavelet_decomp(torch.randn(2, 4, 128)))
+    # 128 samples / 32 = 4 blocks, matching the 4 time patches per frequency row.
+    assert m.fold.alpha_mean.shape == (3,)
+
+    whole = create_wavelet_classifier(in_channels=4, max_level=2, embed_dim=32, depth=1,
+                                      num_heads=4, num_classes=3, patch_size=(1, 32),
+                                      wavelet_names=["db4"], scale_fold="dynamic",
+                                      fold_patch_len=0)
+    assert whole.fold.patch_len == 0
+
+
+def test_softmax_fold_is_convex_and_learned_fold_is_not():
+    from wavelet_modules import ScaleFold
+
+    soft = ScaleFold("softmax", num_scales=4, in_channels=6)
+    with torch.no_grad():
+        soft.scale_weight.normal_(0, 3.0)
+        w = soft.scale_weight.softmax(dim=0)
+    assert torch.allclose(w.sum(dim=0), torch.ones(6), atol=1e-6)
+    assert (w >= 0).all()
+    # A constant signal must survive a convex fold untouched; the free version
+    # has no such guarantee once its weights move.
+    x = torch.ones(2, 24, 32)
+    assert torch.allclose(soft(x), torch.ones(2, 6, 32), atol=1e-5)
+    free = ScaleFold("learned", num_scales=4, in_channels=6)
+    with torch.no_grad():
+        free.scale_weight.normal_(0, 3.0)
+    assert not torch.allclose(free(x), torch.ones(2, 6, 32), atol=1e-2)
+
+
+def test_scale_dropout_never_empties_the_mixture():
+    """Dropping every band would divide by zero; the guard must be exercised."""
+    from wavelet_modules import ScaleFold
+
+    torch.manual_seed(0)
+    fold = ScaleFold("dynamic", num_scales=4, in_channels=8, patch_len=16,
+                     scale_dropout=0.95).train()
+    out = fold(torch.randn(8, 32, 64))
+    assert torch.isfinite(out).all()
+
+
+def test_fold_regulariser_is_zero_at_uniform_and_positive_when_collapsed():
+    from wavelet_modules import ScaleFold
+
+    fold = ScaleFold("dynamic", num_scales=4, in_channels=8, patch_len=16).eval()
+    x = torch.randn(2, 32, 64)
+    fold(x)
+    assert fold.reg_loss.abs().item() < 1e-6
+    with torch.no_grad():
+        fold.scale_logits.copy_(torch.tensor([10.0, 0.0, 0.0, 0.0]))
+    fold(x)
+    assert fold.reg_loss.item() > 1.0
+    assert fold.alpha_mean.argmax().item() == 0
+
+
+def test_legacy_checkpoints_keep_their_fold_weight():
+    """The static weight used to live at the model root.
+
+    Loading such a checkpoint under the current code must not leave the fold at
+    its uniform init -- that would look like a successful reproduction while
+    silently discarding what the run had learned.
+    """
+    from model import create_wavelet_classifier
+
+    kw = dict(in_channels=4, max_level=2, embed_dim=32, depth=1, num_heads=4,
+              num_classes=3, patch_size=(1, 32), wavelet_names=["db4"],
+              scale_fold="learned")
+    trained = create_wavelet_classifier(**kw)
+    with torch.no_grad():
+        trained.fold.scale_weight.normal_()
+    old_style = dict(trained.state_dict())
+    old_style["scale_weight"] = old_style.pop("fold.scale_weight")
+
+    fresh = create_wavelet_classifier(**kw)
+    missing, unexpected = fresh.load_state_dict(old_style, strict=False)
+    assert not missing and not unexpected, (missing, unexpected)
+    assert torch.equal(fresh.fold.scale_weight, trained.fold.scale_weight)

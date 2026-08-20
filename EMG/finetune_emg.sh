@@ -95,6 +95,12 @@ fi
   --ffn "${FFN:-mlp}" \
   ${QK_NORM:+--qk_norm} \
   --scale_fold "${SCALE_FOLD:-none}" \
+  ${FOLD_PATCH_LEN:+--fold_patch_len "${FOLD_PATCH_LEN}"} \
+  --fold_synthesis "${FOLD_SYNTHESIS:-0}" \
+  ${FOLD_SHRINKAGE:+--fold_shrinkage} \
+  --fold_scale_dropout "${FOLD_SCALE_DROPOUT:-0.0}" \
+  --fold_gamma "${FOLD_GAMMA:-0.1}" \
+  --fold_kl "${FOLD_KL:-0.0}" \
   --use_pos_embed \
   --pos_embed_type 2d \
   --batch_size "${BATCH_SIZE:-32}" \

@@ -445,3 +445,218 @@ class SoftGateWaveletDecomp(nn.Module):
         
         # Concatenate all frequency bands to form Spec(X)
         return torch.cat(bands,dim=1)  # [B, (max_level+1)*C, T]
+
+class ScaleFold(nn.Module):
+    """Collapse the scale axis of ``Spec(X)``: ``[B, (J+1)*C, T] -> [B, C, T]``.
+
+    ``SoftGateWaveletDecomp`` emits its bands scale-major -- band 0 for every
+    channel, then band 1, and so on -- so the backbone sees ``(J+1)`` copies of
+    every channel row and pays ``(J+1)^2`` in attention for them. Folding puts
+    the bands back into one row per channel before patching, which is the
+    synthesis half of an analysis/synthesis pair rather than a pooling trick.
+
+    The modes form a ladder, each a single change on the one before:
+
+    ``none``      pass through; the legacy model.
+    ``mean``      plain average. Not the inverse transform in the strict sense
+                  -- that is ``sum_s g_s * up(b_s)`` with a synthesis filter per
+                  scale (Mallat 1989) -- but it is the unweighted reconstruction
+                  and the honest baseline for everything above it.
+    ``learned``   ``sum_s w[s,c] b[s,c,t]``, unconstrained. Free to grow, go
+                  negative, or shrink the signal as a whole, and it carries one
+                  parameter per (scale, channel) so it cannot transfer to a
+                  different channel count.
+    ``softmax``   the same weights through a softmax over scales. Convex, so
+                  the fold is an interpolation of the bands and the output
+                  magnitude stays in the bands' range.
+    ``dynamic``   weights predicted per (channel, time-block) from the bands'
+                  own statistics, by an MLP shared across channels. This is
+                  best-basis selection (Coifman & Wickerhauser 1992) made
+                  differentiable: the cost function is learned instead of being
+                  Shannon entropy, and the choice is soft instead of a tree
+                  search. Being shared across channels, it is also the only
+                  mode with no channel-shaped parameter.
+
+    Two options attach to ``dynamic``:
+
+    ``synthesis_kernel``  a short depthwise filter per scale, delta-initialised
+        and shared across channels -- the learnable ``g_s`` above. The bands
+        have already been through soft gating and *nearest* upsampling, so they
+        are not phase-aligned with each other; a scalar weight cannot fix that
+        and a 3- or 5-tap filter can.
+    ``shrinkage``  soft-thresholding per scale before the fold, with the
+        threshold learned and the noise level estimated by MAD (Donoho 1995).
+        The threshold starts at ~0.0025 sigma, i.e. off, because in sEMG the
+        high-frequency detail is partly signal and hard shrinkage would remove
+        it; letting the data decide is the point.
+
+    Everything is initialised so that the module *is* ``mean`` at step 0:
+    delta filters, zero thresholds, zero-initialised output layer and zero
+    scale logits (so alpha is uniform), and ``gamma`` gating the deviation from
+    the mean. Training therefore departs from the reconstruction rather than
+    starting somewhere arbitrary.
+    """
+
+    MODES = ('none', 'mean', 'learned', 'softmax', 'dynamic')
+
+    def __init__(self, mode='none', num_scales=4, in_channels=8, patch_len=64,
+                 synthesis_kernel=0, shrinkage=False, scale_dropout=0.0,
+                 gamma_init=0.1, hidden=16, eps=1e-6):
+        super().__init__()
+        if mode not in self.MODES:
+            raise ValueError(f"scale_fold must be one of {self.MODES}, got {mode!r}")
+        self.mode = mode
+        self.num_scales = num_scales
+        self.patch_len = int(patch_len or 0)
+        self.scale_dropout = float(scale_dropout)
+        self.eps = eps
+
+        # Reported back to the caller after every forward, never consumed here.
+        # alpha_mean is for logging -- a fold that has collapsed onto one band
+        # is indistinguishable from a healthy one by the loss alone -- and
+        # reg_loss is the KL(alpha || uniform) the trainer may add.
+        self.alpha_mean = None
+        self.reg_loss = None
+
+        if mode in ('learned', 'softmax'):
+            # Uniform average at init: for 'learned' that is literally 1/S, for
+            # 'softmax' it is equal logits.
+            init = 1.0 / num_scales if mode == 'learned' else 0.0
+            self.scale_weight = nn.Parameter(torch.full((num_scales, in_channels), init))
+
+        if mode == 'dynamic':
+            self.stat_norm = nn.LayerNorm(num_scales)
+            self.mlp = nn.Sequential(
+                nn.Linear(3 * num_scales, hidden),
+                nn.GELU(),
+                nn.Linear(hidden, num_scales),
+            )
+            nn.init.zeros_(self.mlp[-1].weight)
+            nn.init.zeros_(self.mlp[-1].bias)
+            self.scale_logits = nn.Parameter(torch.zeros(num_scales))
+            self.gamma = nn.Parameter(torch.tensor(float(gamma_init)))
+            if synthesis_kernel:
+                if synthesis_kernel % 2 == 0:
+                    raise ValueError("synthesis_kernel must be odd to stay centred")
+                self.synth = nn.Conv1d(num_scales, num_scales, synthesis_kernel,
+                                       padding=synthesis_kernel // 2,
+                                       groups=num_scales, bias=False)
+                with torch.no_grad():
+                    self.synth.weight.zero_()
+                    self.synth.weight[:, 0, synthesis_kernel // 2] = 1.0
+            else:
+                self.synth = None
+            # softplus(-6) = 0.0025, so the threshold is off but differentiable.
+            self.tau = nn.Parameter(torch.full((num_scales,), -6.0)) if shrinkage else None
+
+    # -- statistics -------------------------------------------------------- #
+    def _block_stats(self, bands):
+        """``[B,S,C,T] -> ([B,C,N,3,S], N, L)``: log-RMS, entropy, kurtosis.
+
+        The block length is the patcher's time patch, so one weight is decided
+        per token the backbone will later see. Whole-window statistics
+        (``patch_len=0``) give one weight per window instead, which is the
+        weaker "sample-dynamic" variant.
+        """
+        B, S, C, T = bands.shape
+        L = self.patch_len if self.patch_len else T
+        L = min(L, T)
+        N = (T + L - 1) // L
+        pad = N * L - T
+        x = F.pad(bands, (0, pad), mode='replicate') if pad else bands
+        x = x.reshape(B, S, C, N, L)
+
+        power = x.pow(2)
+        rms = power.mean(-1).clamp_min(self.eps).sqrt()
+        energy = rms.log()                                        # [B,S,C,N]
+
+        # Time-concentration of the band's energy inside the block. A burst
+        # scores low, a stationary band scores near 1.
+        p = power / power.sum(-1, keepdim=True).clamp_min(self.eps)
+        entropy = -(p * p.clamp_min(self.eps).log()).sum(-1) / math.log(L)
+
+        d = x - x.mean(-1, keepdim=True)
+        var = d.pow(2).mean(-1).clamp_min(self.eps)
+        # log1p keeps a heavy-tailed statistic from dominating the MLP input.
+        kurt = torch.log1p((d.pow(4).mean(-1) / var.pow(2)).clamp_min(0.0))
+
+        q = torch.stack([energy, entropy, kurt], dim=1)           # [B,3,S,C,N]
+        q = q.permute(0, 3, 4, 1, 2).contiguous()                 # [B,C,N,3,S]
+        # Normalising each statistic *across scales* is what makes this a
+        # comparison between bands rather than an absolute-amplitude readout,
+        # and is what lets one MLP serve every channel and every subject.
+        return self.stat_norm(q), N, L
+
+    def _alpha(self, bands):
+        """``[B,S,C,T] -> [B,S,C,T]`` mixing weights, summing to 1 over scales."""
+        B, S, C, T = bands.shape
+        q, N, L = self._block_stats(bands)
+        logits = self.mlp(q.flatten(-2)) + self.scale_logits    # [B,C,N,S]
+
+        # Reported and regularised on the *undropped* weights. Dropout makes
+        # alpha deliberately non-uniform, so measuring the KL after it would
+        # have the penalty pushing back against the regulariser it is paired
+        # with, and would report a spread the model never uses at inference.
+        alpha = logits.softmax(-1)
+        self.alpha_mean = alpha.detach().mean(dim=(0, 1, 2))
+        # KL(alpha || uniform); zero weights contribute zero, hence the clamp.
+        self.reg_loss = (alpha * (alpha.clamp_min(self.eps).log()
+                                  + math.log(S))).sum(-1).mean()
+
+        if self.training and self.scale_dropout > 0:
+            keep = torch.rand_like(logits) >= self.scale_dropout
+            # Dropping every scale would leave nothing to fold; those rows keep
+            # all of them, so the renormalisation below is always well posed.
+            keep = keep | ~keep.any(-1, keepdim=True)
+            alpha = logits.masked_fill(~keep, float('-inf')).softmax(-1)
+
+        alpha = alpha.permute(0, 3, 1, 2)                        # [B,S,C,N]
+        return alpha.repeat_interleave(L, dim=-1)[..., :T]
+
+    # -- band conditioning ------------------------------------------------- #
+    def _shrink(self, bands):
+        B, S, C, T = bands.shape
+        sigma = bands.abs().median(dim=-1, keepdim=True).values / 0.6745
+        tau = F.softplus(self.tau).view(1, S, 1, 1)
+        return torch.sign(bands) * (bands.abs() - tau * sigma).clamp_min(0.0)
+
+    def _synthesise(self, bands):
+        B, S, C, T = bands.shape
+        x = bands.permute(0, 2, 1, 3).reshape(B * C, S, T)
+        return self.synth(x).view(B, C, S, T).permute(0, 2, 1, 3)
+
+    # -- forward ----------------------------------------------------------- #
+    def forward(self, spec):
+        self.alpha_mean, self.reg_loss = None, None
+        if self.mode == 'none':
+            return spec
+
+        B, FC, T = spec.shape
+        S = self.num_scales
+        if FC % S != 0:
+            raise ValueError(f"{FC} rows is not a multiple of {S} bands")
+        # Scale-major, so [B, S, C, T] is the correct grouping; [B, C, S, T]
+        # would silently mix bands belonging to different channels.
+        bands = spec.view(B, S, FC // S, T)
+
+        if self.mode == 'mean':
+            return bands.mean(dim=1)
+        if self.mode == 'learned':
+            return (bands * self.scale_weight.view(1, S, -1, 1)).sum(dim=1)
+        if self.mode == 'softmax':
+            w = self.scale_weight.softmax(dim=0)
+            return (bands * w.view(1, S, -1, 1)).sum(dim=1)
+
+        proc = bands
+        if self.tau is not None:
+            proc = self._shrink(proc)
+        if self.synth is not None:
+            proc = self._synthesise(proc)
+        alpha = self._alpha(bands)          # statistics read the *raw* bands
+        base = proc.mean(dim=1)
+        return base + self.gamma * ((alpha * proc).sum(dim=1) - base)
+
+    def extra_repr(self):
+        return (f"mode={self.mode}, scales={self.num_scales}, "
+                f"patch_len={self.patch_len or 'window'}, "
+                f"scale_dropout={self.scale_dropout}")

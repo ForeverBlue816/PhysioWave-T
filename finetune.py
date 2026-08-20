@@ -215,10 +215,30 @@ def load_pretrained_feature_extractor(model, pretrained_path, rank=0):
 ############################################################
 # Training and Evaluation Functions
 ############################################################
+def _unwrap(model):
+    return model.module if hasattr(model, 'module') else model
+
+
 def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criterion, 
-                    scaler=None, grad_clip=0.0, scheduler=None, scheduler_per_batch=False):
+                    scaler=None, grad_clip=0.0, scheduler=None, scheduler_per_batch=False,
+                    fold_kl=0.0):
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
+    core = _unwrap(model)
+
+    def total_loss_of(logits, y):
+        """Task loss plus the fold's KL-to-uniform, when one is asked for.
+
+        The task loss alone has no objection to a fold that reads a single
+        band: fewer effective inputs fit the training set just as well. This is
+        the only term that prefers a fold still using its scales.
+        """
+        loss = criterion(logits, y)
+        if fold_kl > 0.0:
+            reg = core.scale_fold_reg() if hasattr(core, 'scale_fold_reg') else None
+            if reg is not None:
+                loss = loss + fold_kl * reg
+        return loss
 
     loader = train_loader
     if rank == 0:
@@ -231,7 +251,7 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
         if scaler is not None:
             with torch.cuda.amp.autocast():
                 logits = model(x, task='classify')  # BERT model uses task='classify'
-                loss = criterion(logits, y)
+                loss = total_loss_of(logits, y)
             scaler.scale(loss).backward()
             if grad_clip > 0.0:
                 scaler.unscale_(optimizer)
@@ -240,7 +260,7 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
             scaler.update()
         else:
             logits = model(x, task='classify')  # BERT model uses task='classify'
-            loss = criterion(logits, y)
+            loss = total_loss_of(logits, y)
             loss.backward()
             if grad_clip > 0.0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
@@ -267,7 +287,14 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
     avg_loss = total_loss / total_samples
     avg_acc = total_correct / total_samples
     if rank == 0:
-        print(f"[Train] Epoch {epoch}: Loss={avg_loss:.4f}, Acc={avg_acc:.4f}, LR={current_lr:.6f}")
+        line = f"[Train] Epoch {epoch}: Loss={avg_loss:.4f}, Acc={avg_acc:.4f}, LR={current_lr:.6f}"
+        # A dynamic fold that has collapsed onto one band still trains, still
+        # reports a falling loss, and is no longer multi-scale. The weights are
+        # the only place that shows, so they are printed every epoch.
+        alpha = core.scale_fold_alpha() if hasattr(core, 'scale_fold_alpha') else None
+        if alpha is not None:
+            line += ", alpha=[" + " ".join(f"{v:.3f}" for v in alpha.tolist()) + "]"
+        print(line)
     return avg_loss, avg_acc, current_lr
 
 
@@ -438,6 +465,11 @@ def main_worker(rank, world_size, args):
         ffn=args.ffn,
         qk_norm=args.qk_norm,
         scale_fold=args.scale_fold,
+        fold_patch_len=args.fold_patch_len,
+        fold_synthesis=args.fold_synthesis,
+        fold_shrinkage=args.fold_shrinkage,
+        fold_scale_dropout=args.fold_scale_dropout,
+        fold_gamma=args.fold_gamma,
         use_pos_embed=args.use_pos_embed,
         pos_embed_type=args.pos_embed_type,
         task_type='classification',
@@ -452,6 +484,11 @@ def main_worker(rank, world_size, args):
         # silently kept the defaults would look identical to one that took effect.
         print(f"Transformer block: norm={args.norm} ffn={args.ffn} "
               f"qk_norm={args.qk_norm} rope=True | scale_fold={args.scale_fold}", flush=True)
+        if args.scale_fold == 'dynamic':
+            blk = args.patch_size if args.fold_patch_len is None else args.fold_patch_len
+            print(f"Dynamic fold: block={blk or 'window'} synthesis={args.fold_synthesis} "
+                  f"shrinkage={args.fold_shrinkage} scale_dropout={args.fold_scale_dropout} "
+                  f"gamma={args.fold_gamma} kl={args.fold_kl}", flush=True)
 
     # Initialize weights
     if hasattr(model, 'initialize_weights'):
@@ -489,12 +526,29 @@ def main_worker(rank, world_size, args):
 
     model = DDP(model, device_ids=[rank], find_unused_parameters=True)
     
-    # Optimizer
+    # Optimizer. The fold's mixing parameters are held out of weight decay.
+    # They are a convex combination and a delta-initialised synthesis filter,
+    # not capacity: decaying them towards zero shrinks the folded signal
+    # itself rather than penalising overfitting, which is the mechanism that
+    # would make a fold "quietly get smaller" over a long run. Its MLP is an
+    # ordinary MLP and keeps the decay.
+    fold_no_decay, rest = [], []
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        # Names are DDP-prefixed here ("module.fold.x"), but the rule must not
+        # depend on that -- an unwrapped model would silently skip the group.
+        stem = name.split('module.', 1)[-1]
+        (fold_no_decay if (stem.startswith('fold.') and not stem.startswith('fold.mlp.'))
+         else rest).append(p)
     optimizer = optim.AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
+        [{'params': rest, 'weight_decay': args.weight_decay},
+         {'params': fold_no_decay, 'weight_decay': 0.0}],
         lr=args.lr,
-        weight_decay=args.weight_decay
     )
+    if rank == 0 and fold_no_decay:
+        print(f"Optimizer: {sum(p.numel() for p in fold_no_decay)} fold parameters "
+              f"held out of weight decay", flush=True)
     
     # Loss function
     if args.label_smoothing > 0:
@@ -569,7 +623,8 @@ def main_worker(rank, world_size, args):
         
         train_loss, train_acc, current_lr = train_one_epoch(
             epoch, rank, model, optimizer, train_loader, device, 
-            criterion, scaler, args.grad_clip, scheduler, scheduler_per_batch
+            criterion, scaler, args.grad_clip, scheduler, scheduler_per_batch,
+            fold_kl=args.fold_kl
         )
         
         val_metrics = eval_one_epoch(
@@ -783,11 +838,38 @@ def main():
     parser.add_argument('--qk_norm', action='store_true',
                         help='RMS-normalise q and k per head, bounding the attention logits')
     parser.add_argument('--scale_fold', type=str, default='none',
-                        choices=['none', 'mean', 'learned'],
+                        choices=['none', 'mean', 'learned', 'softmax', 'dynamic'],
                         help="fold Spec(X)'s scale axis before patching, so the backbone "
-                             "sees C*S tokens instead of (J+1)*C*S. 'learned' starts as a "
-                             "uniform average -- the plain inverse transform -- and departs "
-                             "from it. Nothing else about the model changes.")
+                             "sees C*S tokens instead of (J+1)*C*S. The modes form a "
+                             "ladder -- mean (plain reconstruction), learned (free per "
+                             "channel weights), softmax (the same, made convex), dynamic "
+                             "(weights predicted per channel and time block from the "
+                             "bands' own statistics). Nothing else about the model "
+                             "changes. See wavelet_modules.ScaleFold.")
+    parser.add_argument('--fold_patch_len', type=int, default=None,
+                        help='dynamic fold only: samples per weighting block. Defaults to '
+                             '--patch_size so one weight backs one token; 0 decides a '
+                             'single weight for the whole window.')
+    parser.add_argument('--fold_synthesis', type=int, default=0,
+                        help='dynamic fold only: odd kernel size for a per-scale synthesis '
+                             'filter, shared across channels and initialised to a delta. '
+                             '0 disables it. The bands reach the fold after soft gating '
+                             'and nearest upsampling, so they are not phase-aligned; a '
+                             'scalar weight cannot correct that and a 3-tap filter can.')
+    parser.add_argument('--fold_shrinkage', action='store_true',
+                        help='dynamic fold only: soft-threshold each band before folding, '
+                             'with a learned threshold against a MAD noise estimate. '
+                             'Starts at ~0.0025 sigma, i.e. off.')
+    parser.add_argument('--fold_scale_dropout', type=float, default=0.0,
+                        help='dynamic fold only: probability of dropping a scale from the '
+                             'mixture during training, the survivors renormalised.')
+    parser.add_argument('--fold_gamma', type=float, default=0.1,
+                        help='dynamic fold only: initial gate on the deviation from the '
+                             'plain mean. At 0 the fold is exactly --scale_fold mean.')
+    parser.add_argument('--fold_kl', type=float, default=0.0,
+                        help='dynamic fold only: weight on KL(alpha || uniform), added to '
+                             'the task loss to keep the mixture from collapsing onto a '
+                             'single band. 1e-4 to 1e-3 is the useful range.')
     
     # Model parameters - Classification Head
     parser.add_argument('--num_classes', type=int, required=True, help='Number of classes')

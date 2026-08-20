@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from wavelet_modules import SoftGateWaveletDecomp
+from wavelet_modules import ScaleFold, SoftGateWaveletDecomp
 from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
 from head_modules import ClassificationHead, ReconstructionHead, RegressionHead, LinearHead
 
@@ -50,7 +50,12 @@ class BERTWaveletTransformer(nn.Module):
                  # the 2-D position embedding, the full attention, the pooling
                  # and the head -- is untouched, which is what makes this a
                  # single-variable change against the legacy numbers.
-                 scale_fold='none',     # 'none' | 'learned' | 'mean'
+                 scale_fold='none',     # see wavelet_modules.ScaleFold
+                 fold_patch_len=None,   # None -> patch_size[1]; 0 -> whole window
+                 fold_synthesis=0,      # odd kernel for a per-scale synthesis filter
+                 fold_shrinkage=False,  # learned soft-threshold before folding
+                 fold_scale_dropout=0.0,
+                 fold_gamma=0.1,
                  # Position encoding parameters
                  use_pos_embed=True,
                  pos_embed_type='2d',
@@ -99,15 +104,21 @@ class BERTWaveletTransformer(nn.Module):
         # scale axis is a learned generalisation of the inverse transform --
         # the bands are recombined into one row per channel rather than each
         # becoming its own row of tokens.
+        # The dynamic modes decide one weight per time block, and the block is
+        # the patcher's time patch by default so that one weight backs one
+        # token. Detaching the two would give the backbone tokens whose scale
+        # mix changes partway through.
         self.scale_fold = scale_fold
-        if scale_fold == 'learned':
-            # Initialised to a uniform average, i.e. the plain reconstruction,
-            # so training starts from the inverse transform and departs from it.
-            self.scale_weight = nn.Parameter(
-                torch.full((max_level + 1, in_channels), 1.0 / (max_level + 1)))
-        elif scale_fold not in ('none', 'mean'):
-            raise ValueError(
-                f"scale_fold must be 'none', 'learned' or 'mean', got {scale_fold!r}")
+        self.fold = ScaleFold(
+            mode=scale_fold,
+            num_scales=max_level + 1,
+            in_channels=in_channels,
+            patch_len=patch_size[1] if fold_patch_len is None else fold_patch_len,
+            synthesis_kernel=fold_synthesis,
+            shrinkage=fold_shrinkage,
+            scale_dropout=fold_scale_dropout,
+            gamma_init=fold_gamma,
+        )
 
         # 2. Patch embedding module
         self.patch_embed = PatchEmbed(
@@ -295,23 +306,33 @@ class BERTWaveletTransformer(nn.Module):
         return tokens
 
     def fold_scales(self, wave_spec):
-        """``[B, (J+1)*C, T] -> [B, C, T]``, or a pass-through when disabled.
+        """``[B, (J+1)*C, T] -> [B, C, T]``, or a pass-through when disabled."""
+        return self.fold(wave_spec)
 
-        The layout is scale-major: rows are band 0 for every channel, then band
-        1 for every channel, and so on. Reshaping to ``[B, J+1, C, T]`` is
-        therefore the correct grouping; ``[B, C, J+1, T]`` would mix bands of
-        different channels together and still produce a tensor of the right
-        shape.
+    def scale_fold_reg(self):
+        """KL(alpha || uniform) from the last forward, or ``None``.
+
+        Only the dynamic modes produce one. Left for the trainer to add: a fold
+        that has collapsed onto a single band is a *better* fit to the training
+        set and the task loss will not object, so the pressure to keep using
+        several scales has to come from outside it.
         """
-        if self.scale_fold == 'none':
-            return wave_spec
-        B, FC, T = wave_spec.shape
-        J1 = self.max_level + 1
-        assert FC % J1 == 0, f"{FC} rows is not a multiple of {J1} bands"
-        bands = wave_spec.view(B, J1, FC // J1, T)
-        if self.scale_fold == 'mean':
-            return bands.mean(dim=1)
-        return (bands * self.scale_weight.view(1, J1, -1, 1)).sum(dim=1)
+        return self.fold.reg_loss
+
+    def scale_fold_alpha(self):
+        """Mean mixing weight per scale from the last forward, or ``None``."""
+        return self.fold.alpha_mean
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # Checkpoints written before ScaleFold existed keep the static weights
+        # at the model root. Without this they would land in the "unexpected
+        # keys" list, the fold would silently stay at its uniform init, and the
+        # run would look like a reproduction that had quietly lost its fold.
+        old = prefix + 'scale_weight'
+        new = prefix + 'fold.scale_weight'
+        if old in state_dict and new not in state_dict:
+            state_dict[new] = state_dict.pop(old)
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def forward_features(self, x):
         """Extract features (encoder part)"""
