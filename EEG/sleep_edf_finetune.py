@@ -55,7 +55,8 @@ FS = 100.0
 WINDOW_SAMPLES = 30 * int(FS)      # 3000
 LOWPASS_HZ = 30.0
 CROP_WAKE_MINS = 30
-CHANNELS = ["EEG Fpz-Cz", "EEG Pz-Oz"]
+# braindecode strips the "EEG " prefix in SleepPhysionet._load_raw.
+CHANNELS = ["Fpz-Cz", "Pz-Oz"]
 
 CLASS_NAMES = ["W", "N1", "N2", "N3", "REM"]
 MAPPING = {                        # AASM: stages 3 and 4 are one stage
@@ -89,16 +90,10 @@ def cache_subject(subject: int, cache_dir: str, overwrite: bool = False) -> str 
     if os.path.exists(out) and not overwrite:
         return out
 
-    try:
-        from braindecode.datasets import SleepPhysionet
-        from braindecode.preprocessing import Preprocessor, preprocess
-        from braindecode.preprocessing import create_windows_from_events
-        from sklearn.preprocessing import scale as standard_scale
-    except ImportError as exc:
-        raise SystemExit(
-            f"{exc}\n\nThis script needs braindecode (which pulls in mne):\n"
-            f"    pip install braindecode"
-        ) from exc
+    from braindecode.datasets import SleepPhysionet
+    from braindecode.preprocessing import Preprocessor, preprocess
+    from braindecode.preprocessing import create_windows_from_events
+    from sklearn.preprocessing import scale as standard_scale
 
     ds = SleepPhysionet(subject_ids=[subject], crop_wake_mins=CROP_WAKE_MINS)
     preprocess(ds, [
@@ -209,6 +204,48 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str) ->
     return {"subjects": subjects, "windows": total, "class_counts": counts.tolist()}
 
 
+def preflight() -> None:
+    """Import braindecode once, before 64 subjects fail the same way.
+
+    braindecode is used rather than mne directly because the point of this
+    dataset is to sit beside EEGPT's number, and their windows come from
+    braindecode. An mne-only reimplementation was tried and abandoned: whether
+    the raw is preloaded changes where `raw.crop` lands (2508001 samples
+    against 2523000 for the same recording), and `create_windows_from_events`
+    with drop_last_window=False adds one overlapping window per trial, so a
+    hand-rolled version came out 15 windows different on subject 0 alone.
+    Fifteen windows is small and comparability is the whole reason this file
+    exists, so the dependency stays.
+    """
+    try:
+        import braindecode  # noqa: F401
+        from braindecode.datasets import SleepPhysionet  # noqa: F401
+        from braindecode.preprocessing import (  # noqa: F401
+            Preprocessor, create_windows_from_events, preprocess,
+        )
+        from sklearn.preprocessing import scale  # noqa: F401
+    except ImportError as exc:
+        raise SystemExit(
+            f"{exc}\n\nThis script needs braindecode (which pulls in mne):\n"
+            f"    pip install braindecode"
+        ) from exc
+    except AttributeError as exc:
+        if "pydantic" in str(exc):
+            import pydantic
+            raise SystemExit(
+                f"{exc}\n\n"
+                f"braindecode's dependencies need pydantic 2, and pydantic "
+                f"{pydantic.VERSION} is what imports here\n"
+                f"({os.path.dirname(pydantic.__file__)}).\n\n"
+                f"  pip install -U 'pydantic>=2'\n\n"
+                f"On a cluster whose shared environment pins pydantic 1, install into\n"
+                f"your own environment so it shadows the shared one, and check with:\n\n"
+                f"  python -c \"import pydantic; print(pydantic.VERSION, pydantic.__file__)\"\n\n"
+                f"braindecode 1.2.0 with pydantic 2.13.4 is a combination known to work."
+            ) from exc
+        raise
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -254,8 +291,11 @@ def main() -> None:
         raise SystemExit(f"subjects {bad} are not in Sleep-EDFx SC")
 
     if args.stage in ("cache", "all"):
+        preflight()
         print(f"Caching {len(subjects)} subjects into {cache_dir}")
         print("The first subject downloads Sleep-EDFx SC through MNE; expect a wait.")
+        import traceback
+
         from tqdm import tqdm
         failed = []
         for s in tqdm(subjects, ncols=100):
@@ -266,12 +306,28 @@ def main() -> None:
             except Exception as exc:                       # noqa: BLE001
                 # One unreadable recording should not cost the whole corpus,
                 # but it must be named -- a silently short dataset looks like
-                # a modelling result.
+                # a modelling result. The first failure prints in full: a bare
+                # repr of an exception from somewhere inside mne/braindecode
+                # says nothing about which package raised it, and when every
+                # subject fails the same way it is an environment problem that
+                # only the traceback identifies.
+                if not failed:
+                    print("\n\nFirst failure, in full:\n", file=sys.stderr)
+                    traceback.print_exc()
                 failed.append((s, repr(exc)))
         if failed:
-            print(f"\n{len(failed)} subject(s) failed:", file=sys.stderr)
-            for s, e in failed:
+            print(f"\n{len(failed)} of {len(subjects)} subject(s) failed.",
+                  file=sys.stderr)
+            for s, e in failed[:10]:
                 print(f"  subject {s}: {e[:120]}", file=sys.stderr)
+            if len(failed) > 10:
+                print(f"  ... and {len(failed) - 10} more", file=sys.stderr)
+            if len(failed) == len(subjects):
+                raise SystemExit(
+                    "\nEvery subject failed, so this is the environment rather "
+                    "than the data.\nThe traceback above names the package. "
+                    "Nothing was written."
+                )
 
     if args.stage in ("split", "all"):
         if args.split == "holdout":
@@ -285,6 +341,18 @@ def main() -> None:
                 "channels": CHANNELS, "classes": CLASS_NAMES, "splits": {}}
         for name in ("train", "val", "test"):
             meta["splits"][name] = write_split(name, split[name], cache_dir, args.out_dir)
+        empty = [n for n, m in meta["splits"].items() if m["windows"] == 0]
+        if empty:
+            # Writing a 0-window HDF5 and printing "Wrote ..." is the failure
+            # mode this whole script is meant to avoid: the trainer would load
+            # it, report a loss over nothing, and look like it ran.
+            for n in empty:
+                os.remove(os.path.join(args.out_dir, f"{n}.h5"))
+            raise SystemExit(
+                f"\n{', '.join(empty)} came out empty -- no cached subject had "
+                f"any windows.\nThe cache stage has not run, or it failed. "
+                f"Removed the empty file(s); nothing usable was written."
+            )
         overlap = (set(split["train"]) & set(split["val"])) | \
                   (set(split["train"]) & set(split["test"])) | \
                   (set(split["val"]) & set(split["test"]))

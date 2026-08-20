@@ -26,7 +26,26 @@ approximate — `EEG/sleep_edf_finetune.py` reproduces EEGPT's
 
 ```bash
 pip install braindecode          # pulls in mne
+python -c "import pydantic; print(pydantic.VERSION, pydantic.__file__)"
 ```
+
+**braindecode's dependency chain needs pydantic 2.** With pydantic 1 every
+subject fails identically with `module 'pydantic' has no attribute
+'TypeAdapter'`. A shared cluster environment may well pin pydantic 1; install
+pydantic 2 into your own environment so it shadows the shared one, and use the
+line above to confirm which one actually imports. braindecode 1.2.0 with
+pydantic 2.13.4 is a combination that works.
+
+The preparation script checks this before it starts, so the failure arrives
+once with a fix in it rather than 64 times with a bare exception repr.
+
+braindecode is used rather than mne directly because these windows have to be
+EEGPT's windows. An mne-only reimplementation was tried and abandoned: whether
+the raw is preloaded changes where `raw.crop` lands — 2508001 samples against
+2523000 for the same recording — and `create_windows_from_events` with
+`drop_last_window=False` adds one overlapping window per trial. A hand-rolled
+version came out 15 windows different on subject 0 alone. Small, and fatal to
+the only reason this dataset is here.
 
 Sleep-EDF is open, so nothing needs a data use agreement. braindecode's
 `SleepPhysionet` fetches Sleep-EDFx Sleep Cassette from PhysioNet through MNE

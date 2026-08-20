@@ -34,6 +34,7 @@ import hashlib
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -77,29 +78,43 @@ def subject_of(fname: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def fetch(fname: str, size: int, dest: str, mirror: bool) -> tuple[str, str]:
-    """Download one object unless a local file of the right size is already there."""
+def fetch(fname: str, size: int, dest: str, mirror: bool,
+          timeout: float = 60.0, attempts: int = 4) -> tuple[str, str]:
+    """Download one object unless a local file of the right size is already there.
+
+    The timeout is per socket operation, not per file, so it bounds a *stalled*
+    connection rather than a slow one: a transfer that keeps delivering bytes is
+    never interrupted, and one that stops delivering them is abandoned and
+    retried instead of holding a worker until the whole batch is stuck behind
+    it. S3 drops long-lived connections often enough that this matters over
+    250 files.
+    """
     path = os.path.join(dest, fname)
     if os.path.exists(path) and os.path.getsize(path) == size:
         return fname, "skipped"
     url = (MIRROR if mirror else S3 + PREFIX) + urllib.parse.quote(fname)
     tmp = path + ".part"
-    try:
-        with urllib.request.urlopen(url, timeout=300) as r, open(tmp, "wb") as f:
-            while chunk := r.read(1 << 20):
-                f.write(chunk)
-        got = os.path.getsize(tmp)
-        if got != size:
-            os.remove(tmp)
-            return fname, f"short ({got} != {size})"
-        # Rename only once the whole file is on disk, so an interrupted run
-        # never leaves something that looks complete to the resume check.
-        os.replace(tmp, path)
-        return fname, "ok"
-    except Exception as exc:                                   # noqa: BLE001
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        return fname, f"failed: {exc!r}"
+    last = ""
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r, open(tmp, "wb") as f:
+                while chunk := r.read(1 << 20):
+                    f.write(chunk)
+            got = os.path.getsize(tmp)
+            if got != size:
+                last = f"short ({got} != {size})"
+                continue
+            # Rename only once the whole file is on disk, so an interrupted run
+            # never leaves something that looks complete to the resume check.
+            os.replace(tmp, path)
+            return fname, "ok" if attempt == 0 else f"ok (attempt {attempt + 1})"
+        except Exception as exc:                               # noqa: BLE001
+            last = repr(exc)
+        finally:
+            if os.path.exists(tmp) and not os.path.exists(path):
+                os.remove(tmp)
+        time.sleep(2 ** attempt)
+    return fname, f"failed after {attempts}: {last}"
 
 
 def verify(dest: str, names: list[str]) -> int:
@@ -151,6 +166,9 @@ def main() -> None:
                    help="comma-separated ids, or 'all' for the whole cassette set. "
                         "Default is the 64 EEGPT uses (5.8 GiB rather than 7.1).")
     p.add_argument("--jobs", type=int, default=16)
+    p.add_argument("--timeout", type=float, default=60.0,
+                   help="seconds a single socket read may stall before the "
+                        "transfer is abandoned and retried")
     p.add_argument("--mirror", action="store_true",
                    help="fetch from physionet.org instead of its S3 mirror")
     p.add_argument("--verify-only", action="store_true")
@@ -192,7 +210,8 @@ def main() -> None:
         done = 0
         problems = []
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            futures = [pool.submit(fetch, n, s, dest, args.mirror) for n, s in objects]
+            futures = [pool.submit(fetch, n, s, dest, args.mirror, args.timeout)
+                       for n, s in objects]
             for fut in as_completed(futures):
                 name, status = fut.result()
                 done += 1
