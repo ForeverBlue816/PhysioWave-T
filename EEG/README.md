@@ -6,7 +6,7 @@ EEG-specific data preparation and launch scripts, alongside `ECG/` and `EMG/`.
 |------|---------|
 | `tueg_pretrain.py` | TUH EEG / Siena EDF → HDF5 windows for pretraining |
 | `tuab_finetune.py` | TUAB EDF → labelled HDF5 for normal-vs-abnormal fine-tuning |
-| `download_sleep_edf.sh` | Fetch Sleep-EDFx SC from PhysioNet with wget and verify it |
+| `download_sleep_edf.py` | Fetch Sleep-EDFx SC from PhysioNet's S3 mirror in parallel, and verify it |
 | `sleep_edf_finetune.py` | Sleep-EDFx SC → labelled HDF5 for 5-class sleep staging, on EEGPT's preprocessing |
 | `pretrain_eeg.sh` | Launch EEG pretraining (extension pipeline) |
 | `finetune_eeg.sh` | Launch downstream fine-tuning (shared `finetune.py`) |

@@ -52,23 +52,38 @@ a node without one, and `--stage cache` has to run somewhere else.
 
 | step | where | needs |
 |---|---|---|
-| `EEG/download_sleep_edf.sh` | **login node** | internet, ~8 GB of `$MNE_DATA` |
+| `EEG/download_sleep_edf.py` | **login node** | internet, 5.8 GiB of `$MNE_DATA` |
 | `--stage cache` | login node (or anywhere, once the EDFs are local) | the EDFs, no GPU |
 | `--stage split` | either | the cache, no internet, no GPU |
 | `finetune_sleep.sh` | **compute node** | GPUs, no internet |
 
 ### Fetching the EDFs yourself
 
-MNE downloads one recording at a time with no resume. `wget` is better at this,
-and MNE will use files it finds already in place:
+MNE downloads one recording at a time, serially, with no resume. One command
+does it concurrently from PhysioNet's S3 mirror instead:
 
 ```bash
 export MNE_DATA=$SCRATCH/mne_data
-bash EEG/download_sleep_edf.sh          # ~8 GB, resumable, verified
+python EEG/download_sleep_edf.py
 ```
 
-The verification matters. MNE's `_fetch_one` returns a pre-existing file
-without looking at it:
+No credentials and no extra tools -- the mirror is public and the script uses
+only the standard library. It defaults to the 64 subjects EEGPT runs its folds
+over, which is **5.8 GiB** rather than the 7.1 GiB of the whole cassette set;
+`--subjects all` fetches everything. `--jobs` sets the number of concurrent
+transfers (16 by default) and `--mirror` falls back to physionet.org if S3 is
+blocked.
+
+Files land in `$MNE_DATA/physionet-sleep-data/`, which is where MNE looks, so
+the preparation step below downloads nothing.
+
+Rerunning is safe and is how you recover from an interruption: a file whose
+size already matches the mirror is skipped, a partial one is refetched, and
+downloads are written to `.part` and renamed only when complete, so an
+interrupted run never leaves something that looks finished.
+
+**The verification is the part that matters.** MNE's `_fetch_one` returns a
+pre-existing file without looking at it:
 
 ```python
 destination = op.join(path, fname)
@@ -76,14 +91,11 @@ if op.isfile(destination) and not force_update:
     return destination, False
 ```
 
-The SHA1 it knows is only consulted when pooch actually performs a download, so
-a file truncated by a dropped connection is read as a short recording and shows
-up as a subject with fewer windows rather than as an error. The script checks
-every file against MNE's own `SHA1SUMS` and names anything that fails; delete
-those and rerun to refetch them.
-
-Rerun the script after any interruption — `wget -c -N` resumes, and
-`SKIP_DOWNLOAD=1` re-verifies without refetching.
+The SHA1 in its records is consulted only when pooch performs the download. A
+file truncated by a dropped connection is therefore read as a short recording,
+and surfaces as a subject with fewer windows -- which looks like data, not like
+an error. The script hashes every file against MNE's own `SHA1SUMS` and names
+what fails. `--verify-only` re-checks without refetching.
 
 ### Then preprocess
 
