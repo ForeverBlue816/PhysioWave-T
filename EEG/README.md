@@ -8,9 +8,12 @@ EEG-specific data preparation and launch scripts, alongside `ECG/` and `EMG/`.
 | `tuab_finetune.py` | TUAB EDF → labelled HDF5 for normal-vs-abnormal fine-tuning |
 | `download_sleep_edf.py` | Fetch Sleep-EDFx SC from PhysioNet's S3 mirror in parallel, and verify it |
 | `sleep_edf_finetune.py` | Sleep-EDFx SC → labelled HDF5 for 5-class sleep staging, on EEGPT's preprocessing |
+| `download_p300.py` | Fetch PhysioNet ERP-BCI (erpbci) from the S3 mirror in parallel, and verify it |
+| `physio_p300_finetune.py` | erpbci → labelled HDF5 for binary P300 detection, on EEGPT's preprocessing |
 | `pretrain_eeg.sh` | Launch EEG pretraining (extension pipeline) |
 | `finetune_eeg.sh` | Launch downstream fine-tuning (shared `finetune.py`) |
 | `finetune_sleep.sh` | Launch Sleep-EDF sleep staging — see [docs/sleep_edf.md](../docs/sleep_edf.md) |
+| `finetune_p300.sh` | Launch PhysioP300 detection — see [docs/physio_p300.md](../docs/physio_p300.md) |
 
 ## Why EEG is not just "ECG with more channels"
 

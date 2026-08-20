@@ -39,25 +39,69 @@ from model import BERTWaveletTransformer  # Use original BERT model with built-i
 # Label Smoothing Cross Entropy Loss
 ############################################################
 class LabelSmoothingCrossEntropy(nn.Module):
-    """Label smoothing cross entropy loss"""
-    def __init__(self, smoothing=0.1, reduction='mean'):
+    """Label smoothing cross entropy loss, optionally weighted per class.
+
+    ``weight`` follows nn.CrossEntropyLoss: a per-class tensor, and the 'mean'
+    reduction divides by the summed weight of the targets rather than by the
+    batch size. Without that normalisation the loss scale would move with the
+    class mix of each batch, which changes the effective learning rate from
+    step to step on an imbalanced task.
+    """
+    def __init__(self, smoothing=0.1, reduction='mean', weight=None):
         super().__init__()
         self.smoothing = smoothing
         self.reduction = reduction
-        
+        self.register_buffer('weight', weight)
+
     def forward(self, pred, target):
         n_classes = pred.size(1)
         one_hot = torch.zeros_like(pred).scatter(1, target.unsqueeze(1), 1)
         smoothed = one_hot * (1 - self.smoothing) + self.smoothing / n_classes
         log_prob = F.log_softmax(pred, dim=1)
         loss = -(smoothed * log_prob).sum(dim=1)
-        
+
+        if self.weight is not None:
+            w = self.weight.to(dtype=loss.dtype, device=loss.device)[target]
+            loss = loss * w
+            if self.reduction == 'mean':
+                return loss.sum() / w.sum().clamp_min(torch.finfo(loss.dtype).eps)
+
         if self.reduction == 'mean':
             return loss.mean()
         elif self.reduction == 'sum':
             return loss.sum()
         else:
             return loss
+
+
+def class_weights_from(dataset, num_classes, mode):
+    """Inverse-frequency class weights from a labelled dataset, normalised to mean 1.
+
+    'balanced' is sklearn's definition, n / (k * count_c). Mean-1 normalisation
+    keeps the loss on the same scale as the unweighted run, so a learning rate
+    tuned without weighting does not have to be retuned with it.
+
+    A class absent from the training split gets weight 0 rather than infinity;
+    it contributes no gradient either way, and 1/0 would poison the mean.
+    """
+    if mode == 'none':
+        return None
+    # train_ds is a Subset when the validation split is carved out of the
+    # training file, and a Subset has no get_labels. Weighting the whole file
+    # there would count the validation windows too, so index through.
+    if isinstance(dataset, torch.utils.data.Subset):
+        labels = np.asarray(dataset.dataset.get_labels())[np.asarray(dataset.indices)]
+    else:
+        labels = np.asarray(dataset.get_labels())
+    if labels is None or labels.dtype == object:
+        raise SystemExit("--class_weight needs labelled training data")
+    counts = np.bincount(labels, minlength=num_classes).astype(np.float64)
+    with np.errstate(divide='ignore'):
+        w = np.where(counts > 0, len(labels) / (num_classes * np.maximum(counts, 1)), 0.0)
+    present = counts > 0
+    if present.any():
+        w = w / w[present].mean()
+    return torch.tensor(w, dtype=torch.float32)
 
 
 ############################################################
@@ -339,8 +383,21 @@ def eval_one_epoch(epoch, rank, model, loader, device, criterion, desc_prefix="E
     kappa = cohen_kappa_score(y_true, y_pred)
     weighted_f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
     
+    # sklearn routes on the shape of y_true, not on y_prob: with two classes
+    # present it calls the binary path, which rejects a 2-column y_score with
+    # "y should be a 1d array". Passing multi_class='ovo' does not change that.
+    # Left to the except below it becomes a silent NaN, and --select_by auroc
+    # then never improves on its initial value, so no checkpoint is ever saved.
     try:
-        auroc = roc_auc_score(y_true, y_prob, multi_class='ovo', average='macro')
+        n_seen = len(np.unique(y_true))
+        if n_seen < 2:
+            # AUROC is undefined when the split holds a single class. This is
+            # real on a per-subject test fold, so it is not an error.
+            auroc = float('nan')
+        elif y_prob.shape[1] == 2:
+            auroc = roc_auc_score(y_true, y_prob[:, 1])
+        else:
+            auroc = roc_auc_score(y_true, y_prob, multi_class='ovo', average='macro')
     except Exception:
         auroc = float('nan')
 
@@ -555,12 +612,20 @@ def main_worker(rank, world_size, args):
               f"held out of weight decay", flush=True)
     
     # Loss function
+    cls_weight = class_weights_from(train_ds, args.num_classes, args.class_weight)
+    if cls_weight is not None:
+        cls_weight = cls_weight.to(device)
+        if rank == 0:
+            print(f"Class weights ({args.class_weight}): "
+                  + " ".join(f"{w:.3f}" for w in cls_weight.tolist()))
     if args.label_smoothing > 0:
-        criterion = LabelSmoothingCrossEntropy(smoothing=args.label_smoothing)
+        criterion = LabelSmoothingCrossEntropy(smoothing=args.label_smoothing,
+                                               weight=cls_weight)
         if rank == 0:
             print(f"Using label smoothing: {args.label_smoothing}")
     else:
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(weight=cls_weight)
+    criterion = criterion.to(device)
     
     scaler = torch.cuda.amp.GradScaler(enabled=args.use_amp)
     
@@ -664,7 +729,16 @@ def main_worker(rank, world_size, args):
                 'weighted_f1': val_weighted_f1,
                 'auroc': val_auroc,
             }[args.select_by]
-            improved = _selection > best_selection + args.min_delta
+            # NaN compares False against everything, so a metric that is
+            # undefined for one epoch would silently stop the run from ever
+            # checkpointing again rather than just skipping that epoch. Say so
+            # instead: on a per-subject fold AUROC really can be undefined.
+            if _selection != _selection:                       # NaN
+                print(f"Epoch {epoch}: val {args.select_by} is undefined (nan); "
+                      f"not a selection candidate.")
+                improved = False
+            else:
+                improved = _selection > best_selection + args.min_delta
             if improved:
                 best_selection = _selection
                 best_val_loss = val_loss
@@ -818,6 +892,14 @@ def main():
     
     # Label smoothing
     parser.add_argument('--label_smoothing', type=float, default=0.1, help='Label smoothing factor')
+    parser.add_argument('--class_weight', type=str, default='none',
+                        choices=['none', 'balanced'],
+                        help="Weight the loss by inverse class frequency, measured on "
+                             "the training split. 'balanced' is needed on a task whose "
+                             "minority class is small enough that argmax at 0.5 would "
+                             "otherwise collapse onto the majority -- P300 is 1:5 -- "
+                             "and is a no-op change for a balanced task. Default 'none' "
+                             "so existing runs are unaffected.")
     
     # Model parameters - Feature Extractor
     parser.add_argument('--in_channels', type=int, default=8, help='Input channels')
