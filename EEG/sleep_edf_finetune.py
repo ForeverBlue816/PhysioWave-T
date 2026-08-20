@@ -18,7 +18,7 @@ to sit next to their published number rather than beside it:
                     i.e. 3000 samples
     * labels        W / N1 / N2 / N3 / REM, with the AASM merge of stages 3
                     and 4 into N3
-    * normalising   per-channel z-score inside each window
+    * normalising   per-channel z-score over the whole recording (see below)
 
 What is NOT reproduced is their evaluation protocol. EEGPT trains 40 epochs
 with no checkpoint callback and reports the validation fold, so the model is
@@ -71,6 +71,8 @@ MAPPING = {                        # AASM: stages 3 and 4 are one stage
 # braindecode's SleepPhysionet covers subjects 0..82 with these absent.
 MISSING = {39, 68, 69, 78, 79}
 
+VERBOSE = False    # set by --verbose
+
 # The subject list EEGPT's finetune_EEGPT_SleepEDF.py runs its 10 folds over.
 # Copied verbatim so the partition is theirs, not a reconstruction of theirs.
 EEGPT_SUBJECTS = [
@@ -95,6 +97,15 @@ def cache_subject(subject: int, cache_dir: str, overwrite: bool = False) -> str 
     from braindecode.preprocessing import create_windows_from_events
     from sklearn.preprocessing import scale as standard_scale
 
+    if not VERBOSE:
+        # 64 subjects of MNE's filter-design banner scrolls the progress bar
+        # off the screen and buries anything that actually went wrong.
+        import warnings
+
+        import mne
+        mne.set_log_level("ERROR")
+        warnings.filterwarnings("ignore", category=UserWarning, module="braindecode")
+
     ds = SleepPhysionet(subject_ids=[subject], crop_wake_mins=CROP_WAKE_MINS)
     preprocess(ds, [
         Preprocessor(lambda d: d * 1e6),                      # volts -> microvolts
@@ -105,8 +116,25 @@ def cache_subject(subject: int, cache_dir: str, overwrite: bool = False) -> str 
         window_size_samples=WINDOW_SAMPLES, window_stride_samples=WINDOW_SAMPLES,
         preload=True, mapping=MAPPING,
     )
-    # Per-channel z-score inside each window, applied after windowing so a
-    # window's scale does not depend on the rest of the night.
+    # Per-channel z-score. Note what this actually normalises: with no reject,
+    # picks or flat argument, create_windows_from_events returns an
+    # EEGWindowsDataset -- lazy views into the Raw -- so the preprocessor lands
+    # on the *recording*, not on each window. braindecode says so out loud
+    # ("Applying preprocessors ... to the mne.io.Raw of an EEGWindowsDataset").
+    #
+    # Measured on subject 0: per-window std ranges over [0.306, 3.836] where
+    # per-window scaling would pin it at 1.000, while the concatenation of all
+    # windows has mean 0.000 and std 0.999 per channel.
+    #
+    # This matches EEGPT rather than diverging from it. Their pinned
+    # braindecode 0.8.1 computes
+    #     use_mne_epochs = (reject is not None) or (picks is not None)
+    #                      or (flat is not None) or (drop_bad_windows is True)
+    # and they pass none of them, so their windows are lazy too.
+    #
+    # It is also the right choice for sleep staging: N3 is defined by
+    # high-amplitude slow waves, and per-window scaling would divide exactly
+    # that amplitude away.
     preprocess(windows, [Preprocessor(standard_scale, channel_wise=True)])
 
     X = np.stack([w[0] for w in windows]).astype(np.float32)   # (N, C, 3000)
@@ -259,7 +287,13 @@ def main() -> None:
                    help="comma-separated subject ids to cache; default is the "
                         "64 EEGPT runs its folds over")
     p.add_argument("--overwrite", action="store_true")
+    p.add_argument("--verbose", action="store_true",
+                   help="let MNE and braindecode log; off by default because "
+                        "64 subjects of filter-design banners bury the failures")
     args = p.parse_args()
+
+    global VERBOSE
+    VERBOSE = args.verbose
 
     # `--out-dir $PW_DATA_EEG/sleep_edf` with PW_DATA_EEG unset expands to
     # `/sleep_edf` before this process ever starts, and the failure that

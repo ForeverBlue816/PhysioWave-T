@@ -179,11 +179,40 @@ The preprocessing, matching EEGPT exactly:
 | scaling | volts → microvolts, then a 30 Hz lowpass |
 | windows | 30 s, non-overlapping, hypnogram-aligned → 3000 samples |
 | labels | W / N1 / N2 / N3 / REM, AASM merge of stages 3 and 4 |
-| normalising | per-channel z-score inside each window |
+| normalising | per-channel z-score over the whole recording — see below |
 
 `crop_wake_mins` is load bearing. Without it the recordings carry hours of
 pre-bed wake and the W class swamps everything; the class balance the script
 prints should come out near W 34% / N1 12% / N2 32% / N3 7% / REM 14%.
+
+### What the z-score normalises
+
+Not each window — the whole recording. With no `reject`, `picks` or `flat`
+argument, `create_windows_from_events` returns an `EEGWindowsDataset`, whose
+windows are lazy views into the Raw, so the preprocessor lands on the
+recording. braindecode says so during the run:
+
+```
+UserWarning: Applying preprocessors [...] to the mne.io.Raw of an EEGWindowsDataset.
+```
+
+Measured on subject 0: per-window std ranges over **[0.306, 3.836]**, where
+per-window scaling would pin it at 1.000, while all windows concatenated have
+mean 0.000 and std 0.999 per channel.
+
+This matches EEGPT rather than diverging from it. Their pinned braindecode
+0.8.1 computes
+
+```python
+use_mne_epochs = (reject is not None) or (picks is not None) \
+                 or (flat is not None) or (drop_bad_windows is True)
+```
+
+and they pass none of them, so their windows are lazy too.
+
+It is also the right choice here. N3 is *defined* by high-amplitude slow waves;
+z-scoring inside each window would divide exactly that amplitude away and take
+the strongest cue for the rarest class with it.
 
 **N3 is 7% of the data.** That is why balanced accuracy and Cohen's kappa are
 the headline metrics and plain accuracy is not — a model that never predicts
