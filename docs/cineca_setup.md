@@ -148,14 +148,40 @@ PYTHON=python bash scripts/run_tpami.sh all --dry-run
 ## Interactive GPU debugging
 
 ```bash
-srun --nodes=1 --gpus=4 --ntasks-per-node=4 --cpus-per-task=8 \
+srun --nodes=1 --ntasks-per-node=1 --cpus-per-task=32 --gres=gpu:4 \
+     --mem=494000 --time=1:00:00 \
      -A iscrb_wearusfm -p boost_usr_prod --pty /bin/bash
-source $HOME/pw/bin/activate && cd $HOME/PhysioWave-T
+cd $HOME/PhysioWave-T && source scripts/cineca_env.sh
 bash EEG/pretrain_eeg.sh > ~/eeg.log 2>&1 & nvitop
 ```
 
-Billing is by CPU hours with one GPU counted as eight CPUs, so four GPUs with
-eight CPUs each bills 32 CPU-hours per wall-clock hour.
+**One task, not four.** This shape matches the sbatch scripts in
+`scripts/slurm/`, and it has to: every launch script runs a single
+`torchrun --nproc_per_node=4`, which spawns the four worker processes itself.
+With `--ntasks-per-node=4` Slurm would start four *torchruns*, each spawning
+four workers, and sixteen processes would contend for four GPUs.
+
+The earlier form here — `--gpus=4 --ntasks-per-node=4 --cpus-per-task=8` — also
+stopped being accepted:
+
+```
+srun: error: Unable to allocate resources: More processors requested than permitted
+```
+
+If it comes back, the limits are visible with
+
+```bash
+sacctmgr show assoc user=$USER format=account,partition,qos,maxtres%40
+scontrol show partition boost_usr_prod | tr ' ' '\n' | grep -i "maxcpu\|qos\|tres"
+```
+
+Billing is by CPU hours with one GPU counted as eight CPUs, so a four-GPU node
+bills 32 CPU-hours per wall-clock hour either way.
+
+Preparation scripts (`EEG/download_p300.py`, `EEG/physio_p300_finetune.py`)
+need no GPU. Decoding on a compute node avoids the login node's cgroup killing
+the workers, and a serial partition is both cheaper and easier to schedule than
+`boost_usr_prod`.
 
 ## Batch jobs
 
