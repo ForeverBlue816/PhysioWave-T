@@ -851,13 +851,13 @@ def main():
                              '--patch_size so one weight backs one token; 0 decides a '
                              'single weight for the whole window.')
     parser.add_argument('--fold_synthesis', type=int, default=0,
-                        help='dynamic fold only: odd kernel size for a per-scale synthesis '
+                        help='any folding mode: odd kernel size for a per-scale synthesis '
                              'filter, shared across channels and initialised to a delta. '
                              '0 disables it. The bands reach the fold after soft gating '
                              'and nearest upsampling, so they are not phase-aligned; a '
                              'scalar weight cannot correct that and a 3-tap filter can.')
     parser.add_argument('--fold_shrinkage', action='store_true',
-                        help='dynamic fold only: soft-threshold each band before folding, '
+                        help='any folding mode: soft-threshold each band before folding, '
                              'with a learned threshold against a MAD noise estimate. '
                              'Starts at ~0.0025 sigma, i.e. off.')
     parser.add_argument('--fold_scale_dropout', type=float, default=0.0,

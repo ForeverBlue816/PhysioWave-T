@@ -391,3 +391,42 @@ def test_legacy_checkpoints_keep_their_fold_weight():
     missing, unexpected = fresh.load_state_dict(old_style, strict=False)
     assert not missing and not unexpected, (missing, unexpected)
     assert torch.equal(fresh.fold.scale_weight, trained.fold.scale_weight)
+
+
+def test_synthesis_filter_is_available_to_every_fold_mode():
+    """The filters must be separable from the mixture that follows them.
+
+    `dynamic + synthesis` beating `learned` says nothing about which half did
+    the work unless `mean + synthesis` can also be run.
+    """
+    from wavelet_modules import ScaleFold
+
+    x = torch.randn(2, 12, 64)
+    for mode in ("mean", "learned", "softmax", "dynamic"):
+        fold = ScaleFold(mode, num_scales=3, in_channels=4, patch_len=16,
+                         synthesis_kernel=3).eval()
+        assert fold.synth is not None, mode
+        assert fold(x).shape == (2, 4, 64)
+        # Delta-initialised, so every mode still starts where it did without it.
+        plain = ScaleFold(mode, num_scales=3, in_channels=4, patch_len=16).eval()
+        assert torch.allclose(fold(x), plain(x), atol=1e-5), mode
+    assert ScaleFold("none", 3, 4, synthesis_kernel=3).synth is None
+
+
+def test_synthesis_filter_actually_filters_once_it_moves():
+    """A smoothing kernel must change the fold, or the parameter is decorative."""
+    from wavelet_modules import ScaleFold
+
+    torch.manual_seed(0)
+    x = torch.randn(2, 12, 64)
+    fold = ScaleFold("mean", num_scales=3, in_channels=4, synthesis_kernel=3).eval()
+    before = fold(x)
+    with torch.no_grad():
+        # The de-staircase kernel: what a zero-order-hold upsample needs.
+        fold.synth.weight.copy_(torch.tensor([0.25, 0.5, 0.25]).view(1, 1, 3)
+                                .expand(3, 1, 3).contiguous())
+    after = fold(x)
+    assert not torch.allclose(before, after, atol=1e-3)
+    # Smoothing must reduce sample-to-sample variation, not merely perturb it.
+    rough = lambda t: t.diff(dim=-1).abs().mean()
+    assert rough(after) < rough(before)

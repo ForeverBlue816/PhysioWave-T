@@ -535,19 +535,25 @@ class ScaleFold(nn.Module):
             nn.init.zeros_(self.mlp[-1].bias)
             self.scale_logits = nn.Parameter(torch.zeros(num_scales))
             self.gamma = nn.Parameter(torch.tensor(float(gamma_init)))
-            if synthesis_kernel:
-                if synthesis_kernel % 2 == 0:
-                    raise ValueError("synthesis_kernel must be odd to stay centred")
-                self.synth = nn.Conv1d(num_scales, num_scales, synthesis_kernel,
-                                       padding=synthesis_kernel // 2,
-                                       groups=num_scales, bias=False)
-                with torch.no_grad():
-                    self.synth.weight.zero_()
-                    self.synth.weight[:, 0, synthesis_kernel // 2] = 1.0
-            else:
-                self.synth = None
-            # softplus(-6) = 0.0025, so the threshold is off but differentiable.
-            self.tau = nn.Parameter(torch.full((num_scales,), -6.0)) if shrinkage else None
+
+        # Conditioning the bands is orthogonal to how they are then combined, so
+        # it is available to every folding mode. Keeping it welded to 'dynamic'
+        # would make the two inseparable: a gain from `dynamic + synthesis`
+        # could be the mixture or the filters, and no run could tell you which.
+        if mode != 'none' and synthesis_kernel:
+            if synthesis_kernel % 2 == 0:
+                raise ValueError("synthesis_kernel must be odd to stay centred")
+            self.synth = nn.Conv1d(num_scales, num_scales, synthesis_kernel,
+                                   padding=synthesis_kernel // 2,
+                                   groups=num_scales, bias=False)
+            with torch.no_grad():
+                self.synth.weight.zero_()
+                self.synth.weight[:, 0, synthesis_kernel // 2] = 1.0
+        else:
+            self.synth = None
+        # softplus(-6) = 0.0025, so the threshold is off but differentiable.
+        self.tau = (nn.Parameter(torch.full((num_scales,), -6.0))
+                    if (shrinkage and mode != 'none') else None)
 
     # -- statistics -------------------------------------------------------- #
     def _block_stats(self, bands):
@@ -639,19 +645,20 @@ class ScaleFold(nn.Module):
         # would silently mix bands belonging to different channels.
         bands = spec.view(B, S, FC // S, T)
 
-        if self.mode == 'mean':
-            return bands.mean(dim=1)
-        if self.mode == 'learned':
-            return (bands * self.scale_weight.view(1, S, -1, 1)).sum(dim=1)
-        if self.mode == 'softmax':
-            w = self.scale_weight.softmax(dim=0)
-            return (bands * w.view(1, S, -1, 1)).sum(dim=1)
-
         proc = bands
         if self.tau is not None:
             proc = self._shrink(proc)
         if self.synth is not None:
             proc = self._synthesise(proc)
+
+        if self.mode == 'mean':
+            return proc.mean(dim=1)
+        if self.mode == 'learned':
+            return (proc * self.scale_weight.view(1, S, -1, 1)).sum(dim=1)
+        if self.mode == 'softmax':
+            w = self.scale_weight.softmax(dim=0)
+            return (proc * w.view(1, S, -1, 1)).sum(dim=1)
+
         alpha = self._alpha(bands)          # statistics read the *raw* bands
         base = proc.mean(dim=1)
         return base + self.gamma * ((alpha * proc).sum(dim=1) - base)
