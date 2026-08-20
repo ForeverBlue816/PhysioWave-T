@@ -320,8 +320,22 @@ class CrossScaleCAFFN(nn.Module):
             q = out.permute(0,2,3,1).reshape(B,-1,C)
             # Concatenate all previous scale features as keys/values
             ks = torch.cat([pf.permute(0,2,3,1).reshape(B,-1,C) for pf in prev_feats],dim=1)
-            # Apply cross-scale attention
-            attn_out,_ = self.attn(q,ks,ks)
+            # Apply cross-scale attention.
+            #
+            # need_weights=False is load bearing, not a tidy-up. Left at its
+            # default of True, nn.MultiheadAttention materialises the full
+            # [B, heads, len(q), len(ks)] score matrix and takes the unfused
+            # path; the weights are then discarded on the next line. That
+            # matrix is quadratic in the window length, which is harmless at
+            # the 256 samples of an sEMG window and fatal at the 3000 of a 30 s
+            # EEG epoch: at the third level, len(q)=3000 against len(ks)=6000,
+            # so B=64 with 4 heads needs 17.2 GiB for one level alone.
+            #
+            # Measured, B=8 and T=3000, activations saved for backward:
+            #     need_weights=True    2200.6 MiB
+            #     need_weights=False      3.7 MiB
+            # with the outputs agreeing to 2.8e-07, i.e. fp32 reassociation.
+            attn_out, _ = self.attn(q, ks, ks, need_weights=False)
             attn_out = attn_out.view(B,H,W,C).permute(0,3,1,2)
             # Add scaled attention output
             out = out + self.scale * attn_out

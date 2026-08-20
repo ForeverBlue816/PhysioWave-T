@@ -377,3 +377,53 @@ def test_wave_init_mode_reaches_the_filters():
     assert not torch.allclose(wa, wb)
     assert abs(float((wb[0, 0] ** 2).sum()) - 1.0) < 1e-5     # the padded one is unit norm
     assert float((wa[0, 0] ** 2).sum()) < 0.5                 # the stretched one is not
+
+
+def test_cross_scale_attention_does_not_materialise_its_score_matrix():
+    """need_weights=True is a silent memory cliff, quadratic in window length.
+
+    nn.MultiheadAttention's default returns the [B, heads, len(q), len(kv)]
+    score matrix and takes the unfused path to build it. CrossScaleCAFFN
+    discards those weights, but the allocation still happens: at a 30 s EEG
+    epoch it is 17.2 GiB for one decomposition level at batch 64, which is
+    where a Sleep-EDF run died. At an sEMG window it is 0.13 GiB and invisible,
+    so nothing about sEMG testing protects this.
+    """
+    import torch
+
+    from wavelet_modules import CrossScaleCAFFN
+
+    class Saved:
+        def __init__(self):
+            self.seen, self.total = set(), 0
+
+        def pack(self, t):
+            st = t.untyped_storage()
+            if st.data_ptr() not in self.seen:
+                self.seen.add(st.data_ptr())
+                self.total += st.nbytes()
+            return t
+
+        def unpack(self, t):
+            return t
+
+    torch.manual_seed(0)
+    B, C, T = 2, 4, 2048
+    m = CrossScaleCAFFN(C).train()
+    x = torch.randn(B, C, 1, T)
+    prev = [torch.randn(B, C, 1, T), torch.randn(B, C, 1, T)]
+
+    s = Saved()
+    with torch.autograd.graph.saved_tensors_hooks(s.pack, s.unpack):
+        out = m(x, prev)
+    assert out.shape == x.shape
+
+    # A materialised matrix would be B * heads * T * 2T * 4 bytes on its own.
+    matrix_bytes = B * 4 * T * (2 * T) * 4
+    assert s.total < matrix_bytes / 10, (s.total, matrix_bytes)
+    # And the cost must grow linearly in the window, not quadratically.
+    s2 = Saved()
+    with torch.autograd.graph.saved_tensors_hooks(s2.pack, s2.unpack):
+        m(torch.randn(B, C, 1, 2 * T),
+          [torch.randn(B, C, 1, 2 * T), torch.randn(B, C, 1, 2 * T)])
+    assert s2.total < 3 * s.total, (s.total, s2.total)

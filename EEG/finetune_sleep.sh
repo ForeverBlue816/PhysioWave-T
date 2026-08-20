@@ -23,6 +23,13 @@
 # not beating it is the expected starting point and is the argument for
 # pretraining, not against the architecture.
 #
+# Memory: after the need_weights fix in CrossScaleCAFFN, the whole model's
+# fp32 activations at T=3000 are 0.66 GiB at batch 16, 1.27 at 32 and 2.51 at
+# 64, against a 64 GiB card. Before it, the cross-scale attention alone wanted
+# 17.2 GiB per decomposition level at batch 64 and the run died in step 1.
+# BATCH_SIZE=64 is safe; 32 is the default only because more steps per epoch
+# suits the 20-epoch budget.
+#
 # Architecture notes:
 #   in_channels 2    Fpz-Cz and Pz-Oz, the two EEG derivations Sleep-EDF has
 #   patch_size 50    0.5 s at 100 Hz, the timescale of a sleep spindle
@@ -84,8 +91,8 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "Sleep-EDF fine-tuning: data=${DATA_DIR} out=${OUTPUT_DIR}"
 
-if [[ "${WARMUP_EPOCHS:-5}" -ge "${EPOCHS:-40}" ]]; then
-    _w=$(( ${EPOCHS:-40} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
+if [[ "${WARMUP_EPOCHS:-3}" -ge "${EPOCHS:-20}" ]]; then
+    _w=$(( ${EPOCHS:-20} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
     echo "WARNING: WARMUP_EPOCHS >= EPOCHS; using ${_w} (the cosine decay would never start)." >&2
     WARMUP_EPOCHS="${_w}"
 fi
@@ -122,8 +129,8 @@ fi
   --fold_kl "${FOLD_KL:-1e-3}" \
   --use_pos_embed \
   --pos_embed_type 2d \
-  --batch_size "${BATCH_SIZE:-64}" \
-  --epochs "${EPOCHS:-40}" \
+  --batch_size "${BATCH_SIZE:-32}" \
+  --epochs "${EPOCHS:-20}" \
   --lr "${LR:-3e-4}" \
   --min_lr "${MIN_LR:-1e-6}" \
   --weight_decay "${WEIGHT_DECAY:-1e-2}" \
@@ -132,7 +139,7 @@ fi
   --num_workers "${NUM_WORKERS:-8}" \
   --world_size "${NUM_GPUS}" \
   --scheduler "${SCHEDULER:-cosine}" \
-  --warmup_epochs "${WARMUP_EPOCHS:-5}" \
+  --warmup_epochs "${WARMUP_EPOCHS:-3}" \
   --num_classes "${NUM_CLASSES:-5}" \
   --pooling mean \
   --head_dropout "${HEAD_DROPOUT:-0.1}" \

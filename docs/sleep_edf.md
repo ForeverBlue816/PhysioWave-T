@@ -251,11 +251,12 @@ Defaults, all overridable by environment variable:
 | `IN_CHANNELS` | 2 | Fpz-Cz and Pz-Oz |
 | `PATCH_SIZE` | 50 | 0.5 s at 100 Hz — the timescale of a sleep spindle (0.5–2 s) and a K-complex (0.5–1.5 s). 3000 samples give 60 time patches, so the folded model sees 2 × 60 = **120 tokens** where the unfolded one would see 480 |
 | `EMBED_DIM` / `DEPTH` / `NUM_HEADS` | 384 / 6 / 6 | **11.02 M parameters** |
+| `BATCH_SIZE` | 32 | 1.27 GiB of fp32 activations on a 64 GiB card; 64 is 2.51 GiB and equally safe |
+| `EPOCHS` | 20 | |
 | `SCALE_FOLD` | `dynamic` | plus `FOLD_SYNTHESIS=3`, the configuration that scored best on DB5 |
 | `WAVE_INIT_MODE` | `pad` | see below |
 | `WAVELET_NAMES` | `sym4 sym5 db6 sym8 db8` | every one is ≤ 16 taps and orthogonal |
 | `SELECT_BY` | `balanced_acc` | the metric EEGPT reports |
-| `EPOCHS` | 40 | EEGPT's budget |
 
 ## 5. Why the wavelet set changed
 
@@ -302,7 +303,35 @@ env $BASE WAVE_INIT_MODE=pad WAVELET_NAMES="sym4 sym5 db6 sym8 db8" \
   OUTPUT_DIR=$R/db5_padinit bash EMG/finetune_emg.sh
 ```
 
-## 6. Reading the result
+## 6. If it runs out of memory
+
+It did once, and the cause was not the model. `CrossScaleCAFFN`'s cross-scale
+attention runs at full temporal resolution, and `nn.MultiheadAttention`
+defaults to `need_weights=True`, which materialises the whole
+`[B, heads, len(q), len(kv)]` score matrix and takes the unfused path. The
+weights are then thrown away on the next line.
+
+That matrix is quadratic in the window length. At an sEMG window of 256 samples
+it is 0.13 GiB and nobody notices. At a 30 s EEG epoch, the third decomposition
+level attends 3000 queries against 6000 keys, so batch 64 with 4 heads needs
+**17.2 GiB for that one level** — which is exactly the allocation the first
+Sleep-EDF run died on.
+
+Measured at B=8, T=3000, activations saved for backward:
+
+| | saved | outputs agree to |
+|---|---|---|
+| `need_weights=True` | 2200.6 MiB | — |
+| `need_weights=False` | 3.7 MiB | 2.8e-07 |
+
+A 595x reduction with no change to the mathematics. Fixed; the whole model at
+T=3000 now saves 0.66 GiB at batch 16, 1.27 at 32, 2.51 at 64.
+
+If you hit OOM anyway, lower `BATCH_SIZE` — but check first that you have the
+fix, because before it no batch size small enough to fit would have been large
+enough to be worth running.
+
+## 7. Reading the result
 
 ```bash
 python scripts/inspect_checkpoint.py $OUTPUT_DIR/best_model.pth \
