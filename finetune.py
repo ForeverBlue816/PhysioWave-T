@@ -74,6 +74,20 @@ class LabelSmoothingCrossEntropy(nn.Module):
             return loss
 
 
+def _labels_of(dataset):
+    """Every label of a dataset, or None when it exposes none.
+
+    get_labels() is what dataset.py provides; ``_labels`` is the attribute
+    behind it and is read as a fallback so a stale dataset.py degrades into a
+    message rather than an AttributeError raised after DDP, the model and the
+    optimizer have all been built.
+    """
+    getter = getattr(dataset, 'get_labels', None)
+    if callable(getter):
+        return getter()
+    return getattr(dataset, '_labels', None)
+
+
 def class_weights_from(dataset, num_classes, mode):
     """Inverse-frequency class weights from a labelled dataset, normalised to mean 1.
 
@@ -87,14 +101,30 @@ def class_weights_from(dataset, num_classes, mode):
     if mode == 'none':
         return None
     # train_ds is a Subset when the validation split is carved out of the
-    # training file, and a Subset has no get_labels. Weighting the whole file
-    # there would count the validation windows too, so index through.
+    # training file, and a Subset has no labels of its own. Weighting the whole
+    # file there would count the validation windows too, so index through.
     if isinstance(dataset, torch.utils.data.Subset):
-        labels = np.asarray(dataset.dataset.get_labels())[np.asarray(dataset.indices)]
+        labels = _labels_of(dataset.dataset)
+        if labels is not None:
+            labels = np.asarray(labels)[np.asarray(dataset.indices)]
     else:
-        labels = np.asarray(dataset.get_labels())
-    if labels is None or labels.dtype == object:
-        raise SystemExit("--class_weight needs labelled training data")
+        labels = _labels_of(dataset)
+    if labels is None:
+        raise SystemExit(
+            "--class_weight needs labels, and this dataset exposes none.\n\n"
+            "  Expected TimeSeriesDataset.get_labels(), added to dataset.py in\n"
+            "  the same commit as this function. If dataset.py has it and you\n"
+            "  still see this, a stale copy is being imported -- check with\n\n"
+            "      python -c \'import dataset; print(dataset.__file__)\'\n\n"
+            "  and clear the bytecode cache:\n\n"
+            "      find . -name __pycache__ -type d -exec rm -rf {} +\n\n"
+            "  --class_weight none skips this entirely."
+        )
+    labels = np.asarray(labels)
+    if labels.dtype == object or not np.issubdtype(labels.dtype, np.integer):
+        raise SystemExit(
+            f"--class_weight needs integer labels, got dtype {labels.dtype}"
+        )
     counts = np.bincount(labels, minlength=num_classes).astype(np.float64)
     with np.errstate(divide='ignore'):
         w = np.where(counts > 0, len(labels) / (num_classes * np.maximum(counts, 1)), 0.0)
