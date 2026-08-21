@@ -22,6 +22,22 @@
 #
 # Every path below is an environment variable with a default, so a single
 # `sbatch --export=ALL,PW_CKPT_ROOT=...` overrides it without editing this file.
+#
+# Two jobs in one file, and you often want only the first
+# ------------------------------------------------------
+#   1. export the PW_* paths
+#   2. load the cineca-ai module and activate ${PW_VENV}, for training
+#
+# The data preparation scripts need (1) and nothing from (2) -- no CUDA, no
+# torch -- and (2) actively gets in their way, because activating ${PW_VENV}
+# replaces whatever environment they were being run from. So:
+#
+#     PW_VARS_ONLY=1 source scripts/cineca_env.sh
+#
+# exports the paths and touches neither the modules nor the virtualenv, and can
+# be sourced before or after `source $HOME/pwprep/bin/activate` without
+# disturbing it. PW_SKIP_MODULES=1 is the narrower version: skip the module
+# load, still activate ${PW_VENV}.
 # =============================================================================
 
 # --------------------------------------------------------------------------- #
@@ -62,7 +78,13 @@ pw_module_is_loaded() {
     return 1
 }
 
-if [[ "${PW_ON_CINECA}" -eq 1 ]]; then
+if [[ "${PW_ON_CINECA}" -eq 1 && "${PW_VARS_ONLY:-0}" == "1" ]]; then
+    # Paths only. Nothing here loads a module or activates a virtualenv, so
+    # whatever environment is active stays active -- which is the point: the
+    # preparation scripts run under $HOME/pwprep and want PW_DATA_EEG, not
+    # torch.
+    PW_VENV="${PW_VENV:-${VIRTUAL_ENV:-<none>}}"
+elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     if ! type -t module >/dev/null 2>&1; then
         # Non-login shells do not always have the module function defined.
         # shellcheck disable=SC1091

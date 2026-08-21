@@ -65,25 +65,24 @@ the epoching is driven by the EDF's own annotations rather than by a dataset
 class.
 
 ```bash
-source scripts/cineca_env.sh          # FIRST: exports PW_DATA_EEG, PW_CKPT_ROOT
-source $HOME/pwprep/bin/activate      # SECOND: puts mne on PATH
-python -c "import mne; print(mne.__version__)"
+source $HOME/pwprep/bin/activate
+PW_VARS_ONLY=1 source scripts/cineca_env.sh
+python -c "import sys, mne; print(sys.prefix, mne.__version__)"
 ```
 
-**The order matters and is not the obvious one.** `scripts/cineca_env.sh`
-activates its own virtualenv (`$HOME/pw`, at
-[scripts/cineca_env.sh:88-93](../scripts/cineca_env.sh#L88-L93)), so sourcing it
-*after* `pwprep` silently replaces `pwprep` — the prompt flips from `(pwprep)`
-to `(pw)` and `import mne` then fails. Source the environment first and activate
-`pwprep` on top of it.
+**`PW_VARS_ONLY=1` matters.** `scripts/cineca_env.sh` does two jobs: export the
+`PW_*` paths, and set up the *training* environment by loading the cineca-ai
+module and activating `$HOME/pw`. Steps 2 and 3 need the first and nothing from
+the second — no CUDA, no torch — and the second gets in the way, because
+activating `$HOME/pw` replaces `pwprep`. Plain `source scripts/cineca_env.sh`
+flips the prompt from `(pwprep)` to `(pw)` and `import mne` then fails.
 
-If `module load cineca-ai/4.3.0` errors on the login node, `PW_SKIP_MODULES=1
-source scripts/cineca_env.sh` skips the module step. The download and
-preparation need no CUDA, so that is harmless here — but fix it before step 4,
-because training does.
+`PW_VARS_ONLY=1` touches neither the modules nor the virtualenv, so the order
+above is not load-bearing and the `cineca-ai/4.3.0` module error cannot appear.
+Step 4 sources the script normally, because training is what the module and
+`$HOME/pw` are for.
 
-Verified against mne 1.12.1. Steps 2 and 3 run in `pwprep`; **training runs in
-the normal environment**, so `deactivate` before step 4.
+The `sys.prefix` in the check must end in `pwprep`. Verified against mne 1.12.1.
 
 ## 2. Download
 
@@ -91,11 +90,16 @@ the normal environment**, so `deactivate` before step 4.
 Small enough that there is no reason to fetch a subset.
 
 ```bash
-source scripts/cineca_env.sh
 source $HOME/pwprep/bin/activate
+PW_VARS_ONLY=1 source scripts/cineca_env.sh
 
 python EEG/download_p300.py --dest $PW_DATA_EEG/erpbci
 ```
+
+If `--dest` comes out as `/erpbci`, `$PW_DATA_EEG` was empty: your shell expands
+it before the script starts, so sourcing the environment afterwards is too late.
+The script says so rather than failing on a permission error at the filesystem
+root.
 
 Run it where there is internet — on Leonardo that is a login node; compute
 nodes have no route out and the script says so rather than hanging.
