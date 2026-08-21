@@ -536,12 +536,34 @@ def main() -> None:
             # Writing a 0-epoch HDF5 and printing "Wrote ..." is the failure
             # this script exists to avoid: the trainer would load it, report a
             # loss over nothing, and look like it ran.
-            for n in empty:
-                os.remove(os.path.join(args.out_dir, f"{n}.h5"))
+            # Remove ALL three, not only the empty ones. Deleting just the
+            # empty file leaves a directory holding a train.h5 and a test.h5
+            # that look finished, and the next run of the trainer reports
+            # "missing val.h5" -- pointing at the one file that is *not* the
+            # problem. Worse, those survivors are short: the run that produced
+            # this had two subjects fail to cache, so the train.h5 it left
+            # behind was missing one of them, and had the validation subject
+            # happened to be cached it would have trained on a six-subject
+            # corpus without saying so.
+            removed = []
+            for n in ("train", "val", "test"):
+                f_ = os.path.join(args.out_dir, f"{n}.h5")
+                if os.path.exists(f_):
+                    os.remove(f_)
+                    removed.append(n)
+            j_ = os.path.join(args.out_dir, "split.json")
+            if os.path.exists(j_):
+                os.remove(j_)
             raise SystemExit(
-                f"\n{', '.join(empty)} came out empty -- no cached subject had "
-                f"any epochs.\nThe cache stage has not run, or it failed. "
-                f"Removed the empty file(s); nothing usable was written."
+                f"\n{', '.join(empty)} came out empty -- no cached subject in "
+                f"it had any epochs.\nThe cache stage has not run for those "
+                f"subjects, or it failed.\n\n"
+                f"  Removed {', '.join(removed)}.h5 and split.json so nothing "
+                f"half-built is left behind.\n"
+                f"  Fill the cache, then rerun this stage -- cached subjects "
+                f"are skipped:\n\n"
+                f"      python EEG/physio_p300_finetune.py --edf-dir {args.edf_dir} \\\n"
+                f"          --out-dir {args.out_dir} --stage cache --jobs 1"
             )
         overlap = (set(split["train"]) & set(split["val"])) | \
                   (set(split["train"]) & set(split["test"])) | \
