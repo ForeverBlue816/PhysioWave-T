@@ -49,6 +49,21 @@
 #                    reports 0.833.
 #   select_by auroc  what EEGPT monitors for binary tasks (their Appendix D),
 #                    and the metric least disturbed by the class imbalance.
+#   epochs 15        was 30. Sleep-EDF peaked at epoch 4 twice -- once out of
+#                    20 and once out of 10, under different warmup and LR
+#                    schedules -- and P300's training fold is 17.6k windows
+#                    against Sleep-EDF's 97k, so it has less to fit and
+#                    saturates no later. warmup is 2, not 3: at 15 epochs a
+#                    3-epoch warmup is a fifth of the budget.
+#
+# Fold 0 baseline at the previous defaults (30 epochs), for anything compared
+# against it later:
+#
+#   AUROC 0.7463   BalAcc 0.6604   Kappa 0.2837
+#
+# against EEGPT's 0.7168 / 0.6502 / 0.2999. Ahead on the two threshold-free
+# metrics and behind on kappa, which is the signature of a good ranking read at
+# the wrong operating point rather than of a worse model.
 #
 # Comments sit on their own lines on purpose: a `#` after a trailing `\` does
 # not comment out anything, it breaks the continuation.
@@ -98,8 +113,8 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "PhysioP300 fine-tuning: fold=${FOLD} data=${DATA_DIR} out=${OUTPUT_DIR}"
 
-if [[ "${WARMUP_EPOCHS:-3}" -ge "${EPOCHS:-30}" ]]; then
-    _w=$(( ${EPOCHS:-30} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
+if [[ "${WARMUP_EPOCHS:-2}" -ge "${EPOCHS:-15}" ]]; then
+    _w=$(( ${EPOCHS:-15} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
     echo "WARNING: WARMUP_EPOCHS >= EPOCHS; using ${_w} (the cosine decay would never start)." >&2
     WARMUP_EPOCHS="${_w}"
 fi
@@ -137,7 +152,7 @@ fi
   --use_pos_embed \
   --pos_embed_type 2d \
   --batch_size "${BATCH_SIZE:-32}" \
-  --epochs "${EPOCHS:-30}" \
+  --epochs "${EPOCHS:-15}" \
   --lr "${LR:-3e-4}" \
   --min_lr "${MIN_LR:-1e-6}" \
   --weight_decay "${WEIGHT_DECAY:-1e-2}" \
@@ -146,7 +161,7 @@ fi
   --num_workers "${NUM_WORKERS:-8}" \
   --world_size "${NUM_GPUS}" \
   --scheduler "${SCHEDULER:-cosine}" \
-  --warmup_epochs "${WARMUP_EPOCHS:-3}" \
+  --warmup_epochs "${WARMUP_EPOCHS:-2}" \
   --num_classes "${NUM_CLASSES:-2}" \
   --class_weight "${CLASS_WEIGHT:-balanced}" \
   --pooling mean \
