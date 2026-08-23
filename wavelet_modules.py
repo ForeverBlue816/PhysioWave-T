@@ -574,6 +574,12 @@ class ScaleFold(nn.Module):
         # reg_loss is the KL(alpha || uniform) the trainer may add.
         self.alpha_mean = None
         self.reg_loss = None
+        self.alpha_std_time = None
+        self.alpha_std_chan = None
+        # Set True to have the last forward's full [B,C,N,S] survive in
+        # alpha_blocks; scripts/alpha_probe.py is what reads it.
+        self.keep_alpha = False
+        self.alpha_blocks = None
 
         if mode in ('learned', 'softmax'):
             # Uniform average at init: for 'learned' that is literally 1/S, for
@@ -617,6 +623,31 @@ class ScaleFold(nn.Module):
         # softplus(-6) = 0.0025, so the threshold is off but differentiable.
         self.tau = (nn.Parameter(torch.full((num_scales,), -6.0))
                     if (shrinkage and mode != 'none') else None)
+
+    def reset_fold_parameters(self):
+        """Restore the initialisation that makes this module equal ``mean``.
+
+        Separate from ``__init__`` because the owning model runs a generic
+        ``apply(_init_weights)`` after construction, and its nn.Linear branch
+        overwrites the zero output layer below. The model calls this afterwards;
+        keeping the definition here means there is only one of it.
+
+        The delta-initialised synthesis filters and the zero scale logits are
+        not touched by that sweep -- Conv1d and bare Parameters are not
+        nn.Linear -- but they are restored here too, so this is the whole
+        statement of "starts as mean" in one place.
+        """
+        with torch.no_grad():
+            if self.mode == 'dynamic':
+                nn.init.zeros_(self.mlp[-1].weight)
+                nn.init.zeros_(self.mlp[-1].bias)
+                self.scale_logits.zero_()
+            if self.synth is not None:
+                k = self.synth.weight.shape[-1]
+                self.synth.weight.zero_()
+                self.synth.weight[:, 0, k // 2] = 1.0
+            if self.tau is not None:
+                self.tau.fill_(-6.0)
 
     # -- statistics -------------------------------------------------------- #
     def _block_stats(self, bands):
@@ -666,11 +697,35 @@ class ScaleFold(nn.Module):
         # alpha deliberately non-uniform, so measuring the KL after it would
         # have the penalty pushing back against the regulariser it is paired
         # with, and would report a spread the model never uses at inference.
-        alpha = logits.softmax(-1)
-        self.alpha_mean = alpha.detach().mean(dim=(0, 1, 2))
+        alpha = logits.softmax(-1)                              # [B,C,N,S]
+        a = alpha.detach()
+        self.alpha_mean = a.mean(dim=(0, 1, 2))
+        # The mean above is the *marginal*: it averages over batch, channel and
+        # time block, so a weight that swings hard from block to block and one
+        # frozen at 1/S report the same [0.25, 0.25, 0.25, 0.25]. The whole
+        # claim of this mode is that the weight is decided per block, and the
+        # marginal is silent about it. These two are what carry it:
+        #
+        #   alpha_std_time  spread across time blocks, within one (sample,
+        #                   channel). Zero means the fold is static, whatever
+        #                   the marginal says.
+        #   alpha_std_chan  spread across channels at fixed time. Distinguishes
+        #                   "this recording favours a band" from "this moment
+        #                   in this channel does".
+        #
+        # Both are per scale, mean-reduced over the axes they are not measuring,
+        # and cost two reductions on a tensor already in hand.
+        self.alpha_std_time = (a.std(dim=2) if N > 1 else
+                               torch.zeros_like(a[:, :, 0])).mean(dim=(0, 1))
+        self.alpha_std_chan = (a.std(dim=1) if C > 1 else
+                               torch.zeros_like(a[:, 0])).mean(dim=(0, 1))
         # KL(alpha || uniform); zero weights contribute zero, hence the clamp.
         self.reg_loss = (alpha * (alpha.clamp_min(self.eps).log()
                                   + math.log(S))).sum(-1).mean()
+        # The full field, for the offline probe. Off by default: [B,C,N,S] is
+        # small next to the activations but there is no reason to hold it for
+        # every step of a run that will never look at it.
+        self.alpha_blocks = a if self.keep_alpha else None
 
         if self.training and self.scale_dropout > 0:
             keep = torch.rand_like(logits) >= self.scale_dropout
@@ -705,6 +760,7 @@ class ScaleFold(nn.Module):
     # -- forward ----------------------------------------------------------- #
     def forward(self, spec):
         self.alpha_mean, self.reg_loss = None, None
+        self.alpha_std_time = self.alpha_std_chan = self.alpha_blocks = None
         if self.mode == 'none':
             return spec
 

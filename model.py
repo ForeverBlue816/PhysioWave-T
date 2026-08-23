@@ -202,7 +202,23 @@ class BERTWaveletTransformer(nn.Module):
         
         # Weight initialization
         self.apply(self._init_weights)
-        
+        # apply() walks every submodule, so the generic nn.Linear branch above
+        # overwrites the zero-initialised output layer of ScaleFold's dynamic
+        # MLP with trunc_normal_(std=0.02). That silently breaks the property
+        # the mode is built on: with a non-zero output layer the mixing weights
+        # are already a function of the band statistics at step 0, so the fold
+        # does not start as the plain mean and the ladder
+        # none -> mean -> ... -> dynamic stops being single-variable.
+        #
+        # Measured before this line existed: alpha spanned [0.2487, 0.2512] at
+        # initialisation and its spread across time blocks was 4e-4 to 6e-4 --
+        # small, but the same order as what a trained fold has to be
+        # distinguished from. Restoring the module's own initialisation is left
+        # to the module, so there is one definition of it.
+        for m in self.modules():
+            if isinstance(m, ScaleFold):
+                m.reset_fold_parameters()
+
     def _init_weights(self, m):
         """Weight initialization"""
         if isinstance(m, nn.Linear):
@@ -328,6 +344,24 @@ class BERTWaveletTransformer(nn.Module):
     def scale_fold_alpha(self):
         """Mean mixing weight per scale from the last forward, or ``None``."""
         return self.fold.alpha_mean
+
+    def scale_fold_spread(self):
+        """``(std over time blocks, std over channels)`` per scale, or ``None``.
+
+        The mean returned by :meth:`scale_fold_alpha` averages over batch,
+        channel and time block, so a fold that swings from block to block and
+        one frozen at 1/S both report a flat vector. These say which it is:
+        alpha_std_time is the spread the "per block" claim rests on, and it is
+        zero for a static fold whatever the mean looks like.
+        """
+        return self.fold.alpha_std_time, self.fold.alpha_std_chan
+
+    def scale_fold_blocks(self):
+        """Last forward's full ``[B, C, N, S]``, or ``None`` unless enabled.
+
+        Set ``model.fold.keep_alpha = True`` first; scripts/alpha_probe.py does.
+        """
+        return self.fold.alpha_blocks
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         # Checkpoints written before ScaleFold existed keep the static weights

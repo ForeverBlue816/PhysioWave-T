@@ -368,6 +368,16 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
         alpha = core.scale_fold_alpha() if hasattr(core, 'scale_fold_alpha') else None
         if alpha is not None:
             line += ", alpha=[" + " ".join(f"{v:.3f}" for v in alpha.tolist()) + "]"
+            # alpha alone is the marginal over batch, channel and time block: a
+            # fold that swings per block and one frozen at 1/S print the same
+            # vector. sd_t is the spread across time blocks and is what the
+            # "weights decided per block" claim actually rests on -- if it stays
+            # at zero the fold is static and the mean will not say so.
+            spread = (core.scale_fold_spread()
+                      if hasattr(core, 'scale_fold_spread') else (None, None))
+            if spread[0] is not None:
+                line += (", sd_t=[" + " ".join(f"{v:.3f}" for v in spread[0].tolist()) + "]"
+                         + ", sd_c=[" + " ".join(f"{v:.3f}" for v in spread[1].tolist()) + "]")
         print(line)
     return avg_loss, avg_acc, current_lr
 
