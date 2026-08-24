@@ -92,6 +92,30 @@ WINDOW_SAMPLES = 512
 
 CLASS_NAMES = ["nontarget", "target"]
 
+# --------------------------------------------------------------------------- #
+# Channel metadata, written into every HDF5 so the trainer never parses a name.
+#
+# This montage is MONOPOLAR: 58 electrodes against one common reference, not 58
+# differences of electrode pairs. That is the opposite of Sleep-EDF and it is
+# the reason the encoder needs to be told which it is looking at -- "Cz" the
+# electrode and "Fz-Cz" the derivation are different measurements, and a code
+# that labelled them alike would be telling the model something false.
+#
+# A monopolar channel therefore has a position and no direction. Its two
+# endpoint indices are the SAME electrode, so the encoder's direction term is
+# exactly zero and its midpoint term is the electrode's own position. The
+# reference is deliberately not invented: erpbci's ear electrodes are dropped
+# before this point and standard_1020 has no scalp coordinate for them, so
+# subtracting a made-up reference position would be fabricating geometry.
+# --------------------------------------------------------------------------- #
+METADATA_SCHEMA_VERSION = 1
+COORDINATE_SOURCE = "mne_standard_1020"
+COORDINATE_TYPE = "template_not_subject_digitized"
+COORDINATE_SYSTEM = "RAS"
+COORDINATE_UNIT = "m"
+DERIVATION_TYPE = "monopolar_common_reference"
+MONTAGE_TYPE = "erpbci_58"
+
 # The 64 EEG channels in the EDF, in EDF order. The remaining six -- EARL,
 # EARR, VEOGL, VEOGR, HEOGL, HEOGR -- are ocular and reference and are dropped.
 EEG_64 = [
@@ -266,8 +290,122 @@ def loso_split(subjects: list[int], fold: int, seed: int = 7) -> dict[str, list[
     return {"train": sorted(train), "val": sorted(val), "test": sorted(test)}
 
 
+def electrode_coordinates(channels: list[str]) -> np.ndarray:
+    """``[C, 3]`` template positions, from MNE's standard_1020.
+
+    Read here, in preprocessing, and written into the HDF5. The training loop
+    must never import MNE: it runs where the environment is built for torch,
+    and a montage lookup at step time would make the model's behaviour depend
+    on which MNE happened to be installed.
+
+    Template coordinates, not this subject's digitised positions. erpbci ships
+    no digitisation; the HDF5 records the distinction rather than letting a
+    reader assume otherwise.
+    """
+    import mne
+    montage = mne.channels.make_standard_montage("standard_1020")
+    pos = montage.get_positions()["ch_pos"]
+    missing = [c for c in channels if c not in pos]
+    if missing:
+        raise SystemExit(
+            f"standard_1020 has no position for {missing}.\n"
+            f"  MNE {mne.__version__} names them differently, or the montage "
+            f"changed. Fix the channel list rather than guessing a coordinate."
+        )
+    return np.stack([np.asarray(pos[c], dtype=np.float32) for c in channels])
+
+
+def build_channel_metadata(channels: list[str]) -> dict:
+    """Every per-dataset field the trainer needs, as plain numpy.
+
+    One copy per file, not one per epoch: the montage is a property of the
+    recording set-up and identical for all of them.
+    """
+    _sys_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _sys_path not in sys.path:
+        sys.path.insert(0, _sys_path)
+    from channel_embedding import CHANNEL_VOCAB, UNK_ID, channel_id
+
+    ids = np.array([channel_id(c) for c in channels], dtype=np.int64)
+    unknown = [c for c, i in zip(channels, ids) if i == UNK_ID]
+    if unknown:
+        raise SystemExit(
+            f"{len(unknown)} channel(s) are not in the vocabulary: {unknown}\n"
+            f"  Append them to CHANNEL_VOCAB in channel_embedding.py -- append,\n"
+            f"  never reorder, since the ids are stored in every HDF5 and every\n"
+            f"  checkpoint. Left as UNK they would all share one embedding row.")
+    if len(set(ids.tolist())) != len(ids):
+        raise SystemExit(f"duplicate channels in {channels}")
+
+    xyz = electrode_coordinates(channels)
+    # Monopolar: each channel IS its electrode, so both endpoints are itself.
+    # The encoder reads that as "position, no direction" and marks the code
+    # monopolar; see the note at the top of this file.
+    own = np.arange(len(channels), dtype=np.int64)
+
+    unit = xyz / np.linalg.norm(xyz, axis=1, keepdims=True).clip(1e-8)
+
+    meta = {
+        "channel_names": np.array([c.encode() for c in channels], dtype="S32"),
+        "channel_ids": ids,
+        "electrode_names": np.array([c.encode() for c in channels], dtype="S32"),
+        "electrode_xyz": xyz.astype(np.float32),
+        "positive_electrode_index": own,
+        "negative_electrode_index": own.copy(),
+        "derivation_matrix": np.eye(len(channels), dtype=np.float32),
+        "channel_center_xyz": unit.astype(np.float32),
+        "valid_channel_mask": np.ones(len(channels), dtype=bool),
+    }
+    attrs = {
+        "metadata_schema_version": METADATA_SCHEMA_VERSION,
+        "coordinate_source": COORDINATE_SOURCE,
+        "coordinate_type": COORDINATE_TYPE,
+        "coordinate_system": COORDINATE_SYSTEM,
+        "coordinate_unit": COORDINATE_UNIT,
+        "sampling_rate": float(FS_OUT),
+        "derivation_type": DERIVATION_TYPE,
+        "montage_type": f"erpbci_{len(channels)}",
+        "channel_vocab_size": len(CHANNEL_VOCAB),
+    }
+    attrs["metadata_hash"] = metadata_hash(meta, attrs)
+    return {"datasets": meta, "attrs": attrs}
+
+
+def metadata_hash(datasets: dict, attrs: dict) -> str:
+    """A digest over everything the variants must agree on.
+
+    The trainer compares this across train/val/test. Two files differing in a
+    coordinate or a channel order would otherwise concatenate silently into a
+    corpus with no single montage.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for k in sorted(datasets):
+        h.update(k.encode())
+        h.update(np.ascontiguousarray(datasets[k]).tobytes())
+    for k in sorted(attrs):
+        if k == "metadata_hash":
+            continue
+        h.update(f"{k}={attrs[k]}".encode())
+    return h.hexdigest()[:32]
+
+
+def readable_metadata(bundle: dict) -> dict:
+    """The same facts as JSON, for split.json and for a human."""
+    d, a = bundle["datasets"], bundle["attrs"]
+    return {
+        **dict(a),
+        "channels": [c.decode() for c in d["channel_names"]],
+        "channel_ids": d["channel_ids"].tolist(),
+        "electrode_xyz": d["electrode_xyz"].tolist(),
+        "positive_electrode_index": d["positive_electrode_index"].tolist(),
+        "negative_electrode_index": d["negative_electrode_index"].tolist(),
+        "valid_channel_mask": d["valid_channel_mask"].tolist(),
+    }
+
+
 def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
-                channels: list[str]) -> dict:
+                channels: list[str], meta_bundle: dict | None = None) -> dict:
     """Concatenate cached subjects into one HDF5, growing it incrementally."""
     path = os.path.join(out_dir, f"{name}.h5")
     counts = np.zeros(len(CLASS_NAMES), dtype=np.int64)
@@ -294,6 +432,13 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
             total += n
         f.create_dataset("channel_names",
                          data=np.array([c.encode() for c in channels], dtype="S32"))
+        if meta_bundle is not None:
+            for k, v in meta_bundle["datasets"].items():
+                if k == "channel_names":
+                    continue                      # already written, above
+                f.create_dataset(k, data=v)
+            for k, v in meta_bundle["attrs"].items():
+                f.attrs[k] = v
     share = counts / max(counts.sum(), 1) * 100
     print(f"  {name:5s} {len(subjects):2d} subjects  {total:6d} epochs  "
           + "  ".join(f"{c}={v}({p:.1f}%)" for c, v, p in zip(CLASS_NAMES, counts, share)))
@@ -333,6 +478,11 @@ def main() -> None:
     p.add_argument("--eegpt-subjects", action="store_true",
                    help="use the eight EEGPT's prepare script actually writes "
                         "(subject 1 omitted) instead of the paper's nine")
+    p.add_argument("--no-channel-metadata", action="store_true",
+                   help="write the HDF5 without channel geometry. Only for "
+                        "reproducing a file made before the metadata existed; "
+                        "any --channel_encoding other than none then refuses "
+                        "to train on it.")
     p.add_argument("--all-channels", action="store_true",
                    help="keep all 64 EEG channels instead of the 58 EEGPT uses")
     p.add_argument("--allow-missing", action="store_true",
@@ -528,9 +678,21 @@ def main() -> None:
         meta = {"split": f"loso-fold{args.fold}", "fs": FS_OUT,
                 "window_samples": WINDOW_SAMPLES, "tmin": TMIN, "tmax": TMAX,
                 "channels": channels, "classes": CLASS_NAMES, "splits": {}}
+
+        # Built once and written into all three files, so train, val and test
+        # cannot disagree about what a channel is. The trainer refuses a set
+        # whose hashes differ.
+        bundle = None
+        if not args.no_channel_metadata:
+            bundle = build_channel_metadata(channels)
+            meta["channel_metadata"] = readable_metadata(bundle)
+            print(f"  channel metadata: schema v{METADATA_SCHEMA_VERSION} "
+                  f"hash {bundle['attrs']['metadata_hash']} "
+                  f"({COORDINATE_SOURCE}, {DERIVATION_TYPE})")
+
         for name in ("train", "val", "test"):
             meta["splits"][name] = write_split(name, split[name], cache_dir,
-                                               args.out_dir, channels)
+                                               args.out_dir, channels, bundle)
         empty = [n for n, m in meta["splits"].items() if m["epochs"] == 0]
         if empty:
             # Writing a 0-epoch HDF5 and printing "Wrote ..." is the failure

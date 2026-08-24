@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Summarise the Sleep-EDF channel-embedding ablation.
+Summarise a channel-embedding ablation.
 
-    python scripts/collect_sleep_channel_ablation.py <sweep_root> [--out-dir DIR]
+    python scripts/collect_channel_ablation.py <sweep_root> [--out-dir DIR]
+    python scripts/collect_channel_ablation.py <sweep_root> --classes nontarget,target
 
 Reads every ``<sweep_root>/fold*/C*/seed*/test_results.json`` and writes a CSV
 and a JSON beside them.
@@ -41,8 +42,10 @@ METRICS = [
     ("test_balanced_acc", "BalAcc"),
     ("test_weighted_f1", "WF1"),
     ("test_kappa", "Kappa"),
+    ("test_auroc", "AUROC"),
     ("test_acc", "Acc"),
 ]
+# Overridden by --classes. Only affects labelling; nothing is computed from it.
 CLASS_NAMES = ["W", "N1", "N2", "N3", "REM"]
 
 
@@ -75,12 +78,20 @@ def mean_sd(xs):
 
 
 def main() -> None:
+    global CLASS_NAMES
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("sweep_root")
     p.add_argument("--out-dir", default=None, help="default: <sweep_root>")
+    p.add_argument("--classes", default=None,
+                   help="comma-separated class names for the confusion matrix "
+                        "and per-class F1, in label order "
+                        "(default: %s)" % ",".join(CLASS_NAMES))
     args = p.parse_args()
     out_dir = args.out_dir or args.sweep_root
+
+    if args.classes:
+        CLASS_NAMES = [c.strip() for c in args.classes.split(",") if c.strip()]
 
     runs = load(args.sweep_root)
     if not runs:

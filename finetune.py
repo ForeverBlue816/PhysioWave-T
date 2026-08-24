@@ -160,8 +160,15 @@ class WarmupCosineSchedule(torch.optim.lr_scheduler.LambdaLR):
 CHANNEL_META_KEYS = (
     "channel_ids", "electrode_xyz", "positive_electrode_index",
     "negative_electrode_index", "valid_channel_mask", "electrode_names",
-    "bipolar_endpoints", "derivation_matrix", "channel_center_xyz",
+    "derivation_matrix", "channel_center_xyz",
 )
+#: Present only for montages where the field means something. A monopolar
+#: recording -- 58 electrodes against a common reference, as in erpbci -- has no
+#: electrode pairs, and writing a placeholder pair for each channel would be
+#: inventing geometry rather than recording it. Absence is the honest value, so
+#: it is not required; what IS required is that the files in one run agree about
+#: whether it is there.
+CHANNEL_META_OPTIONAL = ("bipolar_endpoints",)
 #: The subset that becomes tensors on the device. The rest is provenance and
 #: stays on the host -- the forward path takes numeric tensors only.
 CHANNEL_META_TENSORS = (
@@ -183,9 +190,12 @@ def read_channel_metadata(path):
         if missing:
             raise KeyError(
                 f"{os.path.basename(path)} has channel metadata but is missing "
-                f"{missing}.\n  It was written by an older schema. Rebuild it:\n"
-                f"    python EEG/sleep_edf_finetune.py --stage split ...")
+                f"{missing}.\n  It was written by an older schema. Rebuild it "
+                f"with the --stage split of whichever\n  preparation script "
+                f"made it (EEG/sleep_edf_finetune.py or "
+                f"EEG/physio_p300_finetune.py).")
         meta = {k: f[k][:] for k in CHANNEL_META_KEYS}
+        meta.update({k: f[k][:] for k in CHANNEL_META_OPTIONAL if k in f})
         meta["_attrs"] = {k: f.attrs[k] for k in f.attrs}
         meta["_channel_names"] = [c.decode() for c in f["channel_names"][:]]
     return meta
@@ -196,6 +206,10 @@ def _meta_signature(meta):
     if meta is None:
         return None
     sig = {k: np.asarray(meta[k]).tobytes() for k in CHANNEL_META_KEYS}
+    # Compared as present-or-absent too: one file carrying bipolar endpoints and
+    # another not means two different montages, whatever else matches.
+    sig.update({k: (np.asarray(meta[k]).tobytes() if k in meta else None)
+                for k in CHANNEL_META_OPTIONAL})
     sig["_hash"] = meta["_attrs"].get("metadata_hash")
     sig["_schema"] = meta["_attrs"].get("metadata_schema_version")
     sig["_names"] = tuple(meta["_channel_names"])

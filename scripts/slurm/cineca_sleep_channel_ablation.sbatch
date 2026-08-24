@@ -94,7 +94,7 @@ _rc=$?
 
 echo ""
 echo "============================================================"
-echo "  Summarise:  python scripts/collect_sleep_channel_ablation.py ${SWEEP_ROOT}"
+echo "  Summarise:  python scripts/collect_channel_ablation.py ${SWEEP_ROOT}"
 echo "  Resume:     sbatch scripts/slurm/cineca_sleep_channel_ablation.sbatch"
 echo "============================================================"
 exit "${_rc}"

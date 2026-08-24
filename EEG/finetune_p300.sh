@@ -111,7 +111,42 @@ else
 fi
 mkdir -p "${OUTPUT_DIR}"
 
+# ---------------------------------------------------------------------------
+# Channel embedding. Off by default: none/none is the run that existed before
+# the feature, and every ablation row is measured against it.
+#
+# This montage is MONOPOLAR -- 58 electrodes against a common reference, not 58
+# derivations. The `signed` encoder sees both endpoint indices pointing at the
+# same electrode, so its direction term is exactly zero and what remains is the
+# electrode's position, marked as monopolar. Nothing here claims a direction
+# that the montage does not have.
+#
+# These are VALUES, passed straight through, not `${VAR:+--flag}` presence
+# tests: FOO=0 is a non-empty string and that idiom would read it as "on".
+# ---------------------------------------------------------------------------
+CHANNEL_ENCODING="${CHANNEL_ENCODING:-none}"
+CHANNEL_INJECTION="${CHANNEL_INJECTION:-none}"
+CHANNEL_EMBED_DIM="${CHANNEL_EMBED_DIM:-64}"
+CHANNEL_FOLD_GATE_INIT="${CHANNEL_FOLD_GATE_INIT:-0.0}"
+CHANNEL_TOKEN_GATE_INIT="${CHANNEL_TOKEN_GATE_INIT:-0.0}"
+
+# The three block switches, all on, matching EEG/finetune_sleep.sh. A real
+# boolean: `${QK_NORM:+--qk_norm}` was a presence test in which QK_NORM=0 meant
+# on, and unsetting was the only way to say off.
+#
+# NOTE: runs recorded before this change had qk_norm=False and are not directly
+# comparable. Within one ablation every variant goes through this script.
+QK_NORM="${QK_NORM:-1}"
+case "${QK_NORM}" in
+    0|false|False|FALSE|no|off|"") QK_NORM_ARG=() ;;
+    *)                             QK_NORM_ARG=(--qk_norm) ;;
+esac
+
 echo "PhysioP300 fine-tuning: fold=${FOLD} data=${DATA_DIR} out=${OUTPUT_DIR}"
+echo "  channel: encoding=${CHANNEL_ENCODING} injection=${CHANNEL_INJECTION}" \
+     "dim=${CHANNEL_EMBED_DIM} gates=(${CHANNEL_FOLD_GATE_INIT},${CHANNEL_TOKEN_GATE_INIT})"
+echo "  block: norm=${NORM:-rmsnorm} ffn=${FFN:-swiglu}" \
+     "qk_norm=$([[ ${#QK_NORM_ARG[@]} -gt 0 ]] && echo True || echo False)"
 
 if [[ "${WARMUP_EPOCHS:-2}" -ge "${EPOCHS:-15}" ]]; then
     _w=$(( ${EPOCHS:-15} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
@@ -139,7 +174,7 @@ fi
   --dropout "${DROPOUT:-0.1}" \
   --norm "${NORM:-rmsnorm}" \
   --ffn "${FFN:-swiglu}" \
-  ${QK_NORM:+--qk_norm} \
+  ${QK_NORM_ARG[@]+"${QK_NORM_ARG[@]}"} \
   --scale_fold "${SCALE_FOLD:-dynamic}" \
   ${FOLD_PATCH_LEN:+--fold_patch_len "${FOLD_PATCH_LEN}"} \
   --fold_synthesis "${FOLD_SYNTHESIS:-3}" \
@@ -171,6 +206,11 @@ fi
   --select_by "${SELECT_BY:-auroc}" \
   --patience "${PATIENCE:-0}" \
   --min_delta "${MIN_DELTA:-0.0}" \
+  --channel_encoding "${CHANNEL_ENCODING}" \
+  --channel_injection "${CHANNEL_INJECTION}" \
+  --channel_embed_dim "${CHANNEL_EMBED_DIM}" \
+  --channel_fold_gate_init "${CHANNEL_FOLD_GATE_INIT}" \
+  --channel_token_gate_init "${CHANNEL_TOKEN_GATE_INIT}" \
   --seed "${SEED:-42}" \
   --output_dir "${OUTPUT_DIR}" \
   ${EXTRA:-}

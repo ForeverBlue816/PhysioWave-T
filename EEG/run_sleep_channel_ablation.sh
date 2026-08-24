@@ -203,8 +203,8 @@ echo ""
 echo "============================================================"
 echo "  ${ran} run(s), ${skipped} skipped as already finished, of ${total}"
 [[ ${#failed[@]} -gt 0 ]] && echo "  ${#failed[@]} failed: ${failed[*]}"
-echo "  python scripts/collect_sleep_channel_ablation.py ${SWEEP_ROOT}"
+echo "  python scripts/collect_channel_ablation.py ${SWEEP_ROOT}"
 echo "============================================================"
 
 [[ "${DRY_RUN}" == "1" ]] || \
-    python scripts/collect_sleep_channel_ablation.py "${SWEEP_ROOT}" || true
+    python scripts/collect_channel_ablation.py "${SWEEP_ROOT}" || true

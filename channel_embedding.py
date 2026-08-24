@@ -54,6 +54,20 @@ CHANNEL_VOCAB = list(_RESERVED) + [
     "Fp1-F3", "F3-C3", "C3-P3", "P3-O1",
     "Fp2-F4", "F4-C4", "C4-P4", "P4-O2",
     "Fz-Cz", "Cz-Pz",
+    # -- monopolar electrodes, common-referenced ------------------------------
+    # PhysioNet ERP-BCI (PhysioP300) records 58 of these. A monopolar name and
+    # a bipolar one are different strings and get different ids on purpose:
+    # "Cz" is an electrode, "Fz-Cz" is a difference of two, and a model that
+    # conflated them would be told the same thing about incomparable signals.
+    "Fp1", "Fpz", "Fp2",
+    "AF7", "AF3", "AFz", "AF4", "AF8",
+    "F7", "F5", "F3", "F1", "Fz", "F2", "F4", "F6", "F8",
+    "FT7", "FC5", "FC3", "FC1", "FCz", "FC2", "FC4", "FC6", "FT8",
+    "T7", "C5", "C3", "C1", "Cz", "C2", "C4", "C6", "T8",
+    "TP7", "CP5", "CP3", "CP1", "CPz", "CP2", "CP4", "CP6", "TP8",
+    "P9", "P7", "P5", "P3", "P1", "Pz", "P2", "P4", "P6", "P8", "P10",
+    "PO7", "PO3", "POz", "PO4", "PO8",
+    "O1", "Oz", "O2", "Iz",
 ]
 CHANNEL_TO_ID = {name: i for i, name in enumerate(CHANNEL_VOCAB)}
 
@@ -121,9 +135,18 @@ class ChannelEncoder(nn.Module):
             # split into "where" and "which way round" would carry no meaning.
             self.mid_proj = nn.Linear(GEOM_DIM, self.embed_dim, bias=False)
             self.dir_proj = nn.Linear(GEOM_DIM, self.embed_dim, bias=False)
-            # Marks the code as describing a derivation rather than a single
-            # electrode, so a later monopolar dataset is separable from this one.
+            # Marks what kind of thing the code describes. A bipolar
+            # derivation and a common-referenced electrode are not the same
+            # measurement, and a model trained on both must be able to tell
+            # which it is looking at.
+            #
+            # A monopolar channel has a position and no direction. Its two
+            # endpoint indices are equal, so `dirn` is exactly zero and the
+            # direction branch contributes nothing -- the degeneracy is a fact
+            # about the montage, and the encoder states it rather than
+            # inventing a reference electrode to subtract.
             self.bipolar_token = nn.Parameter(torch.zeros(self.embed_dim))
+            self.monopolar_token = nn.Parameter(torch.zeros(self.embed_dim))
 
         if mode != "none":
             self.norm = (nn.RMSNorm(self.embed_dim) if norm == "rmsnorm"
@@ -150,7 +173,11 @@ class ChannelEncoder(nn.Module):
             if hasattr(self, "mid_proj"):
                 nn.init.normal_(self.mid_proj.weight, std=0.02)
                 nn.init.normal_(self.dir_proj.weight, std=0.02)
+                # Both markers start at zero and neither draws from the global
+                # RNG, so adding the monopolar one left every bipolar model
+                # numerically identical -- only its parameter count moved.
                 self.bipolar_token.zero_()
+                self.monopolar_token.zero_()
 
     # -- forward ----------------------------------------------------------- #
     def forward(self, meta: dict) -> torch.Tensor | None:
@@ -184,7 +211,13 @@ class ChannelEncoder(nn.Module):
             # is the property the whole mode exists for.
             mid = 0.5 * (pa + pb)
             dirn = pa - pb
-            signed = self.mid_proj(mid) + self.dir_proj(dirn) + self.bipolar_token
+            # Equal endpoints mean a monopolar channel: mid is phi(A) and dirn
+            # is zero. Marked as such, so "electrode Cz" and "derivation X-Cz"
+            # do not arrive at the backbone wearing the same label.
+            same = (meta["positive_electrode_index"]
+                    == meta["negative_electrode_index"]).unsqueeze(-1)
+            marker = torch.where(same, self.monopolar_token, self.bipolar_token)
+            signed = self.mid_proj(mid) + self.dir_proj(dirn) + marker
             code = signed if code is None else code + signed
 
         code = self.norm(code)

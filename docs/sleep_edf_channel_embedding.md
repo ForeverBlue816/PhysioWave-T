@@ -225,7 +225,7 @@ rather than silently dropped from the mean.
 ### 4. Collect
 
 ```bash
-python scripts/collect_sleep_channel_ablation.py $PW_CKPT_ROOT/sleep_channel_ablation
+python scripts/collect_channel_ablation.py $PW_CKPT_ROOT/sleep_channel_ablation
 ```
 
 Writes `channel_ablation.csv` and `.json`, and prints per-run metrics, mean ± sd,
