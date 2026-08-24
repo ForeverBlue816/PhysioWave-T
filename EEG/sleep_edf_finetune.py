@@ -58,6 +58,46 @@ CROP_WAKE_MINS = 30
 # braindecode strips the "EEG " prefix in SleepPhysionet._load_raw.
 CHANNELS = ["Fpz-Cz", "Pz-Oz"]
 
+# --------------------------------------------------------------------------- #
+# Channel metadata
+#
+# Sleep-EDF's two signals are BIPOLAR DERIVATIONS, not four independent
+# electrodes and not two electrodes against a shared reference. Fpz-Cz and
+# Pz-Oz share nothing: Cz is the negative end of the first and Oz of the second.
+# Three things follow, and all three have been got wrong before:
+#
+#   * The recordings arrive already re-referenced. Calling set_eeg_reference()
+#     on them would re-reference a derivation and produce a signal that is not
+#     any montage.
+#   * DERIVATION_MATRIX states what the channels *mean*. It is never multiplied
+#     into the data -- the subtraction it describes already happened in the
+#     recording hardware.
+#   * The endpoints are declared here rather than parsed out of the name.
+#     `split("-")` happens to work for "Fpz-Cz" and does not for "T3", "A1-A2"
+#     or "EEG Fpz-Cz-REF"; a dataset adapter is the right place to know.
+# --------------------------------------------------------------------------- #
+ELECTRODES = ["Fpz", "Cz", "Pz", "Oz"]
+
+BIPOLAR_ENDPOINTS = [
+    ("Fpz", "Cz"),
+    ("Pz", "Oz"),
+]
+
+DERIVATION_MATRIX = np.array([
+    [+1.0, -1.0,  0.0,  0.0],
+    [ 0.0,  0.0, +1.0, -1.0],
+], dtype=np.float32)
+
+#: Bumped whenever the set of metadata datasets changes. The trainer refuses a
+#: file whose schema it does not know rather than reading a missing key as zero.
+METADATA_SCHEMA_VERSION = 1
+COORDINATE_SOURCE = "mne_standard_1020"
+COORDINATE_TYPE = "template_not_subject_digitized"
+COORDINATE_SYSTEM = "RAS"
+COORDINATE_UNIT = "m"
+DERIVATION_TYPE = "bipolar"
+MONTAGE_TYPE = "clinical_bipolar"
+
 CLASS_NAMES = ["W", "N1", "N2", "N3", "REM"]
 MAPPING = {                        # AASM: stages 3 and 4 are one stage
     "Sleep stage W": 0,
@@ -107,6 +147,31 @@ def cache_subject(subject: int, cache_dir: str, overwrite: bool = False) -> str 
         warnings.filterwarnings("ignore", category=UserWarning, module="braindecode")
 
     ds = SleepPhysionet(subject_ids=[subject], crop_wake_mins=CROP_WAKE_MINS)
+    # Put the channels in CHANNELS order explicitly and fail if they are not all
+    # there. The default order happens to be [Fpz-Cz, Pz-Oz] for this corpus, and
+    # relying on that would make the channel metadata -- which says row 0 is
+    # Fpz+ Cz- -- describe whichever row the EDF happened to put first. A
+    # silently transposed pair is not an error anywhere downstream; it is a
+    # model trained with the electrodes swapped.
+    for rec in ds.datasets:
+        have = list(rec.raw.ch_names)
+        missing = [c for c in CHANNELS if c not in have]
+        if missing:
+            raise RuntimeError(
+                f"subject {subject}: channels {missing} absent; the recording "
+                f"has {have}")
+        dupes = [c for c in CHANNELS if have.count(c) > 1]
+        if dupes:
+            raise RuntimeError(f"subject {subject}: channels {dupes} appear twice")
+        sfreq = float(rec.raw.info["sfreq"])
+        if abs(sfreq - FS) > 1e-6:
+            raise RuntimeError(
+                f"subject {subject}: sampling rate {sfreq} Hz, expected {FS}. "
+                f"Every window length and the metadata's sampling_rate assume "
+                f"{FS} Hz.")
+        rec.raw.pick(CHANNELS)          # picks AND reorders, in one call
+        assert list(rec.raw.ch_names) == CHANNELS, rec.raw.ch_names
+
     preprocess(ds, [
         Preprocessor(lambda d: d * 1e6),                      # volts -> microvolts
         Preprocessor("filter", l_freq=None, h_freq=LOWPASS_HZ, n_jobs=1),
@@ -199,7 +264,129 @@ def eegpt_fold_split(fold: int, val_ratio: float = 0.15,
             "test": sorted(held)}
 
 
-def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str) -> dict:
+def electrode_coordinates() -> np.ndarray:
+    """``[4, 3]`` template positions for ELECTRODES, from MNE's standard_1020.
+
+    Read here, in preprocessing, and written into the HDF5. The training loop
+    must never import MNE: it runs on compute nodes whose environment is built
+    for torch, and a montage lookup at step time would make the model's
+    behaviour depend on which MNE happened to be installed.
+
+    These are template coordinates, not this subject's digitised positions.
+    Sleep-EDF ships no digitisation, so nothing better exists for it, and the
+    HDF5 records the distinction rather than letting a reader assume.
+    """
+    import mne
+    montage = mne.channels.make_standard_montage("standard_1020")
+    pos = montage.get_positions()["ch_pos"]
+    missing = [e for e in ELECTRODES if e not in pos]
+    if missing:
+        raise SystemExit(
+            f"standard_1020 has no position for {missing}.\n"
+            f"  MNE {mne.__version__} names them differently, or the montage "
+            f"changed. Fix ELECTRODES rather than guessing a coordinate."
+        )
+    return np.stack([np.asarray(pos[e], dtype=np.float32) for e in ELECTRODES])
+
+
+def build_channel_metadata() -> dict:
+    """Every per-dataset field the trainer needs, as plain numpy.
+
+    One copy per file, not one per 30 s window: the montage is a property of the
+    recording set-up and is identical for all 100k of them. Storing it per
+    window would multiply a 200-byte fact by the corpus.
+    """
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from channel_embedding import CHANNEL_VOCAB, channel_id
+
+    xyz = electrode_coordinates()
+    index = {e: i for i, e in enumerate(ELECTRODES)}
+    pos_idx = np.array([index[a] for a, _ in BIPOLAR_ENDPOINTS], dtype=np.int64)
+    neg_idx = np.array([index[b] for _, b in BIPOLAR_ENDPOINTS], dtype=np.int64)
+
+    # Sanity against the matrix, so the two descriptions cannot drift apart.
+    for c, (p, n) in enumerate(zip(pos_idx, neg_idx)):
+        row = DERIVATION_MATRIX[c]
+        assert row[p] == +1.0 and row[n] == -1.0 and np.abs(row).sum() == 2.0, (
+            f"DERIVATION_MATRIX row {c} disagrees with BIPOLAR_ENDPOINTS")
+
+    # Midpoint of the two endpoints on the unit sphere, renormalised. This is a
+    # convenience for anything that wants one point per channel; it is NOT what
+    # the signed encoder consumes, because a midpoint is identical for A-B and
+    # B-A and the ordering is the whole point.
+    unit = xyz / np.linalg.norm(xyz, axis=1, keepdims=True).clip(1e-8)
+    centre = 0.5 * (unit[pos_idx] + unit[neg_idx])
+    centre = centre / np.linalg.norm(centre, axis=1, keepdims=True).clip(1e-8)
+
+    meta = {
+        "channel_names": np.array([c.encode() for c in CHANNELS], dtype="S32"),
+        "channel_ids": np.array([channel_id(c) for c in CHANNELS], dtype=np.int64),
+        "electrode_names": np.array([e.encode() for e in ELECTRODES], dtype="S32"),
+        "electrode_xyz": xyz.astype(np.float32),
+        "positive_electrode_index": pos_idx,
+        "negative_electrode_index": neg_idx,
+        "bipolar_endpoints": np.array(
+            [[a.encode(), b.encode()] for a, b in BIPOLAR_ENDPOINTS], dtype="S32"),
+        "derivation_matrix": DERIVATION_MATRIX.copy(),
+        "channel_center_xyz": centre.astype(np.float32),
+        "valid_channel_mask": np.ones(len(CHANNELS), dtype=bool),
+    }
+    attrs = {
+        "metadata_schema_version": METADATA_SCHEMA_VERSION,
+        "coordinate_source": COORDINATE_SOURCE,
+        "coordinate_type": COORDINATE_TYPE,
+        "coordinate_system": COORDINATE_SYSTEM,
+        "coordinate_unit": COORDINATE_UNIT,
+        "sampling_rate": float(FS),
+        "derivation_type": DERIVATION_TYPE,
+        "montage_type": MONTAGE_TYPE,
+        "channel_vocab_size": len(CHANNEL_VOCAB),
+    }
+    attrs["metadata_hash"] = metadata_hash(meta, attrs)
+    return {"datasets": meta, "attrs": attrs}
+
+
+def metadata_hash(datasets: dict, attrs: dict) -> str:
+    """A digest over everything a variant must agree on.
+
+    The trainer compares this across train/val/test and across multi-file
+    inputs. Two files that differ in a coordinate or an electrode order would
+    otherwise concatenate silently into a corpus with no single montage.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    for k in sorted(datasets):
+        h.update(k.encode())
+        h.update(np.ascontiguousarray(datasets[k]).tobytes())
+    for k in sorted(attrs):
+        if k == "metadata_hash":
+            continue
+        h.update(f"{k}={attrs[k]}".encode())
+    return h.hexdigest()[:32]
+
+
+def readable_metadata(bundle: dict) -> dict:
+    """The same facts as JSON, for split.json and for a human."""
+    d, a = bundle["datasets"], bundle["attrs"]
+    return {
+        **{k: v for k, v in a.items()},
+        "channels": [c.decode() for c in d["channel_names"]],
+        "channel_ids": d["channel_ids"].tolist(),
+        "electrodes": [e.decode() for e in d["electrode_names"]],
+        "electrode_xyz": d["electrode_xyz"].tolist(),
+        "bipolar_endpoints": [[a_.decode(), b_.decode()]
+                              for a_, b_ in d["bipolar_endpoints"]],
+        "derivation_matrix": d["derivation_matrix"].tolist(),
+        "channel_center_xyz": d["channel_center_xyz"].tolist(),
+        "positive_electrode_index": d["positive_electrode_index"].tolist(),
+        "negative_electrode_index": d["negative_electrode_index"].tolist(),
+        "valid_channel_mask": d["valid_channel_mask"].tolist(),
+    }
+
+
+def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
+                meta_bundle: dict | None = None) -> dict:
     """Concatenate cached subjects into one HDF5, growing it incrementally."""
     path = os.path.join(out_dir, f"{name}.h5")
     counts = np.zeros(len(CLASS_NAMES), dtype=np.int64)
@@ -224,8 +411,16 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str) ->
             subj.resize(total + n, axis=0); subj[total:total + n] = s
             counts += np.bincount(y, minlength=len(CLASS_NAMES))
             total += n
-        f.create_dataset("channel_names",
-                         data=np.array([c.encode() for c in CHANNELS], dtype="S32"))
+        if meta_bundle is None:
+            f.create_dataset("channel_names",
+                             data=np.array([c.encode() for c in CHANNELS], dtype="S32"))
+        else:
+            # One copy per file. channel_names is part of the bundle, so the
+            # legacy line above is the no-metadata fallback and not a duplicate.
+            for key, arr in meta_bundle["datasets"].items():
+                f.create_dataset(key, data=arr)
+            for key, val in meta_bundle["attrs"].items():
+                f.attrs[key] = val
     share = (counts / max(counts.sum(), 1) * 100)
     print(f"  {name:5s} {len(subjects):2d} subjects  {total:6d} windows  "
           + "  ".join(f"{c}={v}({p:.0f}%)" for c, v, p in zip(CLASS_NAMES, counts, share)))
@@ -286,6 +481,10 @@ def main() -> None:
     p.add_argument("--subjects", default=None,
                    help="comma-separated subject ids to cache; default is the "
                         "64 EEGPT runs its folds over")
+    p.add_argument("--no-channel-metadata", action="store_true",
+                   help="write the pre-channel-embedding HDF5 layout. Only "
+                        "--channel_encoding none can train on the result; this "
+                        "exists to reproduce a file from before the schema.")
     p.add_argument("--overwrite", action="store_true")
     p.add_argument("--verbose", action="store_true",
                    help="let MNE and braindecode log; off by default because "
@@ -371,10 +570,28 @@ def main() -> None:
             split = eegpt_fold_split(args.fold)
             tag = f"eegpt-fold{args.fold}"
         print(f"\nSplit ({tag}), by subject:")
+        bundle = None
+        if not args.no_channel_metadata:
+            try:
+                bundle = build_channel_metadata()
+            except ImportError as exc:
+                raise SystemExit(
+                    f"{exc}\n\nThe channel metadata needs mne for the "
+                    f"standard_1020 template.\n"
+                    f"  Install it, or pass --no-channel-metadata to write the "
+                    f"old format\n  (which only --channel_encoding none can train on)."
+                ) from exc
+            print(f"  channel metadata: schema v{bundle['attrs']['metadata_schema_version']} "
+                  f"hash {bundle['attrs']['metadata_hash']} "
+                  f"({bundle['attrs']['coordinate_source']})")
         meta = {"split": tag, "fs": FS, "window_samples": WINDOW_SAMPLES,
                 "channels": CHANNELS, "classes": CLASS_NAMES, "splits": {}}
+        if bundle is not None:
+            meta["channel_metadata"] = readable_metadata(bundle)
+            meta["metadata_hash"] = bundle["attrs"]["metadata_hash"]
         for name in ("train", "val", "test"):
-            meta["splits"][name] = write_split(name, split[name], cache_dir, args.out_dir)
+            meta["splits"][name] = write_split(name, split[name], cache_dir,
+                                               args.out_dir, bundle)
         empty = [n for n, m in meta["splits"].items() if m["windows"] == 0]
         if empty:
             # Writing a 0-window HDF5 and printing "Wrote ..." is the failure
