@@ -157,6 +157,9 @@ class WarmupCosineSchedule(torch.optim.lr_scheduler.LambdaLR):
 ############################################################
 #: Every metadata dataset a file may carry. Read as a block so a file with some
 #: of them is rejected rather than half-read.
+#: See test_results['result_schema_version'] for what each value means.
+RESULT_SCHEMA_VERSION = 2
+
 CHANNEL_META_KEYS = (
     "channel_ids", "electrode_xyz", "positive_electrode_index",
     "negative_electrode_index", "valid_channel_mask", "electrode_names",
@@ -1170,6 +1173,18 @@ def main_worker(rank, world_size, args):
             (test_loss, test_acc, test_balanced_acc, test_kappa,
              test_weighted_f1, test_auroc, y_true_test, y_pred_test) = test_metrics
             test_results = {
+                # Bumped when a result stops being comparable to the ones
+                # before it for a reason that is not visible in `provenance`.
+                #   1  the original
+                #   2  val and test are evaluated on the WHOLE set. Before this,
+                #      a DistributedSampler gave each rank a shard and nothing
+                #      gathered them, so every metric -- including the one model
+                #      selection used -- came from rank 0's 1/world_size.
+                # A sweep runner refuses to skip a run below its minimum, which
+                # is what a config comparison alone cannot catch: the stale runs
+                # had identical hyper-parameters and a different code path.
+                'result_schema_version': RESULT_SCHEMA_VERSION,
+                'test_samples': int(len(y_true_test)),
                 'test_loss': test_loss,
                 'test_acc': test_acc,
                 'test_balanced_acc': test_balanced_acc,

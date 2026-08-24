@@ -86,6 +86,13 @@ IN_CHANNELS="${IN_CHANNELS:-58}"
 _SWEEP_VARS=(EPOCHS WARMUP_EPOCHS BATCH_SIZE LR MIN_LR WEIGHT_DECAY
              DROPOUT HEAD_DROPOUT LABEL_SMOOTHING FOLD_KL SELECT_BY IN_CHANNELS)
 
+# The same values again, as NAME=VALUE, for the staleness check below. Derived
+# from _SWEEP_VARS rather than written out, so a hyper-parameter cannot be
+# applied to a run and then left out of the check that decides whether that run
+# is current.
+_check=()
+for _v in "${_SWEEP_VARS[@]}"; do _check+=("${_v}=${!_v}"); done
+
 EDF_DIR="${EDF_DIR:-${PW_DATA_EEG}/erpbci}"
 DATA_ROOT="${DATA_ROOT:-${PW_DATA_EEG}/p300_channel}"
 SWEEP_ROOT="${SWEEP_ROOT:-${PW_CKPT_ROOT}/p300_channel_ablation}"
@@ -184,10 +191,17 @@ for k in "${_folds[@]}"; do
       inj="$(variant_injection "${v}")"
       out="${SWEEP_ROOT}/fold${k}/${v}/seed${s}"
 
-      # Finished means it wrote its result file. A directory left by a job that
-      # died mid-epoch has a checkpoint and no result, and skipping on the
-      # directory alone would drop it from the mean without saying so.
-      if [[ "${FORCE}" != "1" && -s "${out}/test_results.json" ]]; then
+      # Finished means it wrote a result file recording the configuration this
+      # sweep is running. Both halves matter. A directory left by a job that
+      # died mid-epoch has a checkpoint and no result, so skipping on the
+      # directory alone would drop it from the mean without saying so -- and a
+      # result written before a bug fix, or under a different EPOCHS, sits in
+      # the table looking exactly like a current one while the paired delta
+      # blames the difference on whatever the sweep was varying.
+      if [[ "${FORCE}" != "1" ]] && python scripts/check_run_current.py \
+             "${out}/test_results.json" \
+             CHANNEL_ENCODING="${enc}" CHANNEL_INJECTION="${inj}" SEED="${s}" \
+             "${_check[@]}"; then
           skipped=$((skipped + 1)); continue
       fi
 

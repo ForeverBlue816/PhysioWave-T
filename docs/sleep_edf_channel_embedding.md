@@ -218,6 +218,33 @@ steps" are not distinguishable, and `CHANNEL_TOKEN_GATE_INIT` /
 `CHANNEL_FOLD_GATE_INIT` are the knobs that separate them -- at the cost of the
 exact-baseline-at-step-0 property.
 
+### When is a run "already finished"?
+
+Not "a `test_results.json` exists". The runner asks `scripts/check_run_current.py`
+what produced that result and re-runs it unless it matches:
+
+* every hyper-parameter above, plus the variant's encoding/injection and seed;
+* `result_schema_version`, which is bumped when a result stops being comparable
+  for a reason `provenance` cannot show. Version 2 means val and test were
+  scored on the **whole** set; version 1 results came from one rank's
+  `1/world_size` shard and are refused.
+
+This is not hypothetical. A result written before the evaluation fix had
+identical hyper-parameters and sat in the table looking current. `FORCE=1`
+re-runs everything regardless.
+
+Deleting a stale result by hand is the other way, and has its own trap:
+
+```bash
+source scripts/cineca_env.sh      # FIRST -- the runner sources it in a subshell,
+                                  # so $PW_CKPT_ROOT is unset in your own
+echo "[$PW_CKPT_ROOT]"            # empty here means the rm below deletes nothing
+rm -rf "$PW_CKPT_ROOT/<sweep>/fold0/C1"
+```
+
+`rm -rf` on a path that does not exist succeeds silently, so an unset variable
+turns the command into a no-op that reports success.
+
 `DRY_RUN=1` prints the commands without running them. A run counts as finished
 only when it wrote `test_results.json`, so a job killed mid-epoch is redone
 rather than silently dropped from the mean.
