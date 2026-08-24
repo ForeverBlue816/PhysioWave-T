@@ -152,12 +152,21 @@ total=0; ran=0; skipped=0; failed=()
 for k in "${_folds[@]}"; do
   d="${DATA_ROOT}/fold${k}"
 
-  # Is there anything to do for this fold before spending two minutes on a split?
+  # Is there anything to do for this fold, before spending two minutes on a
+  # split? The same staleness test as below, minus --test-file: this fold's
+  # test.h5 has been deleted by now, and a run that cannot be shown to be
+  # current counts as work, which builds the split and lets the real check --
+  # which does have the file -- decide.
   _todo=0
   for v in "${_variants[@]}"; do
     for s in "${_seeds[@]}"; do
-      [[ "${FORCE}" == "1" || ! -s "${SWEEP_ROOT}/fold${k}/${v}/seed${s}/test_results.json" ]] \
-          && _todo=$((_todo + 1))
+      if [[ "${FORCE}" == "1" ]] || ! python scripts/check_run_current.py \
+             "${SWEEP_ROOT}/fold${k}/${v}/seed${s}/test_results.json" \
+             CHANNEL_ENCODING="$(variant_encoding "${v}")" \
+             CHANNEL_INJECTION="$(variant_injection "${v}")" SEED="${s}" \
+             "${_check[@]}" 2>/dev/null; then
+          _todo=$((_todo + 1))
+      fi
     done
   done
   if [[ "${_todo}" -eq 0 ]]; then
@@ -199,7 +208,7 @@ for k in "${_folds[@]}"; do
       # the table looking exactly like a current one while the paired delta
       # blames the difference on whatever the sweep was varying.
       if [[ "${FORCE}" != "1" ]] && python scripts/check_run_current.py \
-             "${out}/test_results.json" \
+             "${out}/test_results.json" --test-file "${d}/test.h5" \
              CHANNEL_ENCODING="${enc}" CHANNEL_INJECTION="${inj}" SEED="${s}" \
              "${_check[@]}"; then
           skipped=$((skipped + 1)); continue

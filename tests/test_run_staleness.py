@@ -77,15 +77,21 @@ def test_a_missing_result_is_run(tmp_path):
 def test_an_older_evaluation_path_is_stale_despite_matching_config(tmp_path):
     """The case that actually happened: every hyper-parameter agreed.
 
-    Only the code differed, so nothing in `provenance` could show it. The
-    schema version is the lever that can.
+    Only the code differed, so nothing in `provenance` could show it. With no
+    test file to measure against, "cannot be shown current" has to mean stale --
+    erring the other way keeps exactly the results this check exists to remove.
     """
     stale = _result()
     del stale["result_schema_version"]                 # v1 results carry none
     stale["per_class_support"] = [558, 295, 1284, 457, 511]   # one rank's quarter
     rc, err = _check(tmp_path, stale)
     assert rc == 1
-    assert "result_schema_version" in err and "3105" in err
+    assert "result_schema_version" in err
+
+
+def test_an_explicit_old_version_is_stale(tmp_path):
+    rc, err = _check(tmp_path, _result(result_schema_version=1))
+    assert rc == 1 and "result_schema_version 1" in err
 
 
 @pytest.mark.parametrize("field,value", [
@@ -147,3 +153,50 @@ def test_every_sweep_variable_the_runners_pass_is_checkable():
         assert not unknown, (
             f"{runner} passes {unknown} to every run, but check_run_current.py "
             f"neither compares them nor lists them in UNCHECKABLE")
+
+
+# --------------------------------------------------------------------------- #
+# Results written before result_schema_version existed
+# --------------------------------------------------------------------------- #
+def _h5(tmp_path, n):
+    h5py = pytest.importorskip("h5py")
+    import numpy as np
+    p = tmp_path / "test.h5"
+    with h5py.File(p, "w") as f:
+        f.create_dataset("label", data=np.zeros(n, np.int64))
+    return str(p)
+
+
+def test_a_good_pre_version_result_is_kept(tmp_path):
+    """Most results predating the field are fine and must not be thrown away.
+
+    Condemning them all would have re-run four valid Sleep-EDF variants for
+    nothing. The test file answers the question the version stands in for.
+    """
+    r = _result()
+    del r["result_schema_version"]
+    rc, err = _check(tmp_path, r, SWEEP + ["--test-file", _h5(tmp_path, 12417)])
+    assert rc == 0, err
+
+
+def test_a_quarter_sized_pre_version_result_is_caught(tmp_path):
+    r = _result()
+    del r["result_schema_version"]
+    r["per_class_support"] = [558, 295, 1284, 457, 511]        # 3105
+    rc, err = _check(tmp_path, r, SWEEP + ["--test-file", _h5(tmp_path, 12417)])
+    assert rc == 1
+    assert "3105 of 12417" in err
+
+
+def test_a_pre_version_result_with_no_test_file_is_stale(tmp_path):
+    """Cannot be shown current, so it is re-run. Erring the other way would
+    keep exactly the results this check exists to remove."""
+    r = _result()
+    del r["result_schema_version"]
+    rc, err = _check(tmp_path, r, SWEEP + ["--test-file", str(tmp_path / "gone.h5")])
+    assert rc == 1 and "not available" in err
+
+
+def test_a_versioned_result_needs_no_test_file(tmp_path):
+    rc, _ = _check(tmp_path, _result(), SWEEP + ["--test-file", "/nonexistent.h5"])
+    assert rc == 0

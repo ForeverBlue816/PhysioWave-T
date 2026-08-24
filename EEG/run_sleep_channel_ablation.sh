@@ -174,7 +174,7 @@ for k in "${_folds[@]}"; do
       # the table looking exactly like a current one while the paired delta
       # blames the difference on whatever the sweep was varying.
       if [[ "${FORCE}" != "1" ]] && python scripts/check_run_current.py \
-             "${out}/test_results.json" \
+             "${out}/test_results.json" --test-file "${DATA_ROOT}/fold${k}/test.h5" \
              CHANNEL_ENCODING="${enc}" CHANNEL_INJECTION="${inj}" SEED="${s}" \
              "${_check[@]}"; then
           skipped=$((skipped + 1)); continue

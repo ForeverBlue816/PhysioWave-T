@@ -224,10 +224,21 @@ Not "a `test_results.json` exists". The runner asks `scripts/check_run_current.p
 what produced that result and re-runs it unless it matches:
 
 * every hyper-parameter above, plus the variant's encoding/injection and seed;
-* `result_schema_version`, which is bumped when a result stops being comparable
-  for a reason `provenance` cannot show. Version 2 means val and test were
-  scored on the **whole** set; version 1 results came from one rank's
-  `1/world_size` shard and are refused.
+* `result_schema_version`, bumped when a result stops being comparable for a
+  reason `provenance` cannot show. Version 2 means val and test were scored on
+  the **whole** set; version 1 came from one rank's `1/world_size` shard.
+
+A result written before that field existed is not condemned on sight -- most of
+them are fine. The runner passes the fold's `test.h5` and the check compares it
+against `per_class_support`, which is the confusion matrix's row sum and so
+counts exactly the windows the metrics came from. Equal to the file's length,
+the result stands; a quarter of it, and the reason is printed:
+
+```
+  stale: .../C1/seed42/test_results.json
+    scored on 3105 of 12417 test windows -- one rank's shard, from before val
+    and test stopped being split across ranks.
+```
 
 This is not hypothetical. A result written before the evaluation fix had
 identical hyper-parameters and sat in the table looking current. `FORCE=1`

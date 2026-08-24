@@ -62,6 +62,42 @@ FIELDS = {
 UNCHECKABLE = ("MIN_LR",)
 
 
+def test_set_size(test_file):
+    """How many windows the test file holds, or None if it cannot be read."""
+    if not test_file or not os.path.isfile(test_file):
+        return None
+    try:
+        import h5py
+    except ImportError:
+        return None
+    try:
+        with h5py.File(test_file, "r") as f:
+            for key in ("label", "labels", "y"):
+                if key in f:
+                    return int(f[key].shape[0])
+            return int(f["data"].shape[0]) if "data" in f else None
+    except OSError:
+        return None
+
+
+def scored_on_whole_test_set(result, test_file):
+    """True / False / None when it cannot be determined.
+
+    `per_class_support` is the row sum of the confusion matrix, so it counts
+    exactly the windows the reported metrics were computed from. Against the
+    test file's own length it settles the question outright -- which is what
+    made a quarter-sized result visible in the first place.
+    """
+    support = result.get("per_class_support")
+    n = result.get("test_samples")
+    if n is None and support:
+        n = sum(support)
+    total = test_set_size(test_file)
+    if n is None or total is None:
+        return None
+    return n == total
+
+
 def same(want: str, got) -> bool:
     if got is None:
         return False
@@ -80,7 +116,13 @@ def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__, file=sys.stderr)
         return 1
-    path, pairs = sys.argv[1], sys.argv[2:]
+    argv = list(sys.argv[1:])
+    test_file = None
+    if "--test-file" in argv:
+        i = argv.index("--test-file")
+        test_file = argv[i + 1] if i + 1 < len(argv) else None
+        del argv[i:i + 2]
+    path, pairs = argv[0], argv[1:]
 
     if not os.path.isfile(path) or os.path.getsize(path) == 0:
         return 1                       # nothing there; the runner runs it
@@ -91,15 +133,30 @@ def main() -> int:
         print(f"  stale: {path} is unreadable ({exc})", file=sys.stderr)
         return 1
 
-    schema = result.get("result_schema_version", 1)
-    if schema < MIN_RESULT_SCHEMA:
+    schema = result.get("result_schema_version")
+    if schema is None:
+        # Written before the field existed. Rather than condemn every such
+        # result -- most are perfectly good -- ask the question the version
+        # stands in for: was this scored on the whole test set, or on one
+        # rank's shard? The test file answers it directly.
+        verdict = scored_on_whole_test_set(result, test_file)
+        if verdict is False:
+            n = sum(result.get("per_class_support") or [0])
+            print(f"  stale: {path}", file=sys.stderr)
+            print(f"    scored on {n} of {test_set_size(test_file)} test "
+                  f"windows -- one rank's shard, from before val and test "
+                  f"stopped being split across ranks.", file=sys.stderr)
+            return 1
+        if verdict is None:
+            print(f"  stale: {path}", file=sys.stderr)
+            print(f"    no result_schema_version, and the test set is not "
+                  f"available to check what it was scored on. Re-running is "
+                  f"the only way to know.", file=sys.stderr)
+            return 1
+    elif schema < MIN_RESULT_SCHEMA:
         print(f"  stale: {path}", file=sys.stderr)
         print(f"    result_schema_version {schema} < {MIN_RESULT_SCHEMA} -- it "
               f"was produced by an older evaluation path.", file=sys.stderr)
-        if result.get("per_class_support"):
-            print(f"    scored on {sum(result['per_class_support'])} windows, "
-                  f"which for a v1 result is one rank's share of the test set.",
-                  file=sys.stderr)
         return 1
 
     prov = result.get("provenance")
