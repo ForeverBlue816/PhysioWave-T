@@ -186,6 +186,38 @@ sbatch scripts/slurm/cineca_sleep_channel_ablation.sbatch
 was in and resubmitting the same command resumes. Working through ten folds is
 several submissions, not one long allocation.
 
+### Hyper-parameters
+
+They live in `EEG/run_sleep_channel_ablation.sh`, not in the caller's shell:
+
+```
+EPOCHS 10   WARMUP_EPOCHS 1   BATCH_SIZE 32   LR 3e-4   MIN_LR 1e-6
+WEIGHT_DECAY 1e-2   DROPOUT 0.1   HEAD_DROPOUT 0.1   LABEL_SMOOTHING 0.1
+FOLD_KL 1e-3   SELECT_BY balanced_acc
+```
+
+Every run gets the same ones and the runner prints them before it starts. An
+ablation where one variant was launched with a different `EPOCHS` produces a
+paired delta that looks exactly like a real effect, and nothing in the output
+would say otherwise. Override for the whole sweep, never per variant:
+
+```bash
+EPOCHS=15 WEIGHT_DECAY=0.05 VARIANTS=C1,C2,C3,C4 SEEDS=42 \
+    bash EEG/run_sleep_channel_ablation.sh
+```
+
+`WARMUP_EPOCHS` is 1 rather than the script's own 3: at 10 epochs a 3-epoch
+warmup is 30% of the schedule and the cosine would spend most of the run still
+climbing. One epoch is 1031 steps at the default batch.
+
+Shorter training costs the channel branch more than it costs the backbone. The
+gates start at exactly zero and the projections only begin receiving gradient
+once a gate has moved, so a variant has fewer steps to get anywhere. If `g_f`
+and `g_t` are still near zero at the last epoch, "no effect" and "not enough
+steps" are not distinguishable, and `CHANNEL_TOKEN_GATE_INIT` /
+`CHANNEL_FOLD_GATE_INIT` are the knobs that separate them -- at the cost of the
+exact-baseline-at-step-0 property.
+
 `DRY_RUN=1` prints the commands without running them. A run counts as finished
 only when it wrote `test_results.json`, so a job killed mid-epoch is redone
 rather than silently dropped from the mean.
