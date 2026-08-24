@@ -175,6 +175,17 @@ works out near two hours -- a sweep, not a smoke. Use `NUM_GPUS=4` for the
 check, because one process never exercises the multi-rank path that the real
 runs take.
 
+As a batch job, which is how the full matrix should be run:
+
+```bash
+sbatch scripts/slurm/cineca_sleep_channel_ablation.sbatch
+```
+
+`SWEEP_ROOT` carries no job id and a run counts as finished only once it wrote
+`test_results.json`, so a job that hits the walltime loses at most the run it
+was in and resubmitting the same command resumes. Working through ten folds is
+several submissions, not one long allocation.
+
 `DRY_RUN=1` prints the commands without running them. A run counts as finished
 only when it wrote `test_results.json`, so a job killed mid-epoch is redone
 rather than silently dropped from the mean.
