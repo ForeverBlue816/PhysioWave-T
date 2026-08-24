@@ -15,10 +15,13 @@
 #   C4  signed  dual    both injection sites
 #   C5  hybrid  dual    whether a name and a geometry say different things
 #
-# Smoke (minutes, one GPU):
+# Plumbing check -- two runs, on the same four-GPU path the real ones take:
 #
-#   VARIANTS=C0,C1,C2,C3,C4 SEEDS=42,43,44 FOLDS=0 NUM_GPUS=1 EPOCHS=2 \
+#   VARIANTS=C0,C4 SEEDS=42 FOLDS=0 NUM_GPUS=4 EPOCHS=2 \
 #       bash EEG/run_sleep_channel_ablation.sh
+#
+# Not five variants times three seeds on one GPU. That is fifteen runs and a
+# couple of hours, and one process does not exercise the multi-rank path.
 #
 # Full (six variants x ten folds x three seeds = 180 runs -- read the note on
 # cost below before starting it):
@@ -136,9 +139,18 @@ for k in "${_folds[@]}"; do
           continue
       fi
       mkdir -p "${out}"
-      if DATA_DIR="${DATA_ROOT}/fold${k}" OUTPUT_DIR="${out}" \
-         CHANNEL_ENCODING="${enc}" CHANNEL_INJECTION="${inj}" \
-         SEED="${s}" NUM_GPUS="${NUM_GPUS}" ${EPOCHS:+EPOCHS="${EPOCHS}"} \
+      # Built as an array and handed to `env`, not written as a command prefix.
+      # Bash decides which words are assignments while PARSING, before any
+      # expansion, so a conditional prefix like ${EPOCHS:+EPOCHS="${EPOCHS}"}
+      # is not an assignment: it expands to the string `EPOCHS=2`, which then
+      # becomes the COMMAND NAME. Every run would die with
+      # "EPOCHS=2: command not found" the moment EPOCHS was set -- that is, in
+      # exactly the smoke run this script tells you to start with.
+      _env=(DATA_DIR="${DATA_ROOT}/fold${k}" OUTPUT_DIR="${out}"
+            CHANNEL_ENCODING="${enc}" CHANNEL_INJECTION="${inj}"
+            SEED="${s}" NUM_GPUS="${NUM_GPUS}")
+      [[ -n "${EPOCHS}" ]] && _env+=(EPOCHS="${EPOCHS}")
+      if env "${_env[@]}" \
          bash EEG/finetune_sleep.sh 2>&1 | tee "${out}/run.log"; then
           ran=$((ran + 1))
       else

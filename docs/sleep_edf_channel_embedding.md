@@ -152,14 +152,20 @@ OUTPUT_DIR=$PW_CKPT_ROOT/sleep_c4 bash EEG/finetune_sleep.sh
 ### 3. The whole matrix
 
 ```bash
-# smoke, one GPU, minutes
-VARIANTS=C0,C1,C2,C3,C4 SEEDS=42,43,44 FOLDS=0 NUM_GPUS=1 EPOCHS=2 \
+# plumbing check: two variants, one seed, the four-GPU path the real runs use
+VARIANTS=C0,C4 SEEDS=42 FOLDS=0 NUM_GPUS=4 EPOCHS=2 \
     bash EEG/run_sleep_channel_ablation.sh
 
 # full: 6 variants x 10 folds x 3 seeds = 180 runs, order of 60 GPU-hours
 VARIANTS=C0,C1,C2,C3,C4,C5 SEEDS=42,43,44 FOLDS=0,1,2,3,4,5,6,7,8,9 \
     NUM_GPUS=4 bash EEG/run_sleep_channel_ablation.sh
 ```
+
+That is 2 runs, not 15. `VARIANTS=C0,C1,C2,C3,C4 SEEDS=42,43,44 NUM_GPUS=1`
+is 15 runs on one GPU, which at the header's ~20 min per 20-epoch four-GPU fold
+works out near two hours -- a sweep, not a smoke. Use `NUM_GPUS=4` for the
+check, because one process never exercises the multi-rank path that the real
+runs take.
 
 `DRY_RUN=1` prints the commands without running them. A run counts as finished
 only when it wrote `test_results.json`, so a job killed mid-epoch is redone
