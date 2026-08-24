@@ -147,3 +147,47 @@ def test_channel_gate_and_alpha_logging_survives_a_step():
     assert torch.isfinite(torch.tensor([g_f, g_t])).all()
     per_c = model.scale_fold_per_channel()
     assert per_c.shape[0] == 2 and torch.isfinite(per_c).all()
+
+
+def test_only_training_is_sharded_across_ranks():
+    """val and test must see every window on every rank.
+
+    A DistributedSampler on the eval loaders hands each rank 1/world_size of
+    the set, and nothing in finetune.py gathers the shards. The metrics are
+    then computed per rank and only rank 0's are printed and saved, so the
+    reported test score silently becomes a score on a quarter of the test set --
+    and the confusion matrix in test_results.json sums to a quarter of it,
+    which is the only visible trace.
+
+    Replication rather than an all_gather, so this is a structural check: the
+    only DistributedSampler in the file belongs to training.
+    """
+    import ast
+
+    src = open(os.path.join(_HERE, "finetune.py")).read()
+    tree = ast.parse(src)
+
+    sharded = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == "DistributedSampler"):
+            continue
+        # DistributedSampler(<dataset>, ...) -- the first argument names it.
+        ds = node.args[0] if node.args else None
+        sharded.append(getattr(ds, "id", ast.dump(ds) if ds else "?"))
+
+    assert sharded == ["train_ds"], (
+        f"DistributedSampler is applied to {sharded}; only train_ds may be "
+        f"sharded, because eval_one_epoch never gathers across ranks")
+
+    # And the eval loaders must not be handed a sampler by any other route.
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Call)
+                and getattr(node.value.func, "id", None) == "DataLoader"):
+            continue
+        target = getattr(node.targets[0], "id", "")
+        if target in ("val_loader", "test_loader"):
+            kws = {k.arg for k in node.value.keywords}
+            assert "sampler" not in kws, (
+                f"{target} at line {node.lineno} takes a sampler; eval metrics "
+                f"would be computed per shard and never gathered")

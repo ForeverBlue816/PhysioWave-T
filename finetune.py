@@ -709,12 +709,29 @@ def main_worker(rank, world_size, args):
             print(f"  Test  samples = {len(test_ds)}")
 
     train_sampler = DistributedSampler(train_ds, num_replicas=world_size, rank=rank, shuffle=True)
-    val_sampler = DistributedSampler(val_ds, num_replicas=world_size, rank=rank, shuffle=False)
-    test_sampler = DistributedSampler(test_ds, num_replicas=world_size, rank=rank, shuffle=False) if test_ds else None
-
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, sampler=train_sampler, collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, sampler=val_sampler, collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True)
-    test_loader = DataLoader(test_ds, batch_size=args.batch_size, sampler=test_sampler, collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True) if test_ds else None
+
+    # ----------------------------------------------------------------------- #
+    # Validation and test are deliberately NOT sharded.
+    #
+    # They used to be, with a DistributedSampler each -- and nothing in this
+    # file gathers the shards back. eval_one_epoch computes balanced accuracy,
+    # kappa, weighted F1 and AUROC from whatever that rank happened to see, and
+    # only rank 0 prints or saves. So every val and test number this script has
+    # ever reported was computed on 1/world_size of the set, and so was the
+    # value model selection compared against. On four GPUs and a 12417-window
+    # test set that is 3105 windows; the confusion matrix summing to 3105
+    # instead of 12417 is the same fact seen from the other side.
+    #
+    # The fix is replication rather than an all_gather. Every rank evaluates the
+    # whole set and arrives at the same number, so there is nothing to collect
+    # and nothing to correct for: DistributedSampler pads the final shard by
+    # repeating windows from the front, and a naive gather would score those
+    # twice. The cost is that ranks 1..N-1 redo the validation pass, which on
+    # this task is seconds per epoch against a number that is otherwise wrong.
+    # ----------------------------------------------------------------------- #
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True)
+    test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True) if test_ds else None
 
     # Get data shape
     if val_files:
@@ -981,7 +998,6 @@ def main_worker(rank, world_size, args):
     
     for epoch in range(args.epochs):
         train_sampler.set_epoch(epoch)
-        val_sampler.set_epoch(epoch)
         
         train_loss, train_acc, current_lr = train_one_epoch(
             epoch, rank, model, optimizer, train_loader, device, 
