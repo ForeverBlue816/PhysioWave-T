@@ -51,6 +51,14 @@ class BERTWaveletTransformer(nn.Module):
                  # the 2-D position embedding, the full attention, the pooling
                  # and the head -- is untouched, which is what makes this a
                  # single-variable change against the legacy numbers.
+                 # Channel metadata. Off by default, so a model built without
+                 # these arguments is the one that existed before them.
+                 channel_encoding='none',   # none|id|signed|hybrid
+                 channel_injection='none',  # none|token|fold|dual
+                 channel_embed_dim=64,
+                 channel_fold_gate_init=0.0,
+                 channel_token_gate_init=0.0,
+                 channel_vocab_size=None,
                  scale_fold='none',     # see wavelet_modules.ScaleFold
                  fold_patch_len=None,   # None -> patch_size[1]; 0 -> whole window
                  fold_synthesis=0,      # odd kernel for a per-scale synthesis filter
@@ -219,6 +227,103 @@ class BERTWaveletTransformer(nn.Module):
             if isinstance(m, ScaleFold):
                 m.reset_fold_parameters()
 
+        # Everything channel-related is constructed HERE, after the legacy
+        # modules have been built and after apply() has swept them. Two reasons,
+        # and both are load-bearing for the ablation:
+        #
+        #   * Constructing a module draws from the global RNG. Building these
+        #     earlier would shift every legacy draw, and the variants would no
+        #     longer share an initialisation to be compared at.
+        #   * apply(_init_weights) rewrites every nn.Linear it walks. It already
+        #     did that to ScaleFold's MLP; these would be next.
+        #
+        # A test pins the first point by hashing the legacy parameters across
+        # all six variants at one seed.
+        self._build_channel_modules(
+            channel_encoding, channel_injection, channel_embed_dim,
+            channel_fold_gate_init, channel_token_gate_init, channel_vocab_size,
+            embed_dim, max_level, scale_fold)
+
+    def _build_channel_modules(self, encoding, injection, embed_dim_c,
+                               fold_gate_init, token_gate_init, vocab_size,
+                               embed_dim, max_level, scale_fold):
+        from channel_embedding import ChannelEncoder
+
+        if encoding not in ChannelEncoder.MODES:
+            raise ValueError(f"channel_encoding must be one of "
+                             f"{ChannelEncoder.MODES}, got {encoding!r}")
+        if injection not in ('none', 'token', 'fold', 'dual'):
+            raise ValueError(f"channel_injection must be none|token|fold|dual, "
+                             f"got {injection!r}")
+        if (encoding == 'none') != (injection == 'none'):
+            raise ValueError(
+                f"channel_encoding={encoding!r} and channel_injection="
+                f"{injection!r} disagree: a code with nowhere to go, or an "
+                f"injection with no code. Both 'none', or neither.")
+        if injection in ('fold', 'dual') and scale_fold != 'dynamic':
+            raise ValueError(
+                f"channel_injection={injection!r} biases the dynamic fold's "
+                f"logits, and scale_fold is {scale_fold!r}. The static modes "
+                f"have no logits for a prior to enter.")
+
+        self.channel_encoding = encoding
+        self.channel_injection = injection
+        self.channel_embed_dim = embed_dim_c
+        if encoding == 'none':
+            self.channel_encoder = None
+            return
+
+        self.channel_encoder = ChannelEncoder(encoding, embed_dim_c,
+                                              vocab_size=vocab_size)
+        num_scales = max_level + 1
+        # The gates start at zero and the projections do not. A zero gate makes
+        # the branch's output zero, so the backbone is untouched at step 0; a
+        # zero projection as well would put a zero on both sides of the product
+        # and neither would ever receive gradient. This way the gate has
+        # gradient immediately, and once it moves the projection does too.
+        if injection in ('fold', 'dual'):
+            self.channel_to_scale = nn.Linear(embed_dim_c, num_scales)
+            self.channel_fold_gate = nn.Parameter(torch.tensor(float(fold_gate_init)))
+        if injection in ('token', 'dual'):
+            self.channel_to_token = nn.Linear(embed_dim_c, embed_dim)
+            self.channel_token_gate = nn.Parameter(torch.tensor(float(token_gate_init)))
+        self.reset_channel_parameters()
+
+    def reset_channel_parameters(self):
+        """Initialise the channel modules. Never called by apply()."""
+        if self.channel_encoder is None:
+            return
+        self.channel_encoder.reset_channel_parameters()
+        with torch.no_grad():
+            for name in ('channel_to_scale', 'channel_to_token'):
+                proj = getattr(self, name, None)
+                if proj is not None:
+                    nn.init.normal_(proj.weight, std=0.02)
+                    nn.init.zeros_(proj.bias)
+
+    def channel_parameter_names(self):
+        """Every parameter this feature added, for whitelists and optimiser groups."""
+        if self.channel_encoder is None:
+            return ()
+        names = [n for n, _ in self.named_parameters()
+                 if n.startswith(('channel_encoder.', 'channel_to_scale.',
+                                  'channel_to_token.'))
+                 or n in ('channel_fold_gate', 'channel_token_gate')]
+        return tuple(names)
+
+    def channel_gate_values(self):
+        """``(fold gate, token gate)`` as floats, or ``None`` where absent."""
+        f = getattr(self, 'channel_fold_gate', None)
+        t = getattr(self, 'channel_token_gate', None)
+        return (None if f is None else float(f.detach()),
+                None if t is None else float(t.detach()))
+
+    def _channel_code(self, channel_meta):
+        """``[C, Dc]`` or ``None``. Raises when the code is needed and absent."""
+        if self.channel_encoder is None:
+            return None
+        return self.channel_encoder(channel_meta)
+
     def _init_weights(self, m):
         """Weight initialization"""
         if isinstance(m, nn.Linear):
@@ -307,13 +412,22 @@ class BERTWaveletTransformer(nn.Module):
         x = x.reshape(shape=(B, f * t, p_f * p_t * C))
         return x
 
-    def prepare_tokens(self, x):
-        """Prepare tokens and add position encoding"""
+    def prepare_tokens(self, x, channel_code=None):
+        """Prepare tokens and add position encoding.
+
+        ``channel_code`` is ``[C, Dc]``: one vector per EEG channel, injected
+        after patching and before the position embedding, so the position
+        embedding and RoPE both see exactly the sequence they saw before plus a
+        per-channel offset.
+        """
         B, C, F, T = x.shape
         
         # Patch embedding
         tokens = self.patch_embed(x)
         _, L, D = tokens.shape
+
+        if channel_code is not None:
+            tokens = self._inject_channel_tokens(tokens, channel_code, F, T)
         
         # Add position encoding
         if self.pos_embed is not None:
@@ -356,6 +470,10 @@ class BERTWaveletTransformer(nn.Module):
         """
         return self.fold.alpha_std_time, self.fold.alpha_std_chan
 
+    def scale_fold_per_channel(self):
+        """``[C, S]`` mean mixing weight per channel from the last forward."""
+        return self.fold.alpha_chan
+
     def scale_fold_blocks(self):
         """Last forward's full ``[B, C, N, S]``, or ``None`` unless enabled.
 
@@ -374,14 +492,52 @@ class BERTWaveletTransformer(nn.Module):
             state_dict[new] = state_dict.pop(old)
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
-    def forward_features(self, x):
+    def _inject_channel_tokens(self, tokens, code, n_rows, n_samples):
+        """``[B, C*P, D]`` + one vector per channel, broadcast over its own P.
+
+        PatchEmbed produces the sequence channel-major and time-minor:
+        Conv2d over ``[B, 1, C, T]`` gives ``[B, D, C, T/p]``, ``flatten(2)``
+        walks C then P, and ``transpose`` puts D last -- so token ``c*P + p``
+        belongs to channel ``c``. Reshaping to ``[B, C, P, D]`` is therefore the
+        semantic view and not a reinterpretation, and a code added on the C axis
+        reaches that channel's P patches and no others. A sentinel test pins it.
+        """
+        B, L, D = tokens.shape
+        p_f, p_t = self.patch_size
+        C, P = n_rows // p_f, n_samples // p_t
+        if C * P != L:
+            raise RuntimeError(f"token count {L} is not C*P = {C}*{P}")
+        if code.dim() == 2:
+            code = code.unsqueeze(0)                       # [1, C, Dc]
+        if code.shape[-2] != C:
+            raise ValueError(
+                f"channel code has {code.shape[-2]} channels, the folded "
+                f"spectrogram has {C} rows")
+        delta = self.channel_to_token(code)                # [*, C, D]
+        delta = torch.tanh(self.channel_token_gate) * delta
+        tokens = tokens.reshape(B, C, P, D) + delta.unsqueeze(-2)
+        return tokens.reshape(B, L, D)
+
+    def _channel_scale_bias(self, code):
+        """``[C, S]`` prior on the fold's logits, already gated."""
+        return torch.tanh(self.channel_fold_gate) * self.channel_to_scale(code)
+
+    def forward_features(self, x, channel_meta=None):
         """Extract features (encoder part)"""
+        code = self._channel_code(channel_meta)
+        fold_bias = token_code = None
+        if code is not None:
+            if self.channel_injection in ('fold', 'dual'):
+                fold_bias = self._channel_scale_bias(code)
+            if self.channel_injection in ('token', 'dual'):
+                token_code = code
+
         # 1. Wavelet decomposition
-        wave_spec = self.fold_scales(self.wavelet_decomp(x))
+        wave_spec = self.fold(self.wavelet_decomp(x), channel_scale_bias=fold_bias)
         wave_2d = wave_spec.unsqueeze(1)
         
         # 2. Patch embedding and position encoding
-        tokens = self.prepare_tokens(wave_2d)
+        tokens = self.prepare_tokens(wave_2d, channel_code=token_code)
         
         # 3. Transformer encoding
         features = self.encoder(tokens)
@@ -420,20 +576,21 @@ class BERTWaveletTransformer(nn.Module):
         
         return pred_patches, mask, target_patches
 
-    def forward_downstream(self, x, task_name):
+    def forward_downstream(self, x, task_name, channel_meta=None):
         """Downstream task forward pass"""
         if task_name not in self.task_heads:
             raise ValueError(f"Task head '{task_name}' not found. Available: {list(self.task_heads.keys())}")
         
         # Extract features
-        features = self.forward_features(x)
+        features = self.forward_features(x, channel_meta=channel_meta)
         
         # Task head prediction
         output = self.task_heads[task_name](features)
         
         return output
 
-    def forward(self, x, task='features', mask_ratio=None, task_name=None):
+    def forward(self, x, task='features', mask_ratio=None, task_name=None,
+                channel_meta=None):
         """
         Unified forward pass interface
         
@@ -442,24 +599,39 @@ class BERTWaveletTransformer(nn.Module):
             task: 'features', 'pretrain', 'downstream'
             mask_ratio: Masking ratio (for pretraining)
             task_name: Downstream task name
+            channel_meta: dict of numeric tensors describing the montage, or
+                None. Required whenever channel_encoding is not 'none'; the
+                encoder raises rather than quietly running without it. Names are
+                resolved to ids in preprocessing -- nothing here parses a string.
             
         Returns:
             Different results based on task
         """
+        if channel_meta is not None and self.channel_encoder is None:
+            raise ValueError(
+                "channel_meta was given but this model was built with "
+                "channel_encoding='none'; it would be silently ignored.")
         if task == 'features':
-            return self.forward_features(x)
+            return self.forward_features(x, channel_meta=channel_meta)
         elif task == 'pretrain':
+            # Pretraining does not consume the code: the SSL objective and the
+            # frequency-guided masking are out of scope for this change, and a
+            # half-wired path is worse than an explicit refusal.
+            if channel_meta is not None:
+                raise NotImplementedError(
+                    "channel_meta is not wired into the pretraining path.")
             return self.forward_pretrain(x, mask_ratio)
         elif task == 'downstream':
             if task_name is None:
                 raise ValueError("task_name must be specified for downstream tasks")
-            return self.forward_downstream(x, task_name)
+            return self.forward_downstream(x, task_name, channel_meta=channel_meta)
         else:
             # Compatibility with old interface
             if task == 'classify' and 'classification' in self.task_heads:
-                return self.forward_downstream(x, 'classification')
+                return self.forward_downstream(x, 'classification',
+                                               channel_meta=channel_meta)
             elif task in self.task_heads:
-                return self.forward_downstream(x, task)
+                return self.forward_downstream(x, task, channel_meta=channel_meta)
             else:
                 raise ValueError(f"Unknown task: {task}")
 

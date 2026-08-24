@@ -576,6 +576,7 @@ class ScaleFold(nn.Module):
         self.reg_loss = None
         self.alpha_std_time = None
         self.alpha_std_chan = None
+        self.alpha_chan = None
         # Set True to have the last forward's full [B,C,N,S] survive in
         # alpha_blocks; scripts/alpha_probe.py is what reads it.
         self.keep_alpha = False
@@ -687,11 +688,28 @@ class ScaleFold(nn.Module):
         # and is what lets one MLP serve every channel and every subject.
         return self.stat_norm(q), N, L
 
-    def _alpha(self, bands):
-        """``[B,S,C,T] -> [B,S,C,T]`` mixing weights, summing to 1 over scales."""
+    def _alpha(self, bands, channel_scale_bias=None):
+        """``[B,S,C,T] -> [B,S,C,T]`` mixing weights, summing to 1 over scales.
+
+        ``channel_scale_bias`` is an optional ``[B,C,S]`` or ``[C,S]`` prior on
+        which band a *channel* tends to want, added to the logits the block
+        statistics produce. It broadcasts over the block axis: the prior says
+        what this derivation is like, the statistics say what this moment is
+        like, and the softmax combines them. The caller has already scaled it by
+        whatever gate it owns -- this module does not know about channels.
+        """
         B, S, C, T = bands.shape
         q, N, L = self._block_stats(bands)
         logits = self.mlp(q.flatten(-2)) + self.scale_logits    # [B,C,N,S]
+        if channel_scale_bias is not None:
+            b = channel_scale_bias
+            if b.dim() == 2:                                   # [C,S] -> [B,C,S]
+                b = b.unsqueeze(0).expand(B, -1, -1)
+            if b.shape != (B, C, S):
+                raise ValueError(
+                    f"channel_scale_bias must be [C,S] or [B,C,S] with C={C} "
+                    f"S={S}, got {tuple(channel_scale_bias.shape)}")
+            logits = logits + b.unsqueeze(2)                    # [B,C,1,S]
 
         # Reported and regularised on the *undropped* weights. Dropout makes
         # alpha deliberately non-uniform, so measuring the KL after it would
@@ -719,6 +737,11 @@ class ScaleFold(nn.Module):
                                torch.zeros_like(a[:, :, 0])).mean(dim=(0, 1))
         self.alpha_std_chan = (a.std(dim=1) if C > 1 else
                                torch.zeros_like(a[:, 0])).mean(dim=(0, 1))
+        # [C, S]: what each channel, on average, asks for. Kept separately from
+        # alpha_mean because a channel prior's whole purpose is to make the two
+        # derivations want different bands, and a marginal over channels is
+        # exactly the axis that would hide it. Two reductions, no storage.
+        self.alpha_chan = a.mean(dim=(0, 2))
         # KL(alpha || uniform); zero weights contribute zero, hence the clamp.
         self.reg_loss = (alpha * (alpha.clamp_min(self.eps).log()
                                   + math.log(S))).sum(-1).mean()
@@ -758,11 +781,21 @@ class ScaleFold(nn.Module):
         return y.view(B, C, S, T).permute(0, 2, 1, 3)
 
     # -- forward ----------------------------------------------------------- #
-    def forward(self, spec):
+    def forward(self, spec, channel_scale_bias=None):
         self.alpha_mean, self.reg_loss = None, None
         self.alpha_std_time = self.alpha_std_chan = self.alpha_blocks = None
+        self.alpha_chan = None
         if self.mode == 'none':
+            if channel_scale_bias is not None:
+                raise ValueError(
+                    "channel_scale_bias needs scale_fold='dynamic'; mode is "
+                    "'none', which has no mixing weights to bias.")
             return spec
+        if channel_scale_bias is not None and self.mode != 'dynamic':
+            raise ValueError(
+                f"channel_scale_bias needs scale_fold='dynamic', got "
+                f"{self.mode!r}. The static modes have one weight per (scale, "
+                f"channel) already and no logits for a prior to enter.")
 
         B, FC, T = spec.shape
         S = self.num_scales
@@ -786,7 +819,7 @@ class ScaleFold(nn.Module):
             w = self.scale_weight.softmax(dim=0)
             return (proc * w.view(1, S, -1, 1)).sum(dim=1)
 
-        alpha = self._alpha(bands)          # statistics read the *raw* bands
+        alpha = self._alpha(bands, channel_scale_bias)   # statistics read raw bands
         base = proc.mean(dim=1)
         return base + self.gamma * ((alpha * proc).sum(dim=1) - base)
 
