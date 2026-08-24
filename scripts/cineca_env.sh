@@ -54,6 +54,12 @@ export PW_ON_CINECA
 PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
 [[ -d "${PROJECT_DIR}" ]] || PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Recorded before anything below assigns to PW_VENV. An inherited PW_VENV wins
+# over the default, and the only symptom is the wrong interpreter running --
+# worth saying out loud when it happens.
+_pw_venv_inherited="${PW_VENV:-}"
+PW_VENV_DEFAULT="${VENV:-${HOME}/pw}"
+
 # --------------------------------------------------------------------------- #
 # 1. Modules
 #
@@ -83,7 +89,16 @@ if [[ "${PW_ON_CINECA}" -eq 1 && "${PW_VARS_ONLY:-0}" == "1" ]]; then
     # whatever environment is active stays active -- which is the point: the
     # preparation scripts run under $HOME/pwprep and want PW_DATA_EEG, not
     # torch.
-    PW_VENV="${PW_VENV:-${VIRTUAL_ENV:-<none>}}"
+    #
+    # PW_VENV names the TRAINING venv, always -- never "whichever one happens to
+    # be active". This branch is sourced from a shell running $HOME/pwprep, and
+    # it used to set PW_VENV=${VIRTUAL_ENV} and export it. That export outlives
+    # the command: every later `source scripts/cineca_env.sh` in the shell
+    # honours it, and so does any `srun` that inherits the environment. So
+    # preparing the data under pwprep and then training in the same shell
+    # activated pwprep FOR TRAINING, with $HOME/pw sitting in the prompt, and
+    # eighteen runs died on "missing pywt" pointing at the wrong venv.
+    PW_VENV="${PW_VENV:-${PW_VENV_DEFAULT}}"
 elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     if ! type -t module >/dev/null 2>&1; then
         # Non-login shells do not always have the module function defined.
@@ -127,7 +142,12 @@ elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     # ----------------------------------------------------------------------- #
     # 2. Virtualenv (created with --system-site-packages on top of cineca-ai)
     # ----------------------------------------------------------------------- #
-    PW_VENV="${PW_VENV:-${VENV:-${HOME}/pw}}"
+    PW_VENV="${PW_VENV:-${PW_VENV_DEFAULT}}"
+    if [[ -n "${_pw_venv_inherited}" && "${_pw_venv_inherited}" != "${PW_VENV_DEFAULT}" ]]; then
+        echo "NOTE: PW_VENV was already set in your environment to ${_pw_venv_inherited}," >&2
+        echo "      so that is the venv being activated, not ${PW_VENV_DEFAULT}." >&2
+        echo "      \`unset PW_VENV\` if you did not mean to pin it." >&2
+    fi
     if [[ "${VIRTUAL_ENV:-}" == "${PW_VENV}" ]]; then
         :                                   # already active; re-sourcing stacks PATH
     elif [[ -f "${PW_VENV}/bin/activate" ]]; then
@@ -223,20 +243,37 @@ PW_TORCHRUN=("${PYTHON:-python}" -m torch.distributed.run)
 # Fail before the allocation is spent, not inside a worker: every module the
 # training entry points import at top level, checked in the venv's interpreter.
 pw_require_python_deps() {
-    local missing
+    local missing dists prefix
+    # Two lines: the import names that are absent, then the distributions that
+    # provide them. Three of the eight differ, and the old message printed the
+    # import names into a `pip install` line that could not succeed.
     missing="$("${PYTHON:-python}" - <<'PYEOF'
 import importlib.util as u
 need = ["torch", "numpy", "scipy", "h5py", "pywt", "sklearn", "yaml", "tqdm"]
 print(" ".join(m for m in need if u.find_spec(m) is None))
 PYEOF
 )"
-    if [[ -n "${missing}" ]]; then
-        echo "ERROR: missing Python packages in $("${PYTHON:-python}" -c 'import sys;print(sys.prefix)'): ${missing}" >&2
-        echo "       pip install --no-cache-dir --no-deps ${missing}" >&2
-        echo "       (pywt is the PyWavelets distribution; sklearn is scikit-learn)" >&2
-        return 1
+    [[ -n "${missing}" ]] || return 0
+    dists="$(PW_MISSING="${missing}" "${PYTHON:-python}" - <<'PYEOF'
+import os
+dist = {"pywt": "PyWavelets", "sklearn": "scikit-learn", "yaml": "PyYAML"}
+print(" ".join(dist.get(m, m) for m in os.environ["PW_MISSING"].split()))
+PYEOF
+)"
+    prefix="$("${PYTHON:-python}" -c 'import sys;print(sys.prefix)')"
+    echo "ERROR: missing Python packages in ${prefix}: ${missing}" >&2
+    if [[ "${prefix}" != "${PW_VENV_DEFAULT:-}" ]]; then
+        # Far more often the wrong interpreter than a genuinely incomplete one.
+        echo "" >&2
+        echo "  That is not ${PW_VENV_DEFAULT:-\$HOME/pw}, the venv training uses." >&2
+        echo "  If you prepared data in this shell, PW_VENV may still be pinned to" >&2
+        echo "  the preparation venv (it is exported, and srun inherits it):" >&2
+        echo "      unset PW_VENV && source scripts/cineca_env.sh" >&2
+        echo "" >&2
+        echo "  If the interpreter is right after all, install into it:" >&2
     fi
-    return 0
+    echo "       pip install --no-cache-dir --no-deps ${dists}" >&2
+    return 1
 }
 
 # Refuse to start training on a login node.  finetune.py and pretrain_main both

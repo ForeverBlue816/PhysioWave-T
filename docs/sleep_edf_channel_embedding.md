@@ -132,6 +132,14 @@ A new output directory, so the existing baseline files are untouched. The
 metadata is written once per file, not once per 30 s window, and its hash goes
 into `split.json` and into every HDF5's attributes.
 
+This step needs `mne` and runs under `$HOME/pwprep`; training needs `torch` and
+`pywt` and runs under `$HOME/pw`. **Do not train from the shell that prepared
+the data** -- start a fresh one, or `unset PW_VENV` first. `PW_VARS_ONLY=1
+source scripts/cineca_env.sh` exports `PW_VENV`, `srun` inherits the
+environment, and a pinned `PW_VENV` wins over the default, so training in the
+same shell used to activate the *preparation* venv while `(pw)` sat in the
+prompt. `cineca_env.sh` no longer pins it, and says so if something else has.
+
 ### 2. One variant
 
 ```bash
