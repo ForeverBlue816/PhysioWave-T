@@ -400,7 +400,7 @@ def _unwrap(model):
 
 def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criterion, 
                     scaler=None, grad_clip=0.0, scheduler=None, scheduler_per_batch=False,
-                    fold_kl=0.0):
+                    fold_kl=0.0, channel_meta=None):
     model.train()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     core = _unwrap(model)

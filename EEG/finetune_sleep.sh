@@ -104,23 +104,37 @@ CHANNEL_EMBED_DIM="${CHANNEL_EMBED_DIM:-64}"
 CHANNEL_FOLD_GATE_INIT="${CHANNEL_FOLD_GATE_INIT:-0.0}"
 CHANNEL_TOKEN_GATE_INIT="${CHANNEL_TOKEN_GATE_INIT:-0.0}"
 
-# QK_NORM keeps the expansion it has always had, deliberately. Changing it here
-# would silently alter what an existing invocation resolves to, and the whole
-# point of an ablation is that only the channel flags move. But the idiom has
-# the trap described above, so the resolved value is stated out loud: with
-# QK_NORM unset the flag is absent and qk_norm is FALSE, which is what the
-# recorded Sleep-EDF baseline used. QK_NORM=0 would turn it ON.
-if [[ -n "${QK_NORM:-}" ]]; then
-    echo "NOTE: QK_NORM='${QK_NORM}' is non-empty, so --qk_norm is PASSED (qk_norm=True)." >&2
-    if [[ "${QK_NORM}" == "0" ]]; then
-        echo "      QK_NORM=0 does NOT mean off here. Unset it to disable." >&2
-    fi
-fi
+# ---------------------------------------------------------------------------
+# The transformer block: all three switches ON.
+#
+#   norm=rmsnorm  ffn=swiglu  qk_norm=true
+#
+# They are independent -- `norm` and `ffn` were already passed as values above,
+# and each stays its own ablation row -- but the block this model IS has all
+# three. qk_norm puts an RMSNorm on q and k per head before attention
+# (transformer_modules.py). It was off here only because nothing ever turned it
+# on, not because anything chose it.
+#
+# NOTE: this differs from runs recorded before this change, which had
+# qk_norm=False. Numbers from either side are not directly comparable; within
+# one ablation every variant goes through this script and so agrees.
+#
+# A real boolean, not `${QK_NORM:+--qk_norm}`. That idiom is a PRESENCE test:
+# QK_NORM=0 is a non-empty string and used to turn the flag ON, and the only
+# way to say "off" was to unset the variable -- which stopped being a way to
+# say anything the moment the default became on.
+# ---------------------------------------------------------------------------
+QK_NORM="${QK_NORM:-1}"
+case "${QK_NORM}" in
+    0|false|False|FALSE|no|off|"") QK_NORM_ARG=() ;;
+    *)                             QK_NORM_ARG=(--qk_norm) ;;
+esac
 
 echo "Sleep-EDF fine-tuning: data=${DATA_DIR} out=${OUTPUT_DIR}"
 echo "  channel: encoding=${CHANNEL_ENCODING} injection=${CHANNEL_INJECTION}" \
      "dim=${CHANNEL_EMBED_DIM} gates=(${CHANNEL_FOLD_GATE_INIT},${CHANNEL_TOKEN_GATE_INIT})" \
-     "| qk_norm=$([[ -n "${QK_NORM:-}" ]] && echo True || echo False)"
+     "| block: norm=${NORM:-rmsnorm} ffn=${FFN:-swiglu}" \
+     "qk_norm=$([[ ${#QK_NORM_ARG[@]} -gt 0 ]] && echo True || echo False)"
 
 if [[ "${WARMUP_EPOCHS:-3}" -ge "${EPOCHS:-20}" ]]; then
     _w=$(( ${EPOCHS:-20} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
@@ -148,7 +162,7 @@ fi
   --dropout "${DROPOUT:-0.1}" \
   --norm "${NORM:-rmsnorm}" \
   --ffn "${FFN:-swiglu}" \
-  ${QK_NORM:+--qk_norm} \
+  ${QK_NORM_ARG[@]+"${QK_NORM_ARG[@]}"} \
   --scale_fold "${SCALE_FOLD:-dynamic}" \
   ${FOLD_PATCH_LEN:+--fold_patch_len "${FOLD_PATCH_LEN}"} \
   --fold_synthesis "${FOLD_SYNTHESIS:-3}" \

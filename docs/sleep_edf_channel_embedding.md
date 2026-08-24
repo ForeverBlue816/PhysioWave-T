@@ -233,12 +233,25 @@ are distinguishable.
   corpus with no channel semantics and nothing downstream inspects it closely
   enough to notice.
 
-## A note on `QK_NORM`
+## The transformer block
 
-`EEG/finetune_sleep.sh` uses `${QK_NORM:+--qk_norm}`, which is a *presence*
-test: `QK_NORM=0` is a non-empty string and turns the flag **on**. That
-expansion is deliberately left as it was — changing it would silently alter what
-an existing invocation resolves to, and an ablation needs everything except the
-channel flags to stay still. The resolved value is now printed at launch and
-stored in each run's `provenance`. With `QK_NORM` unset it is **False**, which
-is what the recorded baseline used, and every variant must use the same value.
+All three switches are on: `norm=rmsnorm`, `ffn=swiglu`, `qk_norm=True`. Each
+is still an independent ablation row in `tests/test_legacy.py`'s sense -- the
+"legacy" block there is `layernorm`/`mlp`/`qk_norm=False` -- but the block this
+model *is* has all three, and `qk_norm` was off here only because nothing had
+turned it on.
+
+`ARCH=legacy` in `scripts/slurm/cineca_finetune.sbatch` is a different word:
+it selects `model.py`'s `BERTWaveletTransformer` over the `physiowave/`
+extension, and says nothing about the block's configuration.
+
+`QK_NORM` is a real boolean now. `QK_NORM=0`, `false` or `off` disable it;
+anything else, including unset, enables it. The old `${QK_NORM:+--qk_norm}` was
+a *presence* test, so `QK_NORM=0` turned it **on** and only unsetting the
+variable turned it off -- which stopped being a way to say anything once the
+default became on.
+
+Runs recorded before this change had `qk_norm=False` and are not directly
+comparable. Within one ablation every variant goes through
+`EEG/finetune_sleep.sh`, so they agree with each other, which is what the
+paired delta needs.
