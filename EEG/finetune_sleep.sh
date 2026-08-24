@@ -89,7 +89,38 @@ else
 fi
 mkdir -p "${OUTPUT_DIR}"
 
+# ---------------------------------------------------------------------------
+# Channel embedding. Off by default: none/none reproduces the run that existed
+# before the feature, bit for bit, and every ablation row is measured against it.
+#
+# These are VALUES, passed straight through, not `${VAR:+--flag}` presence
+# tests. That idiom is wrong for anything whose "off" value is a character:
+# FOO=0 is a non-empty string, so `${FOO:+--foo}` turns the flag ON when the
+# variable says 0.
+# ---------------------------------------------------------------------------
+CHANNEL_ENCODING="${CHANNEL_ENCODING:-none}"
+CHANNEL_INJECTION="${CHANNEL_INJECTION:-none}"
+CHANNEL_EMBED_DIM="${CHANNEL_EMBED_DIM:-64}"
+CHANNEL_FOLD_GATE_INIT="${CHANNEL_FOLD_GATE_INIT:-0.0}"
+CHANNEL_TOKEN_GATE_INIT="${CHANNEL_TOKEN_GATE_INIT:-0.0}"
+
+# QK_NORM keeps the expansion it has always had, deliberately. Changing it here
+# would silently alter what an existing invocation resolves to, and the whole
+# point of an ablation is that only the channel flags move. But the idiom has
+# the trap described above, so the resolved value is stated out loud: with
+# QK_NORM unset the flag is absent and qk_norm is FALSE, which is what the
+# recorded Sleep-EDF baseline used. QK_NORM=0 would turn it ON.
+if [[ -n "${QK_NORM:-}" ]]; then
+    echo "NOTE: QK_NORM='${QK_NORM}' is non-empty, so --qk_norm is PASSED (qk_norm=True)." >&2
+    if [[ "${QK_NORM}" == "0" ]]; then
+        echo "      QK_NORM=0 does NOT mean off here. Unset it to disable." >&2
+    fi
+fi
+
 echo "Sleep-EDF fine-tuning: data=${DATA_DIR} out=${OUTPUT_DIR}"
+echo "  channel: encoding=${CHANNEL_ENCODING} injection=${CHANNEL_INJECTION}" \
+     "dim=${CHANNEL_EMBED_DIM} gates=(${CHANNEL_FOLD_GATE_INIT},${CHANNEL_TOKEN_GATE_INIT})" \
+     "| qk_norm=$([[ -n "${QK_NORM:-}" ]] && echo True || echo False)"
 
 if [[ "${WARMUP_EPOCHS:-3}" -ge "${EPOCHS:-20}" ]]; then
     _w=$(( ${EPOCHS:-20} / 10 )); [[ "${_w}" -lt 1 ]] && _w=0
@@ -145,6 +176,11 @@ fi
   --head_dropout "${HEAD_DROPOUT:-0.1}" \
   --head_hidden_dim "${HEAD_HIDDEN_DIM:-512}" \
   --label_smoothing "${LABEL_SMOOTHING:-0.1}" \
+  --channel_encoding "${CHANNEL_ENCODING}" \
+  --channel_injection "${CHANNEL_INJECTION}" \
+  --channel_embed_dim "${CHANNEL_EMBED_DIM}" \
+  --channel_fold_gate_init "${CHANNEL_FOLD_GATE_INIT}" \
+  --channel_token_gate_init "${CHANNEL_TOKEN_GATE_INIT}" \
   --select_by "${SELECT_BY:-balanced_acc}" \
   --patience "${PATIENCE:-0}" \
   --min_delta "${MIN_DELTA:-0.0}" \

@@ -27,7 +27,8 @@ from sklearn.metrics import (
     cohen_kappa_score,
     f1_score,
     roc_auc_score,
-    classification_report
+    classification_report,
+    confusion_matrix
 )
 
 from model import BERTWaveletTransformer  # Use original BERT model with built-in classification head
@@ -154,6 +155,53 @@ class WarmupCosineSchedule(torch.optim.lr_scheduler.LambdaLR):
 ############################################################
 # Dataset Definition (No normalization version)
 ############################################################
+#: Every metadata dataset a file may carry. Read as a block so a file with some
+#: of them is rejected rather than half-read.
+CHANNEL_META_KEYS = (
+    "channel_ids", "electrode_xyz", "positive_electrode_index",
+    "negative_electrode_index", "valid_channel_mask", "electrode_names",
+    "bipolar_endpoints", "derivation_matrix", "channel_center_xyz",
+)
+#: The subset that becomes tensors on the device. The rest is provenance and
+#: stays on the host -- the forward path takes numeric tensors only.
+CHANNEL_META_TENSORS = (
+    "channel_ids", "electrode_xyz", "positive_electrode_index",
+    "negative_electrode_index", "valid_channel_mask",
+)
+
+
+def read_channel_metadata(path):
+    """Global channel metadata from one HDF5, or ``None`` if it carries none.
+
+    One copy per file rather than per window: the montage is a property of the
+    recording set-up, identical for every 30 s epoch in the corpus.
+    """
+    with h5py.File(path, "r") as f:
+        if "channel_ids" not in f:
+            return None
+        missing = [k for k in CHANNEL_META_KEYS if k not in f]
+        if missing:
+            raise KeyError(
+                f"{os.path.basename(path)} has channel metadata but is missing "
+                f"{missing}.\n  It was written by an older schema. Rebuild it:\n"
+                f"    python EEG/sleep_edf_finetune.py --stage split ...")
+        meta = {k: f[k][:] for k in CHANNEL_META_KEYS}
+        meta["_attrs"] = {k: f.attrs[k] for k in f.attrs}
+        meta["_channel_names"] = [c.decode() for c in f["channel_names"][:]]
+    return meta
+
+
+def _meta_signature(meta):
+    """What two files must agree on, as comparable plain values."""
+    if meta is None:
+        return None
+    sig = {k: np.asarray(meta[k]).tobytes() for k in CHANNEL_META_KEYS}
+    sig["_hash"] = meta["_attrs"].get("metadata_hash")
+    sig["_schema"] = meta["_attrs"].get("metadata_schema_version")
+    sig["_names"] = tuple(meta["_channel_names"])
+    return sig
+
+
 class TimeSeriesDataset(torch.utils.data.Dataset):
     """Time series dataset without normalization"""
     def __init__(self, file_paths, data_key="data", label_key="label"):
@@ -199,6 +247,21 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
                 
                 print(f"    Data shape: {data.shape}, Labels shape: {labels.shape}")
         
+        # Channel metadata is per file and must be identical across them.
+        # Concatenating two corpora with different montages would produce a
+        # dataset with no single channel semantics, and nothing downstream
+        # inspects it closely enough to notice.
+        metas = [read_channel_metadata(f) for f in self.file_paths]
+        first = _meta_signature(metas[0])
+        for path, m in zip(self.file_paths[1:], metas[1:]):
+            if _meta_signature(m) != first:
+                raise ValueError(
+                    f"channel metadata differs between "
+                    f"{os.path.basename(self.file_paths[0])} and "
+                    f"{os.path.basename(path)}.\n  These files describe "
+                    f"different montages and must not be concatenated.")
+        self.channel_metadata = metas[0]
+
         self._data = np.concatenate(all_data, axis=0)
         self._labels = np.concatenate(all_labels, axis=0)
         self._num_samples = len(self._data)
@@ -226,6 +289,17 @@ class TimeSeriesDataset(torch.utils.data.Dataset):
     @property
     def num_classes(self):
         return len(np.unique(self._labels))
+
+    def get_labels(self):
+        """Every label, in dataset order.
+
+        This class is the one the trainer instantiates -- dataset.py defines a
+        second TimeSeriesDataset that finetune.py does not import, and adding
+        the method only there is what produced
+        "'TimeSeriesDataset' object has no attribute 'get_labels'" on a cluster
+        run. Both have it now; this is the one that matters here.
+        """
+        return self._labels
 
 
 def collate_fn(batch):
@@ -276,14 +350,45 @@ def load_pretrained_feature_extractor(model, pretrained_path, rank=0):
             skipped_keys.append(k)
     
     missing_keys, unexpected_keys = model.load_state_dict(filtered_dict, strict=False)
-    
+
+    # strict=False is necessary -- a feature extractor legitimately has no task
+    # head -- but it will also swallow a genuinely wrong checkpoint without a
+    # word. The channel modules are the keys a pre-channel-embedding checkpoint
+    # is *expected* to lack; anything else missing means the architectures
+    # disagree, and that has to be said rather than absorbed.
+    core = _unwrap(model)
+    allowed = set(core.channel_parameter_names()) if hasattr(
+        core, 'channel_parameter_names') else set()
+    allowed |= {f'module.{n}' for n in allowed}
+    head_missing = [k for k in missing_keys
+                    if k.split('module.', 1)[-1].startswith('task_heads.')]
+    unexplained = [k for k in missing_keys
+                   if k not in allowed and k not in head_missing]
+
     if rank == 0:
         print(f"Loaded {len(filtered_dict)} pretrained parameters")
         print(f"Skipped {len(skipped_keys)} parameters")
-        if missing_keys:
-            print(f"Missing keys: {len(missing_keys)}")
+        n_channel = len([k for k in missing_keys if k in allowed])
+        if n_channel:
+            print(f"Missing {n_channel} channel-embedding parameter(s) -- expected "
+                  f"for a checkpoint from before that feature; they keep their "
+                  f"fresh initialisation.")
+        if head_missing:
+            print(f"Missing {len(head_missing)} task-head parameter(s) -- expected "
+                  f"for a feature-extractor checkpoint.")
         if unexpected_keys:
             print(f"Unexpected keys: {len(unexpected_keys)}")
+    if unexplained:
+        raise SystemExit(
+            f"{len(unexplained)} parameter(s) are missing from "
+            f"{os.path.basename(pretrained_path)} and are not channel-embedding "
+            f"or task-head keys:\n  "
+            + "\n  ".join(unexplained[:10])
+            + (f"\n  ... and {len(unexplained) - 10} more" if len(unexplained) > 10 else "")
+            + "\n\n  This checkpoint's architecture does not match the model being "
+              "built.\n  Loading it would leave those tensors at their random "
+              "initialisation and\n  the run would look like a fine-tune of "
+              "something it is not.")
 
 
 ############################################################
@@ -324,7 +429,7 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
         
         if scaler is not None:
             with torch.cuda.amp.autocast():
-                logits = model(x, task='classify')  # BERT model uses task='classify'
+                logits = model(x, task='classify', channel_meta=channel_meta)
                 loss = total_loss_of(logits, y)
             scaler.scale(loss).backward()
             if grad_clip > 0.0:
@@ -333,7 +438,7 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
             scaler.step(optimizer)
             scaler.update()
         else:
-            logits = model(x, task='classify')  # BERT model uses task='classify'
+            logits = model(x, task='classify', channel_meta=channel_meta)
             loss = total_loss_of(logits, y)
             loss.backward()
             if grad_clip > 0.0:
@@ -378,12 +483,33 @@ def train_one_epoch(epoch, rank, model, optimizer, train_loader, device, criteri
             if spread[0] is not None:
                 line += (", sd_t=[" + " ".join(f"{v:.3f}" for v in spread[0].tolist()) + "]"
                          + ", sd_c=[" + " ".join(f"{v:.3f}" for v in spread[1].tolist()) + "]")
+            # Per (channel, scale), not just per scale: with a channel prior in
+            # the logits the interesting question is whether the two
+            # derivations end up wanting different bands, and a marginal over
+            # channels cannot answer it.
+            per_c = (core.scale_fold_per_channel()
+                     if hasattr(core, 'scale_fold_per_channel') else None)
+            if per_c is not None and per_c.shape[0] > 1:
+                line += " | alpha/chan=" + " ".join(
+                    "[" + " ".join(f"{v:.3f}" for v in row.tolist()) + "]"
+                    for row in per_c)
+        # The two gates and the size of what the token branch is actually
+        # adding. A gate that never leaves zero and a branch whose output is
+        # zero are different failures, and only the second shows in the norm.
+        gates = core.channel_gate_values() if hasattr(core, 'channel_gate_values') else (None, None)
+        if gates[0] is not None or gates[1] is not None:
+            line += (f" | g_f={'-' if gates[0] is None else f'{gates[0]:+.4f}'}"
+                     f" g_t={'-' if gates[1] is None else f'{gates[1]:+.4f}'}")
+            tok = getattr(core, 'channel_to_token', None)
+            if tok is not None:
+                line += f" tok_w={float(tok.weight.detach().norm()):.3f}"
         print(line)
     return avg_loss, avg_acc, current_lr
 
 
 @torch.no_grad()
-def eval_one_epoch(epoch, rank, model, loader, device, criterion, desc_prefix="Eval"):
+def eval_one_epoch(epoch, rank, model, loader, device, criterion, desc_prefix="Eval",
+                   channel_meta=None, return_preds=False):
     model.eval()
     total_loss, total_correct, total_samples = 0.0, 0, 0
     all_preds, all_probs, all_labels = [], [], []
@@ -394,7 +520,7 @@ def eval_one_epoch(epoch, rank, model, loader, device, criterion, desc_prefix="E
 
     for x, y in display_loader:
         x, y = x.to(device), y.to(device)
-        logits = model(x, task='classify')  # BERT model uses task='classify'
+        logits = model(x, task='classify', channel_meta=channel_meta)
         loss = criterion(logits, y)
 
         probs = torch.softmax(logits, dim=1)
@@ -445,6 +571,11 @@ def eval_one_epoch(epoch, rank, model, loader, device, criterion, desc_prefix="E
         print(f"[{desc_prefix}] Epoch {epoch}: Loss={avg_loss:.4f}, Acc={avg_acc:.4f}, "
               f"BalAcc={balanced_acc:.4f}, Kappa={kappa:.4f}, WF1={weighted_f1:.4f}, AUROC={auroc:.4f}")
 
+    if return_preds:
+        # Only the test call asks for these. Returning them unconditionally
+        # would change the tuple every caller unpacks, for the benefit of one.
+        return (avg_loss, avg_acc, balanced_acc, kappa, weighted_f1, auroc,
+                y_true, y_pred)
     return avg_loss, avg_acc, balanced_acc, kappa, weighted_f1, auroc
 
 
@@ -504,6 +635,60 @@ def main_worker(rank, world_size, args):
     
     test_ds = TimeSeriesDataset(test_files) if test_files else None
 
+    # ------------------------------------------------------------------ #
+    # Channel metadata: resolved once here, not per sample.
+    # ------------------------------------------------------------------ #
+    def _base(ds):
+        return ds.dataset if isinstance(ds, torch.utils.data.Subset) else ds
+
+    split_meta = {'train': _base(train_ds).channel_metadata,
+                  'val': _base(val_ds).channel_metadata}
+    if test_ds is not None:
+        split_meta['test'] = test_ds.channel_metadata
+    sigs = {k: _meta_signature(v) for k, v in split_meta.items()}
+    disagree = [k for k, v in sigs.items() if v != sigs['train']]
+    if disagree:
+        raise SystemExit(
+            f"channel metadata differs between train and {', '.join(disagree)}.\n"
+            f"  The splits describe different montages. Rebuild them from one "
+            f"run of\n  EEG/sleep_edf_finetune.py --stage split.")
+    channel_metadata = split_meta['train']
+
+    if args.channel_encoding != 'none':
+        if channel_metadata is None:
+            raise SystemExit(
+                f"--channel_encoding {args.channel_encoding} needs channel "
+                f"metadata and these HDF5 files carry none.\n\n"
+                f"  Rebuild the split -- the per-subject .npz cache is reused, "
+                f"so this is fast:\n\n"
+                f"      python EEG/sleep_edf_finetune.py --stage split \\\n"
+                f"          --split eegpt-fold --fold <k> \\\n"
+                f"          --cache-dir <existing cache> --out-dir <new dir>\n\n"
+                f"  Or run with --channel_encoding none.")
+        n_meta = len(channel_metadata['channel_ids'])
+        if n_meta != args.in_channels:
+            raise SystemExit(
+                f"--in_channels {args.in_channels} but the metadata describes "
+                f"{n_meta} channels ({channel_metadata['_channel_names']}).")
+
+    # Numeric tensors only, one copy on this rank's device. The strings and the
+    # provenance stay on the host: the forward path never parses a name.
+    channel_meta = None
+    if args.channel_encoding != 'none':
+        channel_meta = {
+            k: torch.as_tensor(channel_metadata[k]).to(device)
+            for k in CHANNEL_META_TENSORS
+        }
+        channel_meta['channel_ids'] = channel_meta['channel_ids'].long()
+        channel_meta['positive_electrode_index'] = channel_meta['positive_electrode_index'].long()
+        channel_meta['negative_electrode_index'] = channel_meta['negative_electrode_index'].long()
+        channel_meta['electrode_xyz'] = channel_meta['electrode_xyz'].float()
+        if rank == 0:
+            a = channel_metadata['_attrs']
+            print(f"Channel metadata: {channel_metadata['_channel_names']} "
+                  f"schema v{a.get('metadata_schema_version')} "
+                  f"hash {a.get('metadata_hash')} ({a.get('coordinate_source')})")
+
     if rank == 0:
         print(f"Train files: {len(train_files)}")
         for i, f in enumerate(train_files):
@@ -562,6 +747,14 @@ def main_worker(rank, world_size, args):
         norm=args.norm,
         ffn=args.ffn,
         qk_norm=args.qk_norm,
+        channel_encoding=args.channel_encoding,
+        channel_injection=args.channel_injection,
+        channel_embed_dim=args.channel_embed_dim,
+        channel_fold_gate_init=args.channel_fold_gate_init,
+        channel_token_gate_init=args.channel_token_gate_init,
+        channel_vocab_size=(None if channel_metadata is None
+                            else int(channel_metadata['_attrs'].get(
+                                'channel_vocab_size', 0)) or None),
         scale_fold=args.scale_fold,
         fold_patch_len=args.fold_patch_len,
         fold_synthesis=args.fold_synthesis,
@@ -578,7 +771,56 @@ def main_worker(rank, world_size, args):
         pooling=args.pooling
     ).to(device)
     
+    def _git_commit():
+        """The commit the run was launched from, or None. Never fails the run."""
+        try:
+            import subprocess
+            return subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'],
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stderr=subprocess.DEVNULL).decode().strip()
+        except Exception:                                      # noqa: BLE001
+            return None
+
+    # Everything needed to say what this run *was*, written into the checkpoint
+    # and the result file. A directory name is not provenance: an ablation is a
+    # set of runs that differ in a few flags, and reading those flags back off
+    # the artefact is the only way to be sure which row a number belongs to.
+    provenance = {
+        'channel_encoding': args.channel_encoding,
+        'channel_injection': args.channel_injection,
+        'channel_embed_dim': args.channel_embed_dim,
+        'channel_fold_gate_init': args.channel_fold_gate_init,
+        'channel_token_gate_init': args.channel_token_gate_init,
+        'channel_vocab': (None if channel_metadata is None
+                          else int(channel_metadata['_attrs'].get('channel_vocab_size', 0))),
+        'metadata_hash': (None if channel_metadata is None
+                          else str(channel_metadata['_attrs'].get('metadata_hash'))),
+        'metadata_schema_version': (None if channel_metadata is None
+                                    else int(channel_metadata['_attrs'].get(
+                                        'metadata_schema_version', 0))),
+        'channel_names': (None if channel_metadata is None
+                          else list(channel_metadata['_channel_names'])),
+        'git_commit': _git_commit(),
+        'seed': args.seed,
+        'resolved_model_config': {
+            k: getattr(args, k) for k in (
+                'in_channels', 'max_level', 'wave_kernel_size', 'wave_init_mode',
+                'patch_size', 'embed_dim', 'depth', 'num_heads', 'mlp_ratio',
+                'dropout', 'norm', 'ffn', 'qk_norm', 'scale_fold',
+                'fold_synthesis', 'fold_gamma', 'fold_kl', 'pos_embed_type',
+                'pooling', 'head_hidden_dim', 'head_dropout', 'num_classes',
+                'label_smoothing', 'class_weight', 'lr', 'weight_decay',
+                'batch_size', 'epochs', 'warmup_epochs', 'scheduler', 'select_by')
+        },
+    }
+
     if rank == 0:
+        print("Run provenance: "
+              + " ".join(f"{k}={provenance[k]}" for k in
+                         ('channel_encoding', 'channel_injection',
+                          'channel_embed_dim', 'metadata_hash', 'seed'))
+              + f" git={str(provenance['git_commit'])[:8]}", flush=True)
         # State the block that is actually running: these are CLI defaults rather
         # than anything the output directory records, and an ablation that
         # silently kept the defaults would look identical to one that took effect.
@@ -633,6 +875,7 @@ def main_worker(rank, world_size, args):
     # itself rather than penalising overfitting, which is the mechanism that
     # would make a fold "quietly get smaller" over a long run. Its MLP is an
     # ordinary MLP and keeps the decay.
+    channel_gate_names = {'channel_fold_gate', 'channel_token_gate'}
     fold_no_decay, rest = [], []
     for name, p in model.named_parameters():
         if not p.requires_grad:
@@ -640,15 +883,25 @@ def main_worker(rank, world_size, args):
         # Names are DDP-prefixed here ("module.fold.x"), but the rule must not
         # depend on that -- an unwrapped model would silently skip the group.
         stem = name.split('module.', 1)[-1]
-        (fold_no_decay if (stem.startswith('fold.') and not stem.startswith('fold.mlp.'))
-         else rest).append(p)
+        if stem in channel_gate_names:
+            # The two channel gates are scalars whose whole job is to sit at
+            # zero until the task asks otherwise. Decaying them pulls them back
+            # towards zero every step, which is a prior against the branch
+            # rather than a penalty on its capacity -- and the branch is
+            # precisely what the ablation is measuring. The encoder and the
+            # projections beside them keep the normal decay: those are capacity.
+            fold_no_decay.append(p)
+        elif stem.startswith('fold.') and not stem.startswith('fold.mlp.'):
+            fold_no_decay.append(p)
+        else:
+            rest.append(p)
     optimizer = optim.AdamW(
         [{'params': rest, 'weight_decay': args.weight_decay},
          {'params': fold_no_decay, 'weight_decay': 0.0}],
         lr=args.lr,
     )
     if rank == 0 and fold_no_decay:
-        print(f"Optimizer: {sum(p.numel() for p in fold_no_decay)} fold parameters "
+        print(f"Optimizer: {sum(p.numel() for p in fold_no_decay)} fold/gate parameters "
               f"held out of weight decay", flush=True)
     
     # Loss function
@@ -733,11 +986,12 @@ def main_worker(rank, world_size, args):
         train_loss, train_acc, current_lr = train_one_epoch(
             epoch, rank, model, optimizer, train_loader, device, 
             criterion, scaler, args.grad_clip, scheduler, scheduler_per_batch,
-            fold_kl=args.fold_kl
+            fold_kl=args.fold_kl, channel_meta=channel_meta
         )
         
         val_metrics = eval_one_epoch(
-            epoch, rank, model, val_loader, device, criterion, desc_prefix="Val"
+            epoch, rank, model, val_loader, device, criterion, desc_prefix="Val",
+            channel_meta=channel_meta
         )
         val_loss, val_acc, val_balanced_acc, val_kappa, val_weighted_f1, val_auroc = val_metrics
         
@@ -800,6 +1054,7 @@ def main_worker(rank, world_size, args):
                     'val_weighted_f1': val_weighted_f1,
                     'val_auroc': val_auroc,
                     'args': vars(args),
+                    'provenance': provenance,
                 }, os.path.join(args.output_dir, "best_model.pth"))
                 print(f"Saved best model at epoch {epoch}")
             
@@ -811,6 +1066,7 @@ def main_worker(rank, world_size, args):
                 'val_loss': val_loss,
                 'val_acc': val_acc,
                 'args': vars(args),
+                'provenance': provenance,
             }, os.path.join(args.output_dir, "latest_model.pth"))
 
         # Early stopping.
@@ -876,20 +1132,43 @@ def main_worker(rank, world_size, args):
             dist.broadcast(param.data, src=0)
         
         test_metrics = eval_one_epoch(
-            "Test", rank, model, test_loader, device, criterion, desc_prefix="Test"
+            "Test", rank, model, test_loader, device, criterion, desc_prefix="Test",
+            channel_meta=channel_meta, return_preds=True
         )
         
         if rank == 0:
-            test_loss, test_acc, test_balanced_acc, test_kappa, test_weighted_f1, test_auroc = test_metrics
+            (test_loss, test_acc, test_balanced_acc, test_kappa,
+             test_weighted_f1, test_auroc, y_true_test, y_pred_test) = test_metrics
             test_results = {
                 'test_loss': test_loss,
                 'test_acc': test_acc,
                 'test_balanced_acc': test_balanced_acc,
                 'test_kappa': test_kappa,
                 'test_weighted_f1': test_weighted_f1,
-                'test_auroc': test_auroc
+                'test_auroc': test_auroc,
+                'provenance': provenance,
+                'best_epoch': best_epoch,
+                'best_val': {
+                    'loss': best_val_loss, 'acc': best_val_acc,
+                    'balanced_acc': best_balanced_acc, 'kappa': best_kappa,
+                    'weighted_f1': best_weighted_f1, 'auroc': best_auroc,
+                },
             }
-            
+            # Per-class F1 and the confusion matrix, so the collector does not
+            # have to reload a checkpoint to report them. Balanced accuracy over
+            # five sleep stages hides which stage moved, and N1 is both the
+            # rarest and the one every method loses on.
+            try:
+                cm = confusion_matrix(y_true_test, y_pred_test,
+                                      labels=list(range(args.num_classes)))
+                test_results['confusion_matrix'] = cm.tolist()
+                test_results['per_class_f1'] = f1_score(
+                    y_true_test, y_pred_test, average=None,
+                    labels=list(range(args.num_classes)), zero_division=0).tolist()
+                test_results['per_class_support'] = cm.sum(axis=1).tolist()
+            except Exception as exc:                           # noqa: BLE001
+                test_results['per_class_error'] = repr(exc)
+
             with open(os.path.join(args.output_dir, 'test_results.json'), 'w') as f:
                 json.dump(test_results, f, indent=4)
 
@@ -932,6 +1211,30 @@ def main():
     
     # Label smoothing
     parser.add_argument('--label_smoothing', type=float, default=0.1, help='Label smoothing factor')
+    parser.add_argument('--channel_encoding', type=str, default='none',
+                        choices=['none', 'id', 'signed', 'hybrid'],
+                        help="How a channel's identity is encoded. 'id' is the "
+                             "EEGPT-style learned name embedding; 'signed' is the "
+                             "derivation's geometry, keeping midpoint and "
+                             "direction apart so A-B and B-A differ; 'hybrid' is "
+                             "both. Default 'none' -- the model is then the one "
+                             "that existed before this feature.")
+    parser.add_argument('--channel_injection', type=str, default='none',
+                        choices=['none', 'token', 'fold', 'dual'],
+                        help="Where the code enters. 'token' adds it to each "
+                             "patch token of its own channel; 'fold' biases the "
+                             "dynamic fold's scale logits and needs "
+                             "--scale_fold dynamic; 'dual' does both. Never "
+                             "added to the waveform, which would put a DC "
+                             "offset on the signal.")
+    parser.add_argument('--channel_embed_dim', type=int, default=64,
+                        help='width of the channel code before it is projected')
+    parser.add_argument('--channel_fold_gate_init', type=float, default=0.0,
+                        help='initial value of the fold gate; 0 leaves the '
+                             'backbone bit-identical at step 0')
+    parser.add_argument('--channel_token_gate_init', type=float, default=0.0,
+                        help='initial value of the token gate; 0 leaves the '
+                             'backbone bit-identical at step 0')
     parser.add_argument('--class_weight', type=str, default='none',
                         choices=['none', 'balanced'],
                         help="Weight the loss by inverse class frequency, measured on "
