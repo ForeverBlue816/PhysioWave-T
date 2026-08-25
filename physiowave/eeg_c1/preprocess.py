@@ -109,7 +109,7 @@ def detrend(x: np.ndarray, mode: str) -> np.ndarray:
     if mode == "none":
         return x
     from scipy.signal import detrend as _d
-    with np.errstate(divide="ignore", invalid="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         y = _d(x, axis=-1, type="linear" if mode == "linear" else "constant")
     if not np.all(np.isfinite(y)):
         bad = np.where(~np.isfinite(y).all(axis=-1))[0]
@@ -310,6 +310,27 @@ def split_subjects(subjects: Sequence[str], val_fraction: float,
     val = sorted(uniq[i] for i in order[:n_val])
     train = sorted(uniq[i] for i in order[n_val:])
     return train, val
+
+
+def subject_split_side(subject_id: str, val_fraction: float, seed: int) -> str:
+    """``"train"`` or ``"val"`` for one subject, decided without seeing the rest.
+
+    TUEG is preprocessed as a SLURM array: no single process sees the whole
+    subject list, so split_subjects' shuffle-and-cut cannot be used -- each task
+    would shuffle its own subjects and the same subject could land in train in
+    one shard and val in another, which is the leak the subject-level split
+    exists to prevent.
+
+    Hashing the subject id instead makes the side a property of the subject.
+    Any task, in any order, on any number of shards, and on a re-run months
+    later, puts a given subject on the same side. SHA-256 rather than hash():
+    Python's string hash is salted per process and would give a different
+    partition on every task.
+    """
+    h = hashlib.sha256(f"{seed}:{subject_id}".encode()).digest()
+    # First 8 bytes as a fraction of the range, compared against the target.
+    frac = int.from_bytes(h[:8], "big") / float(1 << 64)
+    return "val" if frac < val_fraction else "train"
 
 
 # --------------------------------------------------------------------------- #
