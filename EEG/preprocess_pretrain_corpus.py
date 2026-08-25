@@ -32,6 +32,7 @@ import json
 import os
 import re
 import sys
+import time
 import traceback
 from dataclasses import dataclass
 from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
@@ -517,6 +518,77 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
     return entry
 
 
+def _process_one_path(payload):
+    """One file, start to finish, in a worker process.
+
+    A module-level function taking only picklable arguments, because a closure
+    over the CLI namespace cannot cross a process boundary and the failure mode
+    for that is a pool that hangs rather than one that raises.
+    """
+    (path, root, dataset_id, cfg, slots, route_id, out_dir, mains_hz,
+     min_cov, synthetic) = payload
+    route = ROUTES[route_id]
+    ident = tueg_identity(path, root)
+    rec_id = os.path.relpath(path, root)
+    try:
+        import mne
+        mne.set_log_level("ERROR")
+        raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        rec = Recording(
+            recording_id=rec_id, subject_id=ident["subject"],
+            data=raw.get_data(), channel_names=list(raw.ch_names),
+            sampling_rate=float(raw.info["sfreq"]), unit="V",
+            mains_hz=mains_hz,
+            notes={"tuh_session": ident["session"],
+                   "tuh_montage": ident["montage"],
+                   "tuh_identity_rule": ident["rule"]})
+        del raw
+
+        class _A:
+            min_slot_coverage = min_cov
+
+        entry = process_recording(rec, dataset_id, cfg, slots, route, out_dir,
+                                  {"synthetic": synthetic}, args_ref=_A())
+        if entry is None:
+            return None, {"recording_id": rec_id,
+                          "reason": "no whole window in recording"}
+        return entry, None
+    except Exception as exc:                                   # noqa: BLE001
+        return None, {"recording_id": rec_id, "reason": str(exc),
+                      "traceback": traceback.format_exc(limit=3)}
+
+
+def _run_parallel(paths, args, dataset_id, cfg, slots, route):
+    """Map _process_one_path over a pool. Returns (entries, failures).
+
+    Used for the path-addressable corpora -- TUEG above all, where a task holds
+    32 cores and would otherwise decode EDF on one of them. Progress is printed
+    as results arrive, not as work is submitted, so the rate shown is the rate
+    achieved.
+    """
+    import concurrent.futures as cf
+
+    payloads = [(p, args.root, dataset_id, cfg, tuple(slots), route.route_id,
+                 args.out_dir, args.mains_hz if args.mains_hz else 60.0,
+                 args.min_slot_coverage, bool(args.smoke_test)) for p in paths]
+    entries, failures = [], []
+    started = time.time()
+    with cf.ProcessPoolExecutor(max_workers=args.jobs) as pool:
+        for i, (entry, failure) in enumerate(
+                pool.map(_process_one_path, payloads, chunksize=1), start=1):
+            if entry is not None:
+                entries.append(entry)
+            if failure is not None:
+                failures.append(failure)
+            if i % 50 == 0 or i == len(payloads):
+                rate = i / max(1e-9, time.time() - started)
+                left = (len(payloads) - i) / max(1e-9, rate)
+                print(f"  {i}/{len(payloads)}  {rate:.1f} files/s  "
+                      f"{len(failures)} failed  ETA {left/60:.0f} min",
+                      flush=True)
+    return entries, failures
+
+
 def _shard_spec(text: str):
     try:
         i, n = text.split("/")
@@ -711,6 +783,11 @@ def main(argv=None) -> int:
     p.add_argument("--shard", type=_shard_spec, default=None, metavar="I/N",
                    help="process only shard I of N, sharded by subject so a "
                         "subject is never split across tasks. For SLURM arrays.")
+    p.add_argument("--jobs", type=int, default=1,
+                   help="worker processes within this task. The filtering and "
+                        "resampling are single-threaded, so a task holding 32 "
+                        "cores decodes on one of them unless this is set. "
+                        "Only the path-addressable corpora (TUEG) use it.")
     p.add_argument("--resume", action="store_true",
                    help="skip recordings whose shard HDF5 already exists")
     p.add_argument("--split-mode", choices=["exact", "hash"], default=None,
@@ -784,69 +861,122 @@ def main(argv=None) -> int:
           + ("  [SMOKE TEST -- synthetic]" if args.smoke_test else ""))
 
     n_seen = 0
-    try:
-        for rec in adapter(args.root or "", args):
-            n_seen += 1
-            if args.max_recordings and n_seen > args.max_recordings:
-                break
-            if args.dry_run:
-                print(f"  would read {rec.recording_id}: "
-                      f"{len(rec.channel_names)}ch @ {rec.sampling_rate}Hz")
-                continue
-            safe = rec.recording_id.replace(os.sep, "__").replace(" ", "_")
-            done = os.path.join(args.out_dir, "shards", f"{safe}.h5")
-            if args.resume and os.path.isfile(done) and os.path.getsize(done) > 0:
-                # Re-read the shard rather than re-deriving it, so a resumed run
-                # writes the same manifest a complete one would.
-                try:
-                    import h5py
-                    with h5py.File(done, "r") as f:
-                        # Every field the summary needs is already in the shard,
-                        # so a resumed run reports what a complete one would.
-                        # Rebuilding the entry from the Recording alone left the
-                        # coverage gates reading keys that were not there.
-                        prov = json.loads(
-                            f.attrs.get("preprocessing_provenance", "{}"))
-                        valid = np.asarray(f["valid_channel_mask"][...], bool)
-                        n_win = int(f["data"].shape[0])
-                        entries.append({
-                            "path": done, "dataset_id": dataset_id,
-                            "route_id": route.route_id,
-                            "n_windows": n_win,
-                            "subjects": [rec.subject_id],
-                            "qc": {"channel_missing_rate":
-                                   float(1.0 - valid.mean())},
-                            "unknown_channel_names":
-                                prov.get("unknown_channel_names", []),
-                            "empty_slots": prov.get("empty_slots", []),
-                            "unmatched_source_channels":
-                                prov.get("unmatched_source_channels", []),
-                            "placed_total": int(valid.sum()),
-                            "placed_unk": int(
-                                (np.asarray(f["channel_ids"][...])[valid] == 1).sum()),
-                            "n_channels_recorded": len(rec.channel_names),
-                            "source_sampling_rate": float(rec.sampling_rate),
-                            "duration_seconds": float(
-                                n_win * cfg.window_seconds)})
-                    continue
-                except Exception:                              # noqa: BLE001
-                    pass          # unreadable: fall through and rebuild it
-            try:
-                entry = process_recording(
-                    rec, dataset_id, cfg, slots, route, args.out_dir,
-                    {"synthetic": bool(args.smoke_test)}, args_ref=args)
-                if entry is None:
-                    failures.append({"recording_id": rec.recording_id,
-                                     "reason": "no whole window in recording"})
-                else:
-                    entries.append(entry)
-                    print(f"  {rec.recording_id}: {entry['n_windows']} windows")
-            except Exception as exc:                       # noqa: BLE001
-                failures.append({"recording_id": rec.recording_id,
-                                 "reason": str(exc),
-                                 "traceback": traceback.format_exc(limit=3)})
-    except PreprocessError as exc:
-        return _fail(str(exc))
+    if dataset_id == "tueg" and args.jobs > 1 and not args.dry_run:
+        paths = iter_tueg_files(args.root)
+        if args.shard:
+            paths = shard_files(paths, args, args.root)
+        if args.resume:
+            keep = []
+            for path in paths:
+                safe = os.path.relpath(path, args.root).replace(
+                    os.sep, "__").replace(" ", "_")
+                done = os.path.join(args.out_dir, "shards", f"{safe}.h5")
+                if os.path.isfile(done) and os.path.getsize(done) > 0:
+                    try:
+                        import h5py
+                        with h5py.File(done, "r") as f:
+                            prov = json.loads(
+                                f.attrs.get("preprocessing_provenance", "{}"))
+                            valid = np.asarray(f["valid_channel_mask"][...], bool)
+                            n_win = int(f["data"].shape[0])
+                            ident = tueg_identity(path, args.root)
+                            entries.append({
+                                "path": done, "dataset_id": dataset_id,
+                                "route_id": route.route_id, "n_windows": n_win,
+                                "subjects": [ident["subject"]],
+                                "qc": {"channel_missing_rate":
+                                       float(1.0 - valid.mean())},
+                                "unknown_channel_names":
+                                    prov.get("unknown_channel_names", []),
+                                "empty_slots": prov.get("empty_slots", []),
+                                "unmatched_source_channels":
+                                    prov.get("unmatched_source_channels", []),
+                                "placed_total": int(valid.sum()),
+                                "placed_unk": int((np.asarray(
+                                    f["channel_ids"][...])[valid] == 1).sum()),
+                                "n_channels_recorded": int(valid.size),
+                                "source_sampling_rate": float(
+                                    f.attrs.get("source_sampling_rate", 0.0)),
+                                "duration_seconds": float(
+                                    n_win * cfg.window_seconds)})
+                        continue
+                    except Exception:                          # noqa: BLE001
+                        pass
+                keep.append(path)
+            print(f"  {len(entries)} already done, {len(keep)} to do")
+            paths = keep
+        if args.max_recordings:
+            paths = paths[: args.max_recordings]
+        print(f"  {len(paths)} file(s) on {args.jobs} worker(s)")
+        got, failed_rows = _run_parallel(paths, args, dataset_id, cfg, slots,
+                                         route)
+        entries.extend(got)
+        failures.extend(failed_rows)
+        n_seen = len(paths)
+    else:
+      try:
+          for rec in adapter(args.root or "", args):
+              n_seen += 1
+              if args.max_recordings and n_seen > args.max_recordings:
+                  break
+              if args.dry_run:
+                  print(f"  would read {rec.recording_id}: "
+                        f"{len(rec.channel_names)}ch @ {rec.sampling_rate}Hz")
+                  continue
+              safe = rec.recording_id.replace(os.sep, "__").replace(" ", "_")
+              done = os.path.join(args.out_dir, "shards", f"{safe}.h5")
+              if args.resume and os.path.isfile(done) and os.path.getsize(done) > 0:
+                  # Re-read the shard rather than re-deriving it, so a resumed run
+                  # writes the same manifest a complete one would.
+                  try:
+                      import h5py
+                      with h5py.File(done, "r") as f:
+                          # Every field the summary needs is already in the shard,
+                          # so a resumed run reports what a complete one would.
+                          # Rebuilding the entry from the Recording alone left the
+                          # coverage gates reading keys that were not there.
+                          prov = json.loads(
+                              f.attrs.get("preprocessing_provenance", "{}"))
+                          valid = np.asarray(f["valid_channel_mask"][...], bool)
+                          n_win = int(f["data"].shape[0])
+                          entries.append({
+                              "path": done, "dataset_id": dataset_id,
+                              "route_id": route.route_id,
+                              "n_windows": n_win,
+                              "subjects": [rec.subject_id],
+                              "qc": {"channel_missing_rate":
+                                     float(1.0 - valid.mean())},
+                              "unknown_channel_names":
+                                  prov.get("unknown_channel_names", []),
+                              "empty_slots": prov.get("empty_slots", []),
+                              "unmatched_source_channels":
+                                  prov.get("unmatched_source_channels", []),
+                              "placed_total": int(valid.sum()),
+                              "placed_unk": int(
+                                  (np.asarray(f["channel_ids"][...])[valid] == 1).sum()),
+                              "n_channels_recorded": len(rec.channel_names),
+                              "source_sampling_rate": float(rec.sampling_rate),
+                              "duration_seconds": float(
+                                  n_win * cfg.window_seconds)})
+                      continue
+                  except Exception:                              # noqa: BLE001
+                      pass          # unreadable: fall through and rebuild it
+              try:
+                  entry = process_recording(
+                      rec, dataset_id, cfg, slots, route, args.out_dir,
+                      {"synthetic": bool(args.smoke_test)}, args_ref=args)
+                  if entry is None:
+                      failures.append({"recording_id": rec.recording_id,
+                                       "reason": "no whole window in recording"})
+                  else:
+                      entries.append(entry)
+                      print(f"  {rec.recording_id}: {entry['n_windows']} windows")
+              except Exception as exc:                       # noqa: BLE001
+                  failures.append({"recording_id": rec.recording_id,
+                                   "reason": str(exc),
+                                   "traceback": traceback.format_exc(limit=3)})
+      except PreprocessError as exc:
+          return _fail(str(exc))
 
     if args.dry_run:
         print(f"\ndry run: {n_seen} recording(s) would be read")

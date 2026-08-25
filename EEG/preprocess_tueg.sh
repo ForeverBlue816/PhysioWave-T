@@ -32,10 +32,19 @@
 # RESUMABLE. A shard whose HDF5 already exists is reused, so a task that hits
 # the walltime loses at most the recording it was in. Resubmit the same array.
 #
-# DISK. Each window is 19 x 1024 float32 = 78 KB before gzip, ~40 KB after. The
-# run prints a projection from the first few hundred recordings before it
-# commits to the rest; MAX_RECORDINGS caps the corpus if that number is larger
-# than the filesystem can take.
+# DISK. Each window is 19 x 1024 float32 = 78 KB before gzip, ~40 KB after.
+# --inspect projects the total from the durations it reads, before anything is
+# written. MAX_RECORDINGS caps the file count; STRIDE_SECONDS larger than the
+# 4 s window subsamples instead, which keeps every recording represented rather
+# than keeping some and dropping others entirely.
+#
+# HOW LONG IT TAKES is a property of this filesystem and these files, not
+# something to guess. Measure it before sizing the array:
+#
+#   time JOBS=8 MAX_RECORDINGS=40 OUT_DIR=/tmp/tueg_probe \
+#       bash EEG/preprocess_tueg.sh
+#
+# and divide: 70831 files / (40 files / elapsed) / N_TASKS.
 #
 # ENVIRONMENT VARIABLES:
 #   TUEG_ROOT       raw corpus     (/leonardo_scratch/large/.../TUEG_v2.0.2)
@@ -46,6 +55,7 @@
 #   MAINS_HZ                       (60 -- TUH is recorded in Philadelphia)
 #   MAX_RECORDINGS  cap            (unset)
 #   STRIDE_SECONDS  window stride  (unset = no overlap)
+#   JOBS            worker processes in this task (1)
 #   RESUME          1 to reuse existing shards (1)
 #   VAL_FRACTION / SPLIT_SEED      (0.10 / 42)
 # ============================================================================
@@ -64,6 +74,7 @@ MAINS_HZ="${MAINS_HZ:-60}"
 VAL_FRACTION="${VAL_FRACTION:-0.10}"
 SPLIT_SEED="${SPLIT_SEED:-42}"
 RESUME="${RESUME:-1}"
+JOBS="${JOBS:-1}"
 SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
@@ -93,6 +104,7 @@ ARGS=(--dataset tueg --root "${TUEG_ROOT}" --out-dir "${OUT_DIR}"
 [[ -n "${MAX_RECORDINGS}" ]] && ARGS+=(--max-recordings "${MAX_RECORDINGS}")
 [[ -n "${STRIDE_SECONDS}" ]] && ARGS+=(--stride-seconds "${STRIDE_SECONDS}")
 [[ "${RESUME}" == "1" ]]     && ARGS+=(--resume)
+[[ "${JOBS}" -gt 1 ]]        && ARGS+=(--jobs "${JOBS}")
 
 echo "============================================================"
 echo "  TUEG -> E19_256  (19 x 1024 @ 256 Hz, 152 tokens)"
@@ -100,6 +112,7 @@ echo "  raw   ${TUEG_ROOT}"
 echo "  out   ${OUT_DIR}"
 echo "  mains ${MAINS_HZ} Hz   val ${VAL_FRACTION} (seed ${SPLIT_SEED})"
 [[ -n "${SHARD}" ]]   && echo "  shard ${SHARD} (by subject)"
+[[ "${JOBS}" -gt 1 ]] && echo "  ${JOBS} worker process(es)"
 [[ -n "${INSPECT}" ]] && echo "  INSPECT ${INSPECT} -- reporting only, nothing written"
 echo "============================================================"
 
