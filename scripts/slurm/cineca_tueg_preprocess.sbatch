@@ -12,23 +12,20 @@
 # so the two cannot drift apart. 64 tasks is a starting point; TUEG's per-file
 # cost is dominated by reading and resampling, so tasks scale nearly linearly.
 #
-# THE PARTITION IS NOT boost_usr_prod, and that is deliberate. Every other
-# sbatch here is on Booster because every other one trains. This job decodes
-# EDF, filters and resamples: no GPU is touched. Booster nodes are billed by
-# GPU-hour and come with four A100s attached, so a CPU-only array there burns
-# the project's GPU budget to run scipy -- 64 tasks would hold 256 idle A100s.
+# NO GPU IS REQUESTED, on the partition everything else here uses. CINECA bills
+# in CPU-hours and counts a GPU as eight of them, so a task asking for 8 cores
+# and no GPU costs 8 CPU-hours an hour -- a quarter of what a 4-GPU training
+# job on the same partition costs, and nothing is spent on accelerators this
+# job would not touch. It decodes EDF, filters and resamples; there is no
+# tensor in it.
 #
-# dcgp_usr_prod is Leonardo's CPU partition. If this project has no DCGP
-# allocation the submission will be rejected, and the fallbacks in order of
-# preference are:
+# If the scheduler refuses a Booster job with no GPU, add --gres=gpu:1: it
+# still bills as 8 CPU-hours an hour and simply leaves the card idle.
 #
-#   sbatch --partition=lrd_all_serial --cpus-per-task=4 --array=0-63 ...
-#       the serial partition; smaller tasks, more of them, no allocation needed
-#
-#   sbatch --partition=boost_usr_prod --gres=gpu:1 --cpus-per-task=8 ...
-#       last resort. It works and it wastes a GPU per task; use a short array.
-#
-# Check what the project actually has before submitting:  saldo -b
+# dcgp_usr_prod, Leonardo's CPU partition, is the better home for this if the
+# project has an allocation there -- check with `saldo -b` and pass
+# --partition=dcgp_usr_prod. Not the default, because a partition the account
+# cannot use is a submission that fails at 3am.
 #
 # CORES ARE USED, not merely held. The filtering and resampling are
 # single-threaded, so without --jobs a task decodes on one core and idles the
@@ -44,11 +41,11 @@
 #       --datasets tueg --allow-missing --check-shards
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
-#SBATCH -p dcgp_usr_prod
-#SBATCH --time=6:00:00
+#SBATCH -p boost_usr_prod
+#SBATCH --time=4:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=16
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=64000
 #SBATCH --job-name=physiowave_tueg_prep
 #SBATCH --output=%x_%A_%a.out
@@ -74,7 +71,7 @@ fi
 # One thread per worker process, not per task: numpy would otherwise start
 # SLURM_CPUS_PER_TASK threads inside each of JOBS processes and oversubscribe
 # the node by that product.
-export JOBS="${JOBS:-${SLURM_CPUS_PER_TASK:-16}}"
+export JOBS="${JOBS:-${SLURM_CPUS_PER_TASK:-8}}"
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
