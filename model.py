@@ -342,16 +342,49 @@ class BERTWaveletTransformer(nn.Module):
         """Dynamically add task head"""
         self.task_heads[task_name] = head_module
     
-    def frequency_guided_masking(self, tokens, mask_ratio, importance_ratio=0.6):
-        """Frequency-domain importance-based masking strategy"""
+    @staticmethod
+    def _mask_budget(L, mask_ratio, valid_token_mask):
+        """How many tokens to mask, counted over the tokens eligible to be masked.
+
+        With a padded montage the eligible count is smaller than L, and taking
+        the budget from L would push the ratio *over the valid tokens* well past
+        what was asked for -- TDBRAIN's 26 real channels in 32 slots turn a
+        requested 0.5 into 0.615. Counted over the valid tokens the requested
+        ratio means the same thing on every route.
+
+        The count is the per-sample minimum so that one budget serves the batch;
+        within a route every sample carries the same montage, so the minimum is
+        also the common value and nothing is lost to it.
+        """
+        if valid_token_mask is None:
+            return int(L * mask_ratio)
+        eligible = int(valid_token_mask.sum(dim=1).min().item())
+        return max(1, int(eligible * mask_ratio)) if eligible > 0 else 0
+
+    def frequency_guided_masking(self, tokens, mask_ratio, importance_ratio=0.6,
+                                 valid_token_mask=None, generator=None):
+        """Frequency-domain importance-based masking strategy.
+
+        ``valid_token_mask`` is ``[B, L]`` or ``None``. Where it is False the
+        token belongs to a padded channel slot -- a montage of 26 electrodes
+        carried in 32 rows -- and must never be selected: it is not a
+        measurement, so reconstructing it would be scoring the model on zeros.
+        Excluded by driving the score to -inf rather than by shrinking the
+        sequence, so the token positions the encoder sees do not shift.
+
+        ``generator`` makes the random half of the score reproducible, which is
+        what lets a validation mask stay fixed across epochs.
+        """
         B, L, D = tokens.shape
-        num_mask = int(L * mask_ratio)
+        num_mask = self._mask_budget(L, mask_ratio, valid_token_mask)
+        if num_mask == 0:
+            return torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
 
         # Calculate frequency domain importance
         tokens_reshaped = tokens.permute(0, 2, 1)
         tokens_fft = torch.abs(torch.fft.rfft(tokens_reshaped, dim=2))
         importance_scores = torch.sum(tokens_fft, dim=1)
-        
+
         # Interpolate to original length
         importance_full = F.interpolate(
             importance_scores.unsqueeze(1), size=L,
@@ -359,30 +392,58 @@ class BERTWaveletTransformer(nn.Module):
         ).squeeze(1)
 
         # Mix randomness and importance
-        random_noise = torch.rand(B, L, device=tokens.device)
+        if generator is None:
+            random_noise = torch.rand(B, L, device=tokens.device)
+        else:
+            random_noise = torch.rand(B, L, device=generator.device,
+                                      generator=generator).to(tokens.device)
         combined_scores = importance_ratio * importance_full + (1 - importance_ratio) * random_noise
+
+        if valid_token_mask is not None:
+            combined_scores = combined_scores.masked_fill(~valid_token_mask,
+                                                          float('-inf'))
 
         # Select positions with highest scores for masking
         _, mask_indices = torch.topk(combined_scores, num_mask, dim=1)
-        
+
         # Create mask
         mask = torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
         mask.scatter_(1, mask_indices, True)
-        
+
         return mask
 
-    def random_masking(self, tokens, mask_ratio):
-        """Random masking strategy"""
+    def random_masking(self, tokens, mask_ratio, valid_token_mask=None,
+                       generator=None):
+        """Random masking strategy. ``valid_token_mask`` as above."""
         B, L, D = tokens.shape
-        num_mask = int(L * mask_ratio)
-        
-        # Randomly select mask positions
-        mask_indices = torch.randperm(L, device=tokens.device)[:num_mask].unsqueeze(0).repeat(B, 1)
-        
+        num_mask = self._mask_budget(L, mask_ratio, valid_token_mask)
+        if num_mask == 0:
+            return torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
+
+        if valid_token_mask is None:
+            # Unchanged from the original: one permutation shared by the batch.
+            if generator is None:
+                perm = torch.randperm(L, device=tokens.device)
+            else:
+                perm = torch.randperm(L, generator=generator,
+                                      device=generator.device).to(tokens.device)
+            mask_indices = perm[:num_mask].unsqueeze(0).repeat(B, 1)
+        else:
+            # A per-sample draw, because which positions are eligible is a
+            # per-sample fact. Ranking uniform noise with the ineligible
+            # positions at -inf picks num_mask of the eligible ones uniformly.
+            if generator is None:
+                noise = torch.rand(B, L, device=tokens.device)
+            else:
+                noise = torch.rand(B, L, device=generator.device,
+                                   generator=generator).to(tokens.device)
+            noise = noise.masked_fill(~valid_token_mask, float('-inf'))
+            mask_indices = torch.topk(noise, num_mask, dim=1).indices
+
         # Create mask
         mask = torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
         mask.scatter_(1, mask_indices, True)
-        
+
         return mask
 
     def apply_masking(self, tokens, mask):
@@ -544,36 +605,93 @@ class BERTWaveletTransformer(nn.Module):
         
         return features
 
-    def forward_pretrain(self, x, mask_ratio=None):
-        """Pretraining forward pass"""
+    def valid_token_mask(self, channel_meta, n_rows, n_samples, batch_size,
+                         device):
+        """``[B, C*P]`` True where the token is a real measurement, or ``None``.
+
+        ``channel_meta['valid_channel_mask']`` is per channel; a channel is
+        either measured or it is a padded slot for its whole window, so the
+        per-token answer is that flag repeated over the channel's P patches.
+        The repeat has to be ``repeat_interleave`` and not ``repeat``: the
+        sequence is channel-major, token ``c*P + p`` belonging to channel ``c``,
+        and the wrong one would silently mark a scattering of real tokens
+        invalid instead.
+        """
+        if channel_meta is None:
+            return None
+        valid = channel_meta.get('valid_channel_mask')
+        if valid is None:
+            return None
+        p_f, p_t = self.patch_size
+        C, P = n_rows // p_f, n_samples // p_t
+        valid = valid.to(device=device, dtype=torch.bool).reshape(-1)
+        if valid.numel() != C:
+            raise ValueError(
+                f"valid_channel_mask has {valid.numel()} entries, the folded "
+                f"spectrogram has {C} rows")
+        return valid.repeat_interleave(P).unsqueeze(0).expand(batch_size, -1)
+
+    def forward_pretrain(self, x, mask_ratio=None, channel_meta=None,
+                         mask_generator=None):
+        """Pretraining forward pass.
+
+        ``channel_meta`` follows the same contract as :meth:`forward_features`:
+        the code is built once per montage and enters at the sites named by
+        ``channel_injection``. Nothing about the objective changes -- the target
+        is still the folded wavelet patch, and the code conditions only what the
+        encoder is given, never what it is asked to reproduce.
+
+        Padded channel slots are excluded from mask selection, which is also how
+        they leave the loss: the reconstruction term is taken over masked tokens
+        only, so a token that is never masked is never scored.
+
+        ``mask_generator`` fixes the random half of the mask, so a validation
+        sample can be given the same mask at every epoch.
+        """
         if mask_ratio is None:
             mask_ratio = self.mask_ratio
-            
+
+        code = self._channel_code(channel_meta)
+        fold_bias = token_code = None
+        if code is not None:
+            if self.channel_injection in ('fold', 'dual'):
+                fold_bias = self._channel_scale_bias(code)
+            if self.channel_injection in ('token', 'dual'):
+                token_code = code
+
         # Wavelet decomposition
-        wave_spec = self.fold_scales(self.wavelet_decomp(x))
+        wave_spec = self.fold(self.wavelet_decomp(x), channel_scale_bias=fold_bias)
         wave_2d = wave_spec.unsqueeze(1)
-        
+
         # Patch embedding and position encoding
-        tokens = self.prepare_tokens(wave_2d)
-        
+        tokens = self.prepare_tokens(wave_2d, channel_code=token_code)
+
         # Get original patches as reconstruction target
         target_patches = self.patchify(wave_2d)
-        
+
+        valid_tokens = self.valid_token_mask(
+            channel_meta, wave_2d.shape[2], wave_2d.shape[3],
+            tokens.shape[0], tokens.device)
+
         # Select mask positions
         if self.masking_strategy == 'frequency_guided':
-            mask = self.frequency_guided_masking(tokens, mask_ratio, self.importance_ratio)
+            mask = self.frequency_guided_masking(
+                tokens, mask_ratio, self.importance_ratio,
+                valid_token_mask=valid_tokens, generator=mask_generator)
         else:  # 'random'
-            mask = self.random_masking(tokens, mask_ratio)
-        
+            mask = self.random_masking(
+                tokens, mask_ratio, valid_token_mask=valid_tokens,
+                generator=mask_generator)
+
         # Apply masking
         masked_tokens = self.apply_masking(tokens, mask)
-        
+
         # Encoder processing
         encoded_tokens = self.encoder(masked_tokens)
-        
+
         # Reconstruction head prediction
         pred_patches = self.task_heads['pretrain'](encoded_tokens)
-        
+
         return pred_patches, mask, target_patches
 
     def forward_downstream(self, x, task_name, channel_meta=None):
@@ -590,7 +708,7 @@ class BERTWaveletTransformer(nn.Module):
         return output
 
     def forward(self, x, task='features', mask_ratio=None, task_name=None,
-                channel_meta=None):
+                channel_meta=None, mask_generator=None):
         """
         Unified forward pass interface
         
@@ -614,13 +732,9 @@ class BERTWaveletTransformer(nn.Module):
         if task == 'features':
             return self.forward_features(x, channel_meta=channel_meta)
         elif task == 'pretrain':
-            # Pretraining does not consume the code: the SSL objective and the
-            # frequency-guided masking are out of scope for this change, and a
-            # half-wired path is worse than an explicit refusal.
-            if channel_meta is not None:
-                raise NotImplementedError(
-                    "channel_meta is not wired into the pretraining path.")
-            return self.forward_pretrain(x, mask_ratio)
+            return self.forward_pretrain(x, mask_ratio,
+                                         channel_meta=channel_meta,
+                                         mask_generator=mask_generator)
         elif task == 'downstream':
             if task_name is None:
                 raise ValueError("task_name must be specified for downstream tasks")
