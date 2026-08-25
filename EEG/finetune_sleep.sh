@@ -98,8 +98,19 @@ mkdir -p "${OUTPUT_DIR}"
 # FOO=0 is a non-empty string, so `${FOO:+--foo}` turns the flag ON when the
 # variable says 0.
 # ---------------------------------------------------------------------------
-CHANNEL_ENCODING="${CHANNEL_ENCODING:-none}"
-CHANNEL_INJECTION="${CHANNEL_INJECTION:-none}"
+# id/token -- variant C1 of the channel ablation, the EEGPT-style learned name
+# embedding added to each patch token. This is the settled configuration, so it
+# is the default here rather than something a caller has to remember. The
+# ablation runner still sets both explicitly for every variant it scores,
+# including C0's none/none, so this default does not reach that sweep.
+#
+# The split must carry channel metadata, which finetune.py requires as soon as
+# the encoding is not 'none'. Writing it needs mne at --stage split time, so a
+# split assembled in an environment without mne carries none and will now fail
+# where it used to train. CHANNEL_ENCODING=none CHANNEL_INJECTION=none is the
+# way back; rebuilding the split under $HOME/pwprep is the fix.
+CHANNEL_ENCODING="${CHANNEL_ENCODING:-id}"
+CHANNEL_INJECTION="${CHANNEL_INJECTION:-token}"
 CHANNEL_EMBED_DIM="${CHANNEL_EMBED_DIM:-64}"
 CHANNEL_FOLD_GATE_INIT="${CHANNEL_FOLD_GATE_INIT:-0.0}"
 CHANNEL_TOKEN_GATE_INIT="${CHANNEL_TOKEN_GATE_INIT:-0.0}"
