@@ -161,6 +161,36 @@ def main(argv=None) -> int:
                 print(f"  {path}: {why}", file=sys.stderr)
             return 1
 
+    # An empty merge is never a successful one. Writing a pair of empty
+    # manifests and reporting a table of zeros is how a training run gets
+    # pointed at nothing: the trainer's own check fires much later and much
+    # further from the cause. This is also what "run it after squeue is empty"
+    # is actually protecting against, and a rule that depends on remembering it
+    # is not a check.
+    n_shards = len(merged["train"]) + len(merged["val"])
+    if n_shards == 0:
+        print(f"ERROR: no manifest rows found under {root}.\n\n"
+              f"  Looked for {'/'.join(present)}/manifest_{{train,val}}"
+              f"[.NNNN].jsonl\n\n"
+              f"  A preprocessing task writes its manifest when it FINISHES, so"
+              f" this is\n"
+              f"  what an empty or still-running corpus looks like. Check:\n"
+              f"    squeue --me\n"
+              f"    ls -la {os.path.join(root, present[0])}/manifest_*.jsonl\n"
+              f"    sacct -j <jobid> --format=JobID,State,ExitCode -X\n\n"
+              f"  Nothing was written; the previous merged/ is left as it was.",
+              file=sys.stderr)
+        return 1
+    if not merged["val"]:
+        print(f"ERROR: {len(merged['train'])} training shard(s) and no "
+              f"validation shard.\n"
+              f"  Every subject hashed to the training side, which at this "
+              f"corpus size means\n"
+              f"  the split seed or fraction differs between tasks, or too few "
+              f"subjects finished.",
+              file=sys.stderr)
+        return 1
+
     os.makedirs(out_dir, exist_ok=True)
     for split in ("train", "val"):
         path = os.path.join(out_dir, f"manifest_{split}.jsonl")
