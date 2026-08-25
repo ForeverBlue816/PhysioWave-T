@@ -1,0 +1,240 @@
+"""
+The four hard routes of the EEG C1 pretraining corpus.
+
+A route is the (electrode count, sampling rate) shape a batch arrives in. It is
+fixed by the table below and chosen by ``route_id`` carried in the data -- there
+is no learned router here, and this is deliberately not a mixture of experts:
+which frontend runs is a property of the recording, known before the model sees
+it, so making it a learned decision would be inventing a choice that does not
+exist.
+
+Every route window is 4 seconds and every patch is 0.5 seconds, so every route has
+exactly 8 time patches per channel and the token count is just the electrode
+count times eight. That is what keeps one Transformer usable across all four:
+the sequence length changes, the meaning of a position does not.
+
+    route       C     rate    samples   patch_t   tokens
+    E19_256     19    256     1024      128       152
+    E32_512     32    512     2048      256       256
+    E64_256     64    256     1024      128       512
+    E128_512    128   512     2048      256       1024
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Tuple
+
+# --------------------------------------------------------------------------- #
+# Canonical electrode slots
+#
+# A route's slot list IS its channel axis: row i of every window on that route
+# is the electrode named at index i, on every dataset. A dataset that does not
+# record one of them leaves the row zero-filled with valid_channel_mask False.
+# Mapping is by name, never by position -- two datasets that both have "26
+# channels" do not have the same 26.
+# --------------------------------------------------------------------------- #
+
+#: The 10-20 nineteen. TUEG records these under the old T3/T4/T5/T6 spelling,
+#: which channel_embedding.normalize_channel_name resolves to T7/T8/P7/P8.
+SLOTS_19: Tuple[str, ...] = (
+    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+    "T7", "C3", "Cz", "C4", "T8",
+    "P7", "P3", "Pz", "P4", "P8",
+    "O1", "O2",
+)
+
+#: Thirty-two slots chosen so that TDBRAIN's twenty-six land exactly, in order,
+#: and the six it does not record are the padded ones. The alternative -- a
+#: generic 32-channel layout -- would have scattered TDBRAIN across the axis and
+#: left its FC3/FCz/FC4/CP3/CPz/CP4 with nowhere to go but UNK.
+SLOTS_32: Tuple[str, ...] = (
+    "Fp1", "Fp2", "F7", "F3", "Fz", "F4", "F8",
+    "FC3", "FCz", "FC4",
+    "T7", "C3", "Cz", "C4", "T8",
+    "CP3", "CPz", "CP4",
+    "P7", "P3", "Pz", "P4", "P8",
+    "O1", "Oz", "O2",
+    # The six TDBRAIN leaves empty; FACED and anything else may fill them.
+    "FC5", "FC6", "CP5", "CP6", "PO3", "PO4",
+)
+
+#: The 10-10 sixty-four, the montage PhysioNetMI and M3CV both record.
+SLOTS_64: Tuple[str, ...] = (
+    "Fp1", "Fpz", "Fp2",
+    "AF7", "AF3", "AFz", "AF4", "AF8",
+    "F7", "F5", "F3", "F1", "Fz", "F2", "F4", "F6", "F8",
+    "FT7", "FC5", "FC3", "FC1", "FCz", "FC2", "FC4", "FC6", "FT8",
+    "T7", "C5", "C3", "C1", "Cz", "C2", "C4", "C6", "T8",
+    "TP7", "CP5", "CP3", "CP1", "CPz", "CP2", "CP4", "CP6", "TP8",
+    "P7", "P5", "P3", "P1", "Pz", "P2", "P4", "P6", "P8",
+    "PO7", "PO3", "POz", "PO4", "PO8",
+    "O1", "Oz", "O2", "Iz", "P9", "P10",
+)
+
+#: 128 slots. HBN records on an EGI HydroCel net whose labels are E1..E128 after
+#: the reference is removed, and HGD records 10-5 scalp names; the two do not
+#: share an electrode naming scheme, so the slot list is the EGI one and HGD's
+#: names are mapped onto it by the adapter's own table rather than by pretending
+#: E-numbers and 10-5 labels are interchangeable. A dataset that fills none of a
+#: slot leaves it padded, which is the honest outcome for two montages that
+#: genuinely do not align.
+SLOTS_128: Tuple[str, ...] = tuple(f"E{i}" for i in range(1, 129))
+
+#: HGD's 128 10-5 names, in the order the adapter presents them. Kept separate
+#: from SLOTS_128 because HGD occupies the E128_512 route by shape, not by
+#: sharing HBN's electrode identities.
+SLOTS_128_HGD: Tuple[str, ...] = tuple(
+    list(SLOTS_64) + [
+        "AF5", "AF6", "AFF1", "AFF2", "AFF5", "AFF6",
+        "FFT7", "FFC5", "FFC3", "FFC1", "FFC2", "FFC4", "FFC6", "FFT8",
+        "FTT7", "FCC5", "FCC3", "FCC1", "FCC2", "FCC4", "FCC6", "FTT8",
+        "TTP7", "CCP5", "CCP3", "CCP1", "CCP2", "CCP4", "CCP6", "TTP8",
+        "TPP7", "CPP5", "CPP3", "CPP1", "CPP2", "CPP4", "CPP6", "TPP8",
+        "PPO1", "PPO2", "PPO5", "PPO6", "POO1", "POO2",
+        "F9", "F10", "FT9", "FT10", "TP9", "TP10", "PO9", "PO10",
+        "O9", "O10", "I1", "I2", "AFp1", "AFp2", "OI1", "OI2",
+        "AFF7", "AFF8", "PPO7", "PPO8",
+    ]
+)
+assert len(SLOTS_128_HGD) == 128, (
+    f"HGD needs exactly 128 slots for E128_512, has {len(SLOTS_128_HGD)}")
+
+
+@dataclass(frozen=True)
+class Route:
+    """One hard route. Everything the model and the loader need to agree on."""
+
+    route_id: str
+    n_channels: int
+    sampling_rate: int
+    window_seconds: float = 4.0
+    patch_seconds: float = 0.5
+    slots: Tuple[str, ...] = ()
+
+    @property
+    def window_samples(self) -> int:
+        return int(self.window_seconds * self.sampling_rate)
+
+    @property
+    def patch_t(self) -> int:
+        return int(self.patch_seconds * self.sampling_rate)
+
+    @property
+    def patch_size(self) -> Tuple[int, int]:
+        """``(freq rows per patch, samples per patch)``.
+
+        One row per patch: the fold has already reduced the scale axis, so a
+        row is a channel and a patch must not span two of them.
+        """
+        return (1, self.patch_t)
+
+    @property
+    def patches_per_channel(self) -> int:
+        return self.window_samples // self.patch_t
+
+    @property
+    def n_tokens(self) -> int:
+        return self.n_channels * self.patches_per_channel
+
+    @property
+    def rate_key(self) -> str:
+        """Which PatchEmbed and reconstruction head this route shares."""
+        return str(self.sampling_rate)
+
+    def describe(self) -> str:
+        return (f"{self.route_id}: {self.n_channels}x{self.window_samples} @ "
+                f"{self.sampling_rate}Hz -> {self.n_channels}x"
+                f"{self.patches_per_channel} = {self.n_tokens} tokens "
+                f"(patch {self.patch_size})")
+
+
+ROUTES: Dict[str, Route] = {
+    r.route_id: r
+    for r in (
+        Route("E19_256", 19, 256, slots=SLOTS_19),
+        Route("E32_512", 32, 512, slots=SLOTS_32),
+        Route("E64_256", 64, 256, slots=SLOTS_64),
+        Route("E128_512", 128, 512, slots=SLOTS_128),
+    )
+}
+
+ROUTE_IDS: Tuple[str, ...] = tuple(ROUTES)
+
+#: Which sampling rates need their own PatchEmbed and decoder. Two, not four:
+#: the patch is 0.5 s everywhere, so the kernel is a function of the rate alone.
+RATE_KEYS: Tuple[str, ...] = tuple(
+    sorted({r.rate_key for r in ROUTES.values()}, key=int)
+)
+
+
+# --------------------------------------------------------------------------- #
+# Datasets
+# --------------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class DatasetSpec:
+    dataset_id: str
+    route_id: str
+    native_rate: float | None      # None where it varies per recording (TUEG)
+    native_channels: int
+    slots: Tuple[str, ...] = ()
+    notes: str = ""
+
+    @property
+    def route(self) -> Route:
+        return ROUTES[self.route_id]
+
+
+#: The seven pretraining corpora. DEAP is deliberately absent and a test pins
+#: that: it is a downstream evaluation set, and pretraining on it would make
+#: every DEAP number a report on data the encoder had already seen.
+PRETRAIN_DATASETS: Dict[str, DatasetSpec] = {
+    d.dataset_id: d
+    for d in (
+        DatasetSpec("tueg", "E19_256", None, 19, SLOTS_19,
+                    "rate varies per recording; resampled to 256"),
+        DatasetSpec("faced", "E32_512", 1000.0, 32, SLOTS_32,
+                    "raw 1000 Hz BDF only; the 250 Hz release is refused"),
+        DatasetSpec("tdbrain", "E32_512", 500.0, 26, SLOTS_32,
+                    "26 electrodes mapped by name into 32 slots; 6 padded"),
+        DatasetSpec("physionet_mi", "E64_256", 160.0, 64, SLOTS_64,
+                    "native 64 kept; 160 -> 256"),
+        DatasetSpec("m3cv", "E64_256", 250.0, 64, SLOTS_64,
+                    "native 64 kept; 250 -> 256; pretraining only"),
+        DatasetSpec("hbn", "E128_512", 500.0, 129, SLOTS_128,
+                    "129 -> 128 by removing the recorded reference; 500 -> 512"),
+        DatasetSpec("hgd", "E128_512", 500.0, 128, SLOTS_128_HGD,
+                    "native 128; 500 -> 512; pretraining only"),
+    )
+}
+
+DATASET_IDS: Tuple[str, ...] = tuple(PRETRAIN_DATASETS)
+
+#: Never pretrained on. Named rather than merely omitted so the refusal is
+#: testable and survives someone adding datasets later.
+DOWNSTREAM_ONLY: Tuple[str, ...] = ("deap", "sleep_edf", "erpbci", "physio_p300")
+
+
+def datasets_for_route(route_id: str) -> List[str]:
+    return [d for d, s in PRETRAIN_DATASETS.items() if s.route_id == route_id]
+
+
+def default_sampling_weights() -> Dict[str, float]:
+    """P(route) = 1/4, then uniform over that route's datasets.
+
+    Window counts differ by orders of magnitude -- TUEG alone dwarfs the other
+    six -- so sampling proportionally to size would make this a TUEG run with
+    six rounding errors attached. The weights are the point of the mixture and
+    they are configuration, not a consequence of how much data happened to be
+    collected.
+    """
+    weights: Dict[str, float] = {}
+    per_route = 1.0 / len(ROUTES)
+    for route_id in ROUTES:
+        members = datasets_for_route(route_id)
+        if not members:
+            continue
+        for dataset_id in members:
+            weights[dataset_id] = per_route / len(members)
+    return weights
