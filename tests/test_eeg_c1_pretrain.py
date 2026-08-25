@@ -610,3 +610,45 @@ def test_manifest_merge_refuses_a_split_leak(tmp_path):
     assert r.returncode == 1
     assert "both splits" in r.stderr
     assert "aaaaaaaa" in r.stderr
+
+
+def test_a_sparse_recording_is_skipped_not_fatal(tmp_path):
+    """A file carrying a third of the montage fails alone, not the whole run.
+
+    TUEG holds recordings from 21 to 41 channels, and some of the small ones do
+    not carry the 10-20 nineteen at all. Those produce windows that are more
+    mask than measurement; the aggregate empty-slot gate averages them away, so
+    the per-recording floor is what actually keeps them out.
+    """
+    from EEG.preprocess_pretrain_corpus import process_recording, Recording
+    from physiowave.eeg_c1.preprocess import PreprocessConfig, PreprocessError
+    from physiowave.eeg_c1.routes import SLOTS_19
+
+    route = ROUTES["E19_256"]
+    cfg = PreprocessConfig(notch_hz=60.0)
+
+    class Args:
+        min_slot_coverage = 0.75
+
+    sparse = Recording(
+        recording_id="sparse", subject_id="aaaaaaaz",
+        data=np.random.randn(6, 256 * 30) * 25e-6,
+        channel_names=["EEG FP1-REF", "EEG FP2-REF", "EEG C3-REF",
+                       "EEG C4-REF", "EEG O1-REF", "EEG O2-REF"],
+        sampling_rate=256.0, unit="V", mains_hz=60.0)
+    with pytest.raises(PreprocessError) as exc:
+        process_recording(sparse, "tueg", cfg, SLOTS_19, route,
+                          str(tmp_path), {}, args_ref=Args())
+    assert "6 of 19" in str(exc.value)
+
+    # The full montage passes the same floor.
+    full = Recording(
+        recording_id="full", subject_id="aaaaaaay",
+        data=np.random.randn(19, 256 * 30) * 25e-6,
+        channel_names=[f"EEG {c.upper()}-REF" for c in SLOTS_19],
+        sampling_rate=256.0, unit="V", mains_hz=60.0)
+    entry = process_recording(full, "tueg", cfg, SLOTS_19, route,
+                              str(tmp_path), {}, args_ref=Args())
+    assert entry is not None and entry["n_windows"] > 0
+    assert entry["placed_total"] == 19 and entry["placed_unk"] == 0
+    assert not entry["empty_slots"]

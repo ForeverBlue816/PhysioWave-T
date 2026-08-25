@@ -446,7 +446,7 @@ ADAPTERS: Dict[str, Callable] = {
 
 def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
                       slots: Sequence[str], route, out_dir: str,
-                      extra_prov: Dict) -> Optional[Dict]:
+                      extra_prov: Dict, args_ref=None) -> Optional[Dict]:
     """One recording -> one shard, or None when it yields no whole window."""
     if len(slots) != route.n_channels:
         # Caught here rather than at training time. A slot list one short writes
@@ -469,6 +469,12 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
         raise PreprocessError(
             f"none of {len(rec.channel_names)} channels matched a slot of "
             f"{route.route_id}. First few recorded: {rec.channel_names[:6]}")
+    coverage = float(mapping.valid.sum()) / len(slots)
+    if coverage < getattr(args_ref, "min_slot_coverage", 0.0):
+        raise PreprocessError(
+            f"fills only {int(mapping.valid.sum())} of {len(slots)} slots "
+            f"({coverage:.0%}); empty: {mapping.empty_slots[:12]}")
+
     placed = place_on_slots(x, mapping, len(slots))
 
     win = int(cfg.window_seconds * route.sampling_rate)
@@ -524,7 +530,14 @@ def _shard_spec(text: str):
 
 
 def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
-    """Report what the corpus actually is, without processing any of it."""
+    """Report what the corpus actually is, without processing any of it.
+
+    The number that decides whether a run is worth launching is the PER-FILE
+    slot coverage, not the union over the sample. A union of 19 of 19 only says
+    that every slot was filled by some file somewhere; a corpus whose files each
+    carry twelve of the nineteen would report exactly the same line while
+    producing windows that are more mask than measurement.
+    """
     from collections import Counter
 
     mne = _require_mne()
@@ -541,7 +554,9 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     print(f"reading the headers of {n} of them\n")
 
     rates, montages, rules, counts = Counter(), Counter(), Counter(), Counter()
-    name_hits, name_miss = Counter(), Counter()
+    union_hits, unmatched = Counter(), Counter()
+    coverage: List[int] = []
+    seconds = 0.0
     subjects = set()
     failed = 0
     step = max(1, len(files) // n)
@@ -554,17 +569,24 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
             failed += 1
             print(f"  UNREADABLE {os.path.relpath(path, root)}: {exc}")
             continue
-        rates[float(raw.info["sfreq"])] += 1
+        fs = float(raw.info["sfreq"])
+        rates[fs] += 1
         counts[len(raw.ch_names)] += 1
+        seconds += raw.n_times / fs
         if dataset_id == "tueg":
             ident = tueg_identity(path, root)
             montages[ident["montage"] or "(none)"] += 1
             rules[ident["rule"]] += 1
             subjects.add(ident["subject"])
-        for c in raw.ch_names:
-            canonical = normalize_channel_name(c)
-            (name_hits if canonical in slots else name_miss)[canonical] += 1
+        mapping = map_to_slots(raw.ch_names, slots)
+        coverage.append(int(mapping.valid.sum()))
+        for j, filled in enumerate(mapping.valid):
+            if filled:
+                union_hits[slots[j]] += 1
+        for name in mapping.unmatched_sources:
+            unmatched[normalize_channel_name(name)] += 1
 
+    read = len(coverage)
     print(f"sampling rates   : {dict(sorted(rates.items()))}")
     print(f"channel counts   : {dict(sorted(counts.items()))}")
     if dataset_id == "tueg":
@@ -573,17 +595,68 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
               f"({len(subjects)} distinct subjects in this sample)")
         if rules.get("path", 0):
             print("  WARNING: the filename rule did not fire on every file; "
-                  "check the layout before a long run.")
+                  "the subject ids, and so the train/val split, are coming "
+                  "from a fallback. Check the layout before a long run.")
     print(f"unreadable       : {failed} of {n}")
-    print(f"\nslots filled     : {len(name_hits)} of {len(slots)} "
-          f"({route.route_id})")
-    print(f"  matched  : {sorted(name_hits)[:24]}")
-    missed = sorted(name_miss)
-    print(f"  unmatched: {missed[:24]}"
-          + (f" (+{len(missed)-24} more)" if len(missed) > 24 else ""))
-    print("\nUnmatched names are dropped, not mapped to UNK -- they are usually "
-          "EKG/PHOTIC/annotation rows.\nIf a scalp electrode is in that list, "
-          "the adapter's naming needs fixing before you run.")
+
+    # -- per-file coverage, which is the thing that matters ----------------- #
+    if coverage:
+        cov = np.asarray(coverage)
+        full = int((cov == len(slots)).sum())
+        print(f"\nPER-FILE slot coverage of {route.route_id} "
+              f"({len(slots)} slots), over {read} file(s):")
+        print(f"  min {cov.min()}   median {int(np.median(cov))}   "
+              f"mean {cov.mean():.1f}   max {cov.max()}")
+        print(f"  files filling every slot : {full} of {read} "
+              f"({full/read*100:.0f}%)")
+        hist = Counter(cov.tolist())
+        print("  distribution: " + "  ".join(
+            f"{k}ch x{v}" for k, v in sorted(hist.items())))
+        thresh = args.min_slot_coverage
+        would_skip = int((cov < thresh * len(slots)).sum())
+        print(f"  --min-slot-coverage {thresh:.2f} would skip {would_skip} of "
+              f"{read} ({would_skip/read*100:.0f}%) as too sparse")
+        # Which slots go unfilled most often: this names the electrode the
+        # adapter cannot read, if there is one.
+        misses = [(s, read - union_hits.get(s, 0)) for s in slots]
+        misses = [(s, m) for s, m in misses if m]
+        if misses:
+            print("  slots not always filled: " + ", ".join(
+                f"{s} (missing in {m})"
+                for s, m in sorted(misses, key=lambda x: -x[1])[:12]))
+        else:
+            print("  every slot filled in every file read")
+
+    # -- what was dropped, and whether any of it is a real electrode -------- #
+    print(f"\nDROPPED channel names ({len(unmatched)} distinct), most common:")
+    known, unknown = [], []
+    for name, c in unmatched.most_common():
+        (known if name in CHANNEL_TO_ID else unknown).append((name, c))
+    for name, c in unknown[:30]:
+        print(f"  {name:<20} x{c}")
+    if len(unknown) > 30:
+        print(f"  ... and {len(unknown) - 30} more")
+    if known:
+        print(f"\n  These ARE electrodes in the vocabulary, dropped only "
+              f"because {route.route_id} has no slot for them:")
+        for name, c in known:
+            print(f"    {name:<18} x{c}")
+        print("  That is expected for a 19-slot route and is not a naming bug.")
+
+    # -- what it will cost -------------------------------------------------- #
+    if read and seconds > 0:
+        per_file = seconds / read
+        est_files = len(files) - int(failed / max(1, read) * len(files))
+        win = int(est_files * per_file / args.window_seconds)
+        bytes_per = len(slots) * route.window_samples * 4
+        print(f"\nPROJECTED COST, from {read} file(s) at "
+              f"{per_file/60:.1f} min each:")
+        print(f"  {est_files:,} files  ~{est_files*per_file/3600:,.0f} hours")
+        print(f"  ~{win:,} windows of {len(slots)}x{route.window_samples}")
+        print(f"  ~{win*bytes_per/1e12:.2f} TB uncompressed, "
+              f"~{win*bytes_per*0.5/1e12:.2f} TB after gzip")
+        print("  MAX_RECORDINGS or STRIDE_SECONDS cap this if it is too large "
+              "for the filesystem.")
     return 0
 
 
@@ -616,6 +689,12 @@ def main(argv=None) -> int:
     p.add_argument("--unk-rate-max", type=float, default=0.01,
                    help="fail if more than this fraction of the channels placed "
                         "into slots carry an <unk> id")
+    p.add_argument("--min-slot-coverage", type=float, default=0.75,
+                   help="skip a RECORDING that fills less than this fraction of "
+                        "the route's slots, logging it as a failure. A file "
+                        "carrying twelve of nineteen electrodes yields windows "
+                        "that are more mask than measurement; the aggregate "
+                        "gate below averages those away.")
     p.add_argument("--max-empty-slot-rate", type=float, default=0.25,
                    help="fail if more than this fraction of the route's slots "
                         "are left unfilled on average. This is the gate that "
@@ -755,7 +834,7 @@ def main(argv=None) -> int:
             try:
                 entry = process_recording(
                     rec, dataset_id, cfg, slots, route, args.out_dir,
-                    {"synthetic": bool(args.smoke_test)})
+                    {"synthetic": bool(args.smoke_test)}, args_ref=args)
                 if entry is None:
                     failures.append({"recording_id": rec.recording_id,
                                      "reason": "no whole window in recording"})
