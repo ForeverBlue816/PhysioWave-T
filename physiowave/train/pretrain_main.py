@@ -61,6 +61,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--resume", default=None, help="checkpoint to resume from ('auto' = latest)")
     p.add_argument("--max-steps", type=int, default=None, help="cap steps (smoke tests)")
     p.add_argument("--dry-run", action="store_true", help="validate config/data and exit")
+    p.add_argument("--smoke-test", action="store_true",
+                   help="run on synthetic data. Only the eeg_c1_moe trainer "
+                        "implements it, and it is the ONLY way that path "
+                        "fabricates signal -- nothing falls back to it.")
     return p.parse_args(argv)
 
 
@@ -186,6 +190,13 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     cfg = load_config(args.config, args.overrides)
     out_dir = resolve_output_dir(cfg, args.output_dir)
+
+    # The EEG C1 multi-route path shares no model, objective or data builder
+    # with what follows, so it is dispatched whole rather than threaded
+    # through a loop whose every stage would have to become conditional.
+    if cfg.get("trainer") == "eeg_c1_moe":
+        from ..eeg_c1.entry import run as run_eeg_c1
+        return run_eeg_c1(cfg, out_dir, args)
 
     if args.dry_run:
         return run_dry_run(cfg, out_dir)

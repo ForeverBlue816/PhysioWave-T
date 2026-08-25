@@ -1,0 +1,77 @@
+# EEG C1 multi-route pretraining -- the settled standard model.
+#
+# Deliberately NOT `defaults: [base, model/wast_tare]`. This path shares no
+# module with WAST/TARE, topology compression, reference consistency or query
+# specialisation; inheriting their config would carry keys that silently mean
+# nothing here and make it look as though they were considered.
+#
+# The model block is EEG/finetune_sleep.sh's configuration, which is the one the
+# Sleep-EDF numbers were produced under. Two of its values cannot be single
+# scalars in a multi-frontend model and are named per route by the code instead:
+#   * in_channels  -- 19/32/64/128, one wavelet expert each
+#   * patch_size   -- (1,128) at 256 Hz and (1,256) at 512 Hz, so that a patch
+#                     is 0.5 s on every route. Two patchers, two decoders.
+# Everything else below is shared verbatim.
+trainer: eeg_c1_moe
+run_name: pretrain_eeg_c1_moe
+seed: 42
+output_dir: ${run_name}
+
+data:
+  modality: eeg
+  # Written by EEG/preprocess_pretrain_corpus.py, one directory per dataset;
+  # scripts/build_eeg_c1_manifest.py merges them into these two files.
+  manifest_train: null
+  manifest_val: null
+  # P(route)=1/4, then uniform within a route. Null means "use that default".
+  # These govern the share of STEPS; the share of windows differs because the
+  # micro-batch is route-specific, and both are logged every epoch.
+  weights: null
+
+model:
+  max_level: 3
+  wave_kernel_size: 16
+  wavelet_names: [sym4, sym5, db6, sym8, db8]
+  wave_init_mode: pad
+  use_separate_channel: true
+  scale_fold: dynamic
+  fold_synthesis: 3
+  fold_gamma: 0.1
+  embed_dim: 384
+  depth: 6
+  num_heads: 6
+  mlp_ratio: 4.0
+  dropout: 0.1
+  norm: rmsnorm
+  ffn: swiglu
+  qk_norm: true
+  masking_strategy: frequency_guided
+  importance_ratio: 0.6
+  mask_ratio: 0.5
+  # C1, exactly as the channel ablation defines it.
+  channel_encoding: id
+  channel_injection: token
+  channel_embed_dim: 64
+  channel_token_gate_init: 0.0
+
+train:
+  epochs: 50
+  warmup_epochs: 2
+  lr: 3.0e-4
+  min_lr_ratio: 0.01
+  weight_decay: 0.05
+  fold_kl: 1.0e-3
+  clip_grad_norm: 1.0
+  precision: bf16
+  grad_accumulation_steps: 4
+  steps_per_epoch: null          # null -> one pass over the corpus in expectation
+  val_mask_seed: 1234            # fixes the validation mask across epochs
+  vis_every_epochs: 5
+  # Token counts differ 6.7x across routes, so one batch size would either waste
+  # E19_256 or exhaust memory on E128_512. Gradient accumulation keeps the
+  # optimizer step comparable whichever route a step drew.
+  batch_size_by_route:
+    E19_256: 64
+    E32_512: 48
+    E64_256: 24
+    E128_512: 12
