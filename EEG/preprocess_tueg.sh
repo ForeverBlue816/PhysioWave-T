@@ -16,6 +16,13 @@
 #
 #   INSPECT=200 bash EEG/preprocess_tueg.sh
 #
+# Then build the file listing ONCE, before the array. Walking this tree costs
+# tens of minutes on Lustre and every task would otherwise pay it separately --
+# which is exactly what made two of sixteen tasks spend forty-four minutes
+# before processing a single file:
+#
+#   bash EEG/preprocess_tueg.sh --write-file-list
+#
 # Read the report before launching the array. What matters in it:
 #   * identity rule should be 'filename' for every file. Any 'path' means the
 #     filenames do not follow <subject>_s<NNN>_t<NNN>.edf here and the subject
@@ -56,6 +63,7 @@
 #   MAX_RECORDINGS  cap            (unset)
 #   STRIDE_SECONDS  window stride  (unset = no overlap)
 #   JOBS            worker processes in this task (1)
+#   FILE_LIST       cached corpus listing ($OUT_DIR/tueg_files.txt)
 #   RESUME          1 to reuse existing shards (1)
 #   VAL_FRACTION / SPLIT_SEED      (0.10 / 42)
 # ============================================================================
@@ -75,6 +83,7 @@ VAL_FRACTION="${VAL_FRACTION:-0.10}"
 SPLIT_SEED="${SPLIT_SEED:-42}"
 RESUME="${RESUME:-1}"
 JOBS="${JOBS:-1}"
+FILE_LIST="${FILE_LIST:-${OUT_DIR}/tueg_files.txt}"
 SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
@@ -105,6 +114,7 @@ ARGS=(--dataset tueg --root "${TUEG_ROOT}" --out-dir "${OUT_DIR}"
 [[ -n "${STRIDE_SECONDS}" ]] && ARGS+=(--stride-seconds "${STRIDE_SECONDS}")
 [[ "${RESUME}" == "1" ]]     && ARGS+=(--resume)
 [[ "${JOBS}" -gt 1 ]]        && ARGS+=(--jobs "${JOBS}")
+[[ -n "${FILE_LIST}" ]]      && ARGS+=(--file-list "${FILE_LIST}")
 
 echo "============================================================"
 echo "  TUEG -> E19_256  (19 x 1024 @ 256 Hz, 152 tokens)"
@@ -115,6 +125,15 @@ echo "  mains ${MAINS_HZ} Hz   val ${VAL_FRACTION} (seed ${SPLIT_SEED})"
 [[ "${JOBS}" -gt 1 ]] && echo "  ${JOBS} worker process(es)"
 [[ -n "${INSPECT}" ]] && echo "  INSPECT ${INSPECT} -- reporting only, nothing written"
 echo "============================================================"
+
+# One-shot listing mode, so the array does not walk the tree sixteen times.
+if [[ "${1:-}" == "--write-file-list" ]]; then
+    mkdir -p "${OUT_DIR}"
+    python EEG/preprocess_pretrain_corpus.py --dataset tueg \
+        --root "${TUEG_ROOT}" --out-dir "${OUT_DIR}" \
+        --write-file-list "${FILE_LIST}"
+    exit $?
+fi
 
 python EEG/preprocess_pretrain_corpus.py "${ARGS[@]}"
 _rc=$?

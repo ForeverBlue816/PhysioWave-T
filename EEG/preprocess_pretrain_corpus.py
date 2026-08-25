@@ -165,10 +165,36 @@ def tueg_identity(path: str, root: str) -> Dict[str, str]:
             "rule": "path"}
 
 
-def iter_tueg_files(root: str) -> List[str]:
-    """Every .edf under root. TUEG puts them all under ``edf/``; not assumed."""
+def iter_tueg_files(root: str, cache: Optional[str] = None) -> List[str]:
+    """Every .edf under root. TUEG puts them all under ``edf/``; not assumed.
+
+    Walking this tree is not cheap: seventy thousand files under a hundred
+    thousand directories, on a parallel filesystem whose metadata server is the
+    bottleneck. Sixteen array tasks each doing it independently made two of them
+    spend forty-four minutes before processing a single file, while the tasks
+    whose walk happened to be served first finished the whole shard in eleven.
+
+    So the listing is cached to a text file and shared. Written atomically, so
+    a task reading it while another writes gets the old file or the new one and
+    never half of one. Build it once, before submitting the array:
+
+        python EEG/preprocess_pretrain_corpus.py --dataset tueg --root <root> \
+            --out-dir <out> --write-file-list <out>/tueg_files.txt
+    """
+    if cache and os.path.isfile(cache):
+        with open(cache) as f:
+            paths = [ln.strip() for ln in f if ln.strip()]
+        if paths:
+            return paths
     edf_root = os.path.join(root, "edf")
-    return _walk(edf_root if os.path.isdir(edf_root) else root, (".edf",))
+    paths = _walk(edf_root if os.path.isdir(edf_root) else root, (".edf",))
+    if cache and paths:
+        tmp = f"{cache}.{os.getpid()}.tmp"
+        os.makedirs(os.path.dirname(os.path.abspath(cache)) or ".", exist_ok=True)
+        with open(tmp, "w") as f:
+            f.write("\n".join(paths) + "\n")
+        os.replace(tmp, cache)
+    return paths
 
 
 def adapt_tueg(root: str, args) -> Iterator[Recording]:
@@ -188,7 +214,7 @@ def adapt_tueg(root: str, args) -> Iterator[Recording]:
     overrides it; there is no guessing either way.
     """
     mne = _require_mne()
-    files = iter_tueg_files(root)
+    files = iter_tueg_files(root, getattr(args, "file_list", None))
     if getattr(args, "shard", None):
         files = shard_files(files, args, root)
     for path in files:
@@ -614,7 +640,7 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
 
     mne = _require_mne()
     if dataset_id == "tueg":
-        files = iter_tueg_files(root)
+        files = iter_tueg_files(root, getattr(args, "file_list", None))
     else:
         files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
     if not files:
@@ -783,6 +809,14 @@ def main(argv=None) -> int:
     p.add_argument("--shard", type=_shard_spec, default=None, metavar="I/N",
                    help="process only shard I of N, sharded by subject so a "
                         "subject is never split across tasks. For SLURM arrays.")
+    p.add_argument("--file-list", default=None, metavar="PATH",
+                   help="cache the corpus file listing here. Read if it exists, "
+                        "written if it does not. Walking TUEG's tree costs "
+                        "tens of minutes on a parallel filesystem and every "
+                        "array task would otherwise pay it separately.")
+    p.add_argument("--write-file-list", default=None, metavar="PATH",
+                   help="walk the corpus, write the listing to PATH, and exit. "
+                        "Run once before submitting an array.")
     p.add_argument("--jobs", type=int, default=1,
                    help="worker processes within this task. The filtering and "
                         "resampling are single-threaded, so a task holding 32 "
@@ -832,6 +866,23 @@ def main(argv=None) -> int:
         stride_seconds=args.stride_seconds, val_fraction=args.val_fraction,
         split_seed=args.split_seed)
 
+    if args.write_file_list:
+        if not args.root:
+            return _fail("--write-file-list needs --root.")
+        t0 = time.time()
+        paths = iter_tueg_files(args.root) if dataset_id == "tueg" else \
+            _walk(args.root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+        tmp = f"{args.write_file_list}.{os.getpid()}.tmp"
+        os.makedirs(os.path.dirname(os.path.abspath(args.write_file_list)) or ".",
+                    exist_ok=True)
+        with open(tmp, "w") as f:
+            f.write("\n".join(paths) + "\n")
+        os.replace(tmp, args.write_file_list)
+        print(f"{len(paths)} file(s) listed in {time.time()-t0:.0f}s -> "
+              f"{args.write_file_list}")
+        print(f"  pass --file-list {args.write_file_list} to every array task")
+        return 0
+
     if args.inspect:
         if not args.root:
             return _fail("--inspect needs --root.")
@@ -862,7 +913,7 @@ def main(argv=None) -> int:
 
     n_seen = 0
     if dataset_id == "tueg" and args.jobs > 1 and not args.dry_run:
-        paths = iter_tueg_files(args.root)
+        paths = iter_tueg_files(args.root, args.file_list)
         if args.shard:
             paths = shard_files(paths, args, args.root)
         if args.resume:
