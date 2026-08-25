@@ -7,6 +7,13 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"
+markers = [
+    # Tests that train a model and render figures in a subprocess. They belong
+    # in the default run -- an untested figure pipeline is how a paper figure
+    # turns out to be empty -- but are marked so `-m 'not slow'` stays useful
+    # while iterating.
+    "slow: takes tens of seconds; trains a smoke model or renders figures",
+]
 filterwarnings = [
     "ignore:'pin_memory' argument is set as true:UserWarning",
     "ignore:An output with one or more elements was resized:UserWarning",
