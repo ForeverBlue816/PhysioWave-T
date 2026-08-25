@@ -27,6 +27,19 @@
 # --partition=dcgp_usr_prod. Not the default, because a partition the account
 # cannot use is a submission that fails at 3am.
 #
+# MEMORY. The first run of this array was killed by the OOM killer on every one
+# of its sixteen tasks -- OUT_OF_MEMORY, exit 0:125, after 7 to 27 minutes --
+# because get_data() returns float64 and TUEG holds multi-hour recordings, so
+# one worker could be holding twenty gigabytes while seven others did the same.
+# --max-recording-minutes now caps what any worker holds at thirty minutes,
+# which is about two gigabytes at the worst rate and channel count in this
+# corpus. 120 GB for eight workers is the headroom on top of that; the node has
+# 494 GB, so this is proportionate to the eight cores of thirty-two.
+#
+# Watch for it: `sacct -j <jobid> --format=JobID,State,ExitCode,MaxRSS -X`.
+# A task that dies this way writes no manifest, so its shards are on disk and
+# invisible to the merge until a resumed run finishes the summary.
+#
 # CORES ARE USED, not merely held. The filtering and resampling are
 # single-threaded, so without --jobs a task decodes on one core and idles the
 # rest. JOBS defaults to the cores the task was given.
@@ -46,7 +59,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64000
+#SBATCH --mem=120000
 #SBATCH --job-name=physiowave_tueg_prep
 #SBATCH --output=%x_%A_%a.out
 #SBATCH --error=%x_%A_%a.err
