@@ -68,8 +68,38 @@ CHANNEL_VOCAB = list(_RESERVED) + [
     "P9", "P7", "P5", "P3", "P1", "Pz", "P2", "P4", "P6", "P8", "P10",
     "PO7", "PO3", "POz", "PO4", "PO8",
     "O1", "Oz", "O2", "Iz",
+    # -- appended for the EEG C1 pretraining corpus ---------------------------
+    # APPEND ONLY, and appended below everything above on purpose: every id
+    # from here up is already written into Sleep-EDF and PhysioP300 HDF5 files
+    # and into the checkpoints trained on them. Reordering even one of them
+    # relabels every channel those checkpoints learned.
+    #
+    # A consequence to know about: len(CHANNEL_VOCAB) is the default embedding
+    # table size, so a checkpoint written before this block has 86 rows and a
+    # model built today has more. Loading an older one needs its recorded
+    # channel_vocab_size passed explicitly; new checkpoints carry the vocabulary
+    # and its hash so the size never has to be guessed.
+    #
+    # The remaining 10-5 scalp positions, for the 128-electrode montages.
+    "AF5", "AF6", "AFF1", "AFF2", "AFF5", "AFF6",
+    "FFT7", "FFC5", "FFC3", "FFC1", "FFC2", "FFC4", "FFC6", "FFT8",
+    "FTT7", "FCC5", "FCC3", "FCC1", "FCC2", "FCC4", "FCC6", "FTT8",
+    "TTP7", "CCP5", "CCP3", "CCP1", "CCP2", "CCP4", "CCP6", "TTP8",
+    "TPP7", "CPP5", "CPP3", "CPP1", "CPP2", "CPP4", "CPP6", "TPP8",
+    "PPO1", "PPO2", "PPO5", "PPO6", "POO1", "POO2",
+    "F9", "F10", "FT9", "FT10", "TP9", "TP10", "PO9", "PO10",
+    "O9", "O10", "I1", "I2", "AFp1", "AFp2", "OI1", "OI2",
+    # EGI HydroCel GSN electrode labels, which HBN records under. They are
+    # positions on a specific net, not 10-20 names, so they get their own ids
+    # rather than being guessed onto scalp labels they do not exactly match.
+    *[f"E{i}" for i in range(1, 129)],
+    # Four more 10-5 positions, so HGD's own slot list reaches exactly the
+    # 128 rows its route requires. Appended after the E-numbers because
+    # append-only means the end of the list, not the end of a section.
+    "AFF7", "AFF8", "PPO7", "PPO8",
 ]
 CHANNEL_TO_ID = {name: i for i, name in enumerate(CHANNEL_VOCAB)}
+assert len(CHANNEL_TO_ID) == len(CHANNEL_VOCAB), "duplicate channel name in CHANNEL_VOCAB"
 
 #: Dimension of phi below. Named so the projections cannot drift out of step.
 GEOM_DIM = 8
@@ -238,3 +268,101 @@ def required_meta_keys(mode: str) -> tuple[str, ...]:
         return ("channel_ids",)
     return ("channel_ids", "electrode_xyz",
             "positive_electrode_index", "negative_electrode_index")
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulary identity, normalisation and lookup
+#
+# The vocabulary is part of the trained artefact: an embedding row means
+# whatever channel held that id when the row was learned. These helpers let a
+# checkpoint carry the vocabulary it was trained under, and let a preprocessing
+# run state which names it mapped and which it could not.
+# --------------------------------------------------------------------------- #
+
+#: Old-nomenclature 10-20 names, and the modern names they denote. T3/T4/T5/T6
+#: are the *same electrodes* as T7/T8/P7/P8 -- this is a renaming, not a
+#: reposition -- so mapping them is exact and not an approximation. TUEG labels
+#: are recorded in the old scheme and would otherwise all land on UNK.
+LEGACY_NAME_ALIASES = {
+    "T3": "T7", "T4": "T8", "T5": "P7", "T6": "P8",
+}
+
+
+def normalize_channel_name(name: str) -> str:
+    """A recording's channel label -> the vocabulary's spelling of it.
+
+    Handles the wrappers acquisition software adds ("EEG Fp1-REF", "EEG FP1"),
+    case, and the old T3/T4/T5/T6 nomenclature. Everything it cannot resolve is
+    returned stripped and upper-cased for the caller to count as UNK -- it does
+    not guess a nearby electrode, because a wrong channel id is worse than an
+    acknowledged unknown one.
+    """
+    if name is None:
+        return ""
+    s = str(name).strip()
+    # "EEG Fp1-REF" / "EEG Fp1-LE" / "EEG FP1" -> "Fp1"
+    if s.upper().startswith("EEG "):
+        s = s[4:].strip()
+    for suffix in ("-REF", "-LE", "-AVG", "-A1", "-A2", "-M1", "-M2"):
+        if s.upper().endswith(suffix):
+            s = s[: -len(suffix)].strip()
+            break
+    s = s.strip()
+    if not s:
+        return ""
+    # Case-insensitive match against the vocabulary's own spelling.
+    upper = s.upper()
+    for candidate in CHANNEL_VOCAB:
+        if candidate.upper() == upper:
+            return candidate
+    alias = LEGACY_NAME_ALIASES.get(upper)
+    if alias is not None:
+        return alias
+    return upper
+
+
+def channel_ids_for(names) -> tuple[list[int], list[str]]:
+    """``names -> (ids, unknown_names)``. Unknown names map to ``UNK_ID``.
+
+    The second element is every name that did not resolve, in order, so a
+    preprocessing run can report a per-dataset UNK rate rather than discovering
+    at training time that a whole montage became <unk>.
+    """
+    ids, unknown = [], []
+    for raw in names:
+        canonical = normalize_channel_name(raw)
+        cid = CHANNEL_TO_ID.get(canonical)
+        if cid is None:
+            ids.append(UNK_ID)
+            unknown.append(str(raw))
+        else:
+            ids.append(cid)
+    return ids, unknown
+
+
+def vocab_sha256() -> str:
+    """SHA-256 of the vocabulary, in order. Identity of the id assignment."""
+    import hashlib
+    joined = "\n".join(CHANNEL_VOCAB).encode("utf-8")
+    return hashlib.sha256(joined).hexdigest()
+
+
+def vocab_payload() -> dict:
+    """What a checkpoint and a run directory record about the vocabulary."""
+    return {
+        "channel_vocab": list(CHANNEL_VOCAB),
+        "channel_vocab_size": len(CHANNEL_VOCAB),
+        "channel_vocab_sha256": vocab_sha256(),
+        "pad_id": PAD_ID,
+        "unk_id": UNK_ID,
+    }
+
+
+def save_vocab(path: str) -> str:
+    """Write ``channel_vocab.json`` next to a run. Returns the path."""
+    import json
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(vocab_payload(), f, indent=2)
+    return path
