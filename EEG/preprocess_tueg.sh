@@ -64,6 +64,7 @@
 #   STRIDE_SECONDS  window stride  (unset = no overlap)
 #   JOBS            worker processes in this task (1)
 #   FILE_LIST       cached corpus listing ($OUT_DIR/tueg_files.txt)
+#   MAX_MINUTES     cap on one recording, in memory terms (30)
 #   RESUME          1 to reuse existing shards (1)
 #   VAL_FRACTION / SPLIT_SEED      (0.10 / 42)
 # ============================================================================
@@ -84,6 +85,7 @@ SPLIT_SEED="${SPLIT_SEED:-42}"
 RESUME="${RESUME:-1}"
 JOBS="${JOBS:-1}"
 FILE_LIST="${FILE_LIST:-${OUT_DIR}/tueg_files.txt}"
+MAX_MINUTES="${MAX_MINUTES:-30}"
 SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
@@ -115,6 +117,7 @@ ARGS=(--dataset tueg --root "${TUEG_ROOT}" --out-dir "${OUT_DIR}"
 [[ "${RESUME}" == "1" ]]     && ARGS+=(--resume)
 [[ "${JOBS}" -gt 1 ]]        && ARGS+=(--jobs "${JOBS}")
 [[ -n "${FILE_LIST}" ]]      && ARGS+=(--file-list "${FILE_LIST}")
+ARGS+=(--max-recording-minutes "${MAX_MINUTES}")
 
 echo "============================================================"
 echo "  TUEG -> E19_256  (19 x 1024 @ 256 Hz, 152 tokens)"

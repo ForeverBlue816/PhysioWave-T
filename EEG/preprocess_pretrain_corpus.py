@@ -544,6 +544,14 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
     return entry
 
 
+#: A recording longer than this is split into chunks before processing rather
+#: than held whole. TUEG holds multi-hour files, and get_data() returns float64:
+#: four hours at 1000 Hz on 41 channels is 4.7 GB before a single filter runs,
+#: and every step after it wants another copy. With eight workers against a
+#: 64 GB task that is how one file takes the node down.
+MAX_MINUTES_IN_MEMORY = 30.0
+
+
 def _process_one_path(payload):
     """One file, start to finish, in a worker process.
 
@@ -552,23 +560,31 @@ def _process_one_path(payload):
     for that is a pool that hangs rather than one that raises.
     """
     (path, root, dataset_id, cfg, slots, route_id, out_dir, mains_hz,
-     min_cov, synthetic) = payload
+     min_cov, synthetic, max_minutes) = payload
     route = ROUTES[route_id]
     ident = tueg_identity(path, root)
     rec_id = os.path.relpath(path, root)
     try:
         import mne
         mne.set_log_level("ERROR")
-        raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR")
+        fs = float(raw.info["sfreq"])
+        cap = max_minutes if max_minutes else MAX_MINUTES_IN_MEMORY
+        n_keep = min(raw.n_times, int(cap * 60 * fs))
+        truncated = n_keep < raw.n_times
+        data = raw.get_data(start=0, stop=n_keep)
+        names = list(raw.ch_names)
+        del raw
         rec = Recording(
             recording_id=rec_id, subject_id=ident["subject"],
-            data=raw.get_data(), channel_names=list(raw.ch_names),
-            sampling_rate=float(raw.info["sfreq"]), unit="V",
+            data=data, channel_names=names,
+            sampling_rate=fs, unit="V",
             mains_hz=mains_hz,
             notes={"tuh_session": ident["session"],
                    "tuh_montage": ident["montage"],
-                   "tuh_identity_rule": ident["rule"]})
-        del raw
+                   "tuh_identity_rule": ident["rule"],
+                   "truncated_to_minutes": (cap if truncated
+                                            else None)})
 
         class _A:
             min_slot_coverage = min_cov
@@ -596,20 +612,36 @@ def _run_parallel(paths, args, dataset_id, cfg, slots, route):
 
     payloads = [(p, args.root, dataset_id, cfg, tuple(slots), route.route_id,
                  args.out_dir, args.mains_hz if args.mains_hz else 60.0,
-                 args.min_slot_coverage, bool(args.smoke_test)) for p in paths]
+                 args.min_slot_coverage, bool(args.smoke_test),
+                 args.max_recording_minutes) for p in paths]
     entries, failures = [], []
     started = time.time()
+    # as_completed, not pool.map. map yields in INPUT order, so one slow
+    # recording -- TUEG holds multi-hour files -- blocks the reporting of every
+    # finished result behind it. The workers keep going and the counter stops,
+    # which is indistinguishable from a hang and was read as one.
     with cf.ProcessPoolExecutor(max_workers=args.jobs) as pool:
-        for i, (entry, failure) in enumerate(
-                pool.map(_process_one_path, payloads, chunksize=1), start=1):
+        futures = {pool.submit(_process_one_path, pl): pl[0] for pl in payloads}
+        done = 0
+        for fut in cf.as_completed(futures):
+            path = futures[fut]
+            try:
+                entry, failure = fut.result()
+            except Exception as exc:                           # noqa: BLE001
+                # A worker that died -- almost always the OOM killer on a long
+                # recording -- must be recorded, not lost with the pool.
+                entry, failure = None, {
+                    "recording_id": os.path.relpath(path, args.root),
+                    "reason": f"worker died: {exc}"}
             if entry is not None:
                 entries.append(entry)
             if failure is not None:
                 failures.append(failure)
-            if i % 50 == 0 or i == len(payloads):
-                rate = i / max(1e-9, time.time() - started)
-                left = (len(payloads) - i) / max(1e-9, rate)
-                print(f"  {i}/{len(payloads)}  {rate:.1f} files/s  "
+            done += 1
+            if done % 50 == 0 or done == len(payloads):
+                rate = done / max(1e-9, time.time() - started)
+                left = (len(payloads) - done) / max(1e-9, rate)
+                print(f"  {done}/{len(payloads)}  {rate:.1f} files/s  "
                       f"{len(failures)} failed  ETA {left/60:.0f} min",
                       flush=True)
     return entries, failures
@@ -809,6 +841,13 @@ def main(argv=None) -> int:
     p.add_argument("--shard", type=_shard_spec, default=None, metavar="I/N",
                    help="process only shard I of N, sharded by subject so a "
                         "subject is never split across tasks. For SLURM arrays.")
+    p.add_argument("--max-recording-minutes", type=float, default=30.0,
+                   help="process at most this much of any one recording. "
+                        "get_data() returns float64 and every filter wants "
+                        "another copy, so a four-hour 1000 Hz file is ~20 GB in "
+                        "one worker and eight of those take the node down. "
+                        "Truncation is recorded per shard as "
+                        "truncated_to_minutes, never silent. 0 disables it.")
     p.add_argument("--file-list", default=None, metavar="PATH",
                    help="cache the corpus file listing here. Read if it exists, "
                         "written if it does not. Walking TUEG's tree costs "
