@@ -482,3 +482,131 @@ def test_zscore_leaves_padded_channels_exactly_zero():
     assert abs(float(z[:, valid].mean())) < 1e-4
     assert abs(float(z[:, valid].std()) - 1.0) < 1e-2
     assert float(np.abs(z).max()) <= 20.0
+
+
+# --------------------------------------------------------------------------- #
+# TUEG: identity, sharding, and the gates that decide whether a corpus is usable
+# --------------------------------------------------------------------------- #
+
+def test_tueg_identity_comes_from_the_filename():
+    from EEG.preprocess_pretrain_corpus import tueg_identity
+
+    root = "/corpus/TUEG_v2.0.2"
+    p = f"{root}/edf/000/aaaaaaaa/s001_2015_12_30/01_tcp_ar/aaaaaaaa_s001_t000.edf"
+    ident = tueg_identity(p, root)
+    assert ident == {"subject": "aaaaaaaa", "session": "s001",
+                     "montage": "01_tcp_ar", "rule": "filename"}
+
+    # v1.x had no bucket directory; the filename rule does not care.
+    p1 = f"{root}/edf/aaaaaaab/s003_2011/02_tcp_le/aaaaaaab_s003_t002.edf"
+    assert tueg_identity(p1, root)["subject"] == "aaaaaaab"
+    assert tueg_identity(p1, root)["montage"] == "02_tcp_le"
+    assert tueg_identity(p1, root)["rule"] == "filename"
+
+    # A file that does not follow the convention falls back and SAYS it did,
+    # so an --inspect run shows whether the fallback is carrying the corpus.
+    p2 = f"{root}/edf/000/aaaaaaac/s001_2015/01_tcp_ar/oddly_named.edf"
+    fb = tueg_identity(p2, root)
+    assert fb["rule"] == "path"
+    assert fb["subject"] == "aaaaaaac"
+
+
+def test_tueg_sharding_is_by_subject_and_covers_everything():
+    from EEG.preprocess_pretrain_corpus import shard_files, tueg_identity
+
+    root = "/corpus"
+    files = [f"{root}/edf/000/aaaaaa{c}{d}/s{s:03d}_2015/01_tcp_ar/"
+             f"aaaaaa{c}{d}_s{s:03d}_t000.edf"
+             for c in "abcde" for d in "fghij" for s in (1, 2, 3)]
+    assert len(files) == 75
+
+    class Args:
+        shard = None
+
+    n = 7
+    seen, owners = [], {}
+    for i in range(n):
+        Args.shard = (i, n)
+        kept = shard_files(files, Args, root)
+        seen.extend(kept)
+        for f in kept:
+            owners.setdefault(tueg_identity(f, root)["subject"], set()).add(i)
+
+    assert sorted(seen) == sorted(files), "sharding lost or duplicated a file"
+    for subject, tasks in owners.items():
+        assert len(tasks) == 1, f"{subject} was split across tasks {tasks}"
+
+
+def test_subject_split_side_is_independent_of_shard_count():
+    """The whole reason the split is hashed rather than shuffled."""
+    from physiowave.eeg_c1.preprocess import subject_split_side
+
+    subs = [f"aaaaaa{i:03d}" for i in range(500)]
+    sides = {s: subject_split_side(s, 0.1, 42) for s in subs}
+    # Re-deciding one subject at a time, in any order, gives the same answer.
+    for s in reversed(subs):
+        assert subject_split_side(s, 0.1, 42) == sides[s]
+    val = [s for s in subs if sides[s] == "val"]
+    assert 0.05 < len(val) / len(subs) < 0.16
+    assert not (set(val) & {s for s in subs if sides[s] == "train"})
+    # A different seed is a different partition.
+    assert [subject_split_side(s, 0.1, 7) for s in subs] != list(sides.values())
+
+
+def test_auxiliary_channels_are_dropped_without_failing_the_corpus():
+    """TUEG's EKG/PHOTIC/IBI rows are 21% of a file and are not a naming bug."""
+    from physiowave.eeg_c1.routes import SLOTS_19
+
+    tuh = ["EEG FP1-REF", "EEG FP2-REF", "EEG F3-REF", "EEG F4-REF",
+           "EEG C3-REF", "EEG C4-REF", "EEG P3-REF", "EEG P4-REF",
+           "EEG O1-REF", "EEG O2-REF", "EEG F7-REF", "EEG F8-REF",
+           "EEG T3-REF", "EEG T4-REF", "EEG T5-REF", "EEG T6-REF",
+           "EEG FZ-REF", "EEG CZ-REF", "EEG PZ-REF",
+           "EEG EKG1-REF", "PHOTIC-REF", "IBI", "BURSTS", "SUPPR"]
+    mp = map_to_slots(tuh, SLOTS_19)
+
+    # Every scalp electrode lands, old nomenclature included.
+    assert int(mp.valid.sum()) == 19, f"empty: {mp.empty_slots}"
+    assert not mp.empty_slots
+    # The five auxiliary rows are dropped and named.
+    assert len(mp.unmatched_sources) == 5
+    assert {"IBI", "BURSTS", "SUPPR"} <= set(mp.unmatched_sources)
+    # T3/T4/T5/T6 are the same electrodes as T7/T8/P7/P8, so they land there.
+    placed = {SLOTS_19[j]: tuh[i]
+              for i, j in zip(mp.matrix_rows, mp.slot_of_row)}
+    assert placed["T7"] == "EEG T3-REF"
+    assert placed["P8"] == "EEG T6-REF"
+    # No placed channel is UNK; the gate that matters is slot coverage.
+    ids, _ = channel_ids_for(SLOTS_19)
+    assert 1 not in ids
+
+
+def test_a_montage_that_cannot_be_named_leaves_slots_empty():
+    """The failure the coverage gate exists to catch, as distinct from the above."""
+    from physiowave.eeg_c1.routes import SLOTS_19
+
+    anonymous = [f"Ch{i}" for i in range(1, 25)]
+    mp = map_to_slots(anonymous, SLOTS_19)
+    assert int(mp.valid.sum()) == 0
+    assert len(mp.empty_slots) == 19
+    assert len(mp.unmatched_sources) == 24
+
+
+def test_manifest_merge_refuses_a_split_leak(tmp_path):
+    """The check that is only possible once every shard's manifest is present."""
+    root = tmp_path / "corpus"
+    d = root / "tueg"
+    d.mkdir(parents=True)
+    row = {"path": str(d / "a.h5"), "dataset_id": "tueg",
+           "route_id": "E19_256", "n_windows": 4, "subjects": ["aaaaaaaa"]}
+    (d / "manifest_train.0000.jsonl").write_text(json.dumps(row) + "\n")
+    leaked = dict(row, path=str(d / "b.h5"))
+    (d / "manifest_val.0001.jsonl").write_text(json.dumps(leaked) + "\n")
+
+    r = subprocess.run(
+        [sys.executable, "scripts/build_eeg_c1_manifest.py",
+         "--corpus-root", str(root), "--datasets", "tueg", "--allow-missing"],
+        cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 1
+    assert "both splits" in r.stderr
+    assert "aaaaaaaa" in r.stderr
