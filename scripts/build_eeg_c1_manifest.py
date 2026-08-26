@@ -38,6 +38,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from physiowave.eeg_c1.routes import PRETRAIN_DATASETS      # noqa: E402
 
 
+def _check_one(row):
+    """Open one shard and confirm it is readable and the right length.
+
+    A module-level function so it can cross a process boundary. h5py is not
+    reliably thread-safe, so this is a process pool rather than a thread pool.
+    """
+    import h5py
+    path, expected = row
+    try:
+        with h5py.File(path, "r") as f:
+            got = int(f["data"].shape[0])
+        if got != expected:
+            return path, f"manifest says {expected} windows, file has {got}"
+    except Exception as exc:                                   # noqa: BLE001
+        return path, str(exc)
+    return None
+
+
 def load_rows(dataset_dir: str, split: str) -> List[Dict]:
     """Every manifest row for one dataset and split, sharded or not."""
     rows = []
@@ -70,8 +88,13 @@ def main(argv=None) -> int:
     p.add_argument("--allow-missing", action="store_true",
                    help="merge what is there instead of naming what is not")
     p.add_argument("--check-shards", action="store_true",
-                   help="also open every shard to confirm it is readable. Slow "
-                        "on TUEG; worth it once before a long run.")
+                   help="open every shard to confirm it is readable and the "
+                        "length its manifest row claims. On TUEG that is 67,000 "
+                        "files, so give it --jobs; worth doing once before "
+                        "committing to a long training run.")
+    p.add_argument("--jobs", type=int, default=1,
+                   help="workers for --check-shards. The merge itself reads a "
+                        "handful of text files and needs none of these.")
     args = p.parse_args(argv)
 
     root = args.corpus_root
@@ -144,16 +167,33 @@ def main(argv=None) -> int:
         return 1
 
     if args.check_shards:
-        import h5py
+        import concurrent.futures as cf
+        import time
+
+        todo = [(r["path"], int(r["n_windows"]))
+                for split in ("train", "val") for r in merged[split]]
         bad = []
-        for split in ("train", "val"):
-            for r in merged[split]:
-                try:
-                    with h5py.File(r["path"], "r") as f:
-                        if int(f["data"].shape[0]) != int(r["n_windows"]):
-                            bad.append((r["path"], "window count disagrees"))
-                except Exception as exc:                      # noqa: BLE001
-                    bad.append((r["path"], str(exc)))
+        started = time.time()
+        print(f"checking {len(todo):,} shard(s) on {args.jobs} worker(s)...",
+              flush=True)
+        if args.jobs > 1:
+            with cf.ProcessPoolExecutor(max_workers=args.jobs) as pool:
+                for i, res in enumerate(
+                        pool.map(_check_one, todo, chunksize=64), start=1):
+                    if res is not None:
+                        bad.append(res)
+                    if i % 5000 == 0:
+                        rate = i / max(1e-9, time.time() - started)
+                        print(f"  {i:,}/{len(todo):,}  {rate:.0f}/s  "
+                              f"{len(bad)} bad  "
+                              f"ETA {(len(todo)-i)/max(1e-9, rate)/60:.0f} min",
+                              flush=True)
+        else:
+            for row in todo:
+                res = _check_one(row)
+                if res is not None:
+                    bad.append(res)
+        print(f"  checked in {time.time()-started:.0f}s", flush=True)
         if bad:
             print(f"ERROR: {len(bad)} shard(s) unreadable or inconsistent:",
                   file=sys.stderr)
