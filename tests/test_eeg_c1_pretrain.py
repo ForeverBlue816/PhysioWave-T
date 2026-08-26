@@ -520,6 +520,34 @@ def test_12g_hgd_montage_is_10_05_and_fully_resolvable():
         assert aux not in SLOTS_128_HGD
 
 
+# --- 12h -------------------------------------------------------------------- #
+def test_12h_every_shipped_container_is_walked_and_readable():
+    """One extension list and one reader, shared by all six adapters.
+
+    M3CV ships 2,469 BrainVision recordings and reported "no readable recording"
+    because its adapter walked .set/.edf/.fif/.cnt. Six adapters each carrying
+    their own extension tuple and their own if/elif reader chain is how that
+    happens, and how a corpus in a format the chain does not mention falls
+    through to read_raw_edf and fails on a file that was never an EDF.
+    """
+    from EEG.preprocess_pretrain_corpus import READABLE_EXTS, read_raw_any
+
+    for ext in (".edf", ".bdf", ".set", ".fif", ".cnt", ".vhdr", ".mff"):
+        assert ext in READABLE_EXTS, ext
+
+    # Only the HEADER of a multi-file format. Walking .eeg or .vmrk as well
+    # would read every BrainVision recording two or three times.
+    for companion in (".eeg", ".vmrk", ".fdt", ".dat"):
+        assert companion not in READABLE_EXTS, companion
+
+    # The reader dispatches on the extension rather than defaulting to EDF.
+    import inspect as _inspect
+    src = _inspect.getsource(read_raw_any)
+    for reader in ("read_raw_bdf", "read_raw_eeglab", "read_raw_fif",
+                   "read_raw_cnt", "read_raw_brainvision", "read_raw_egi"):
+        assert reader in src, reader
+
+
 # --- 13 --------------------------------------------------------------------- #
 def test_13_deap_is_never_a_pretraining_dataset():
     assert "deap" not in PRETRAIN_DATASETS

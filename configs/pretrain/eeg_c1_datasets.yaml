@@ -53,6 +53,10 @@ m3cv:
   verify_powerline_by_psd: false
   expected_sampling_rates: [250.0]
   native_upsample_ok: [250.0]
+  # BrainVision: a .vhdr header pointing at a .eeg and a .vmrk, 2,469 of each.
+  # Only the .vhdr is walked -- listing .eeg as well would read every recording
+  # twice.
+  format: brainvision
   notes: >-
     Published already cleaned: 0.01-200 Hz band-pass, 49-51 Hz notch, bad-channel
     interpolation, linked-mastoid reference, ICA ocular removal, 1000 -> 250 Hz.

@@ -92,6 +92,43 @@ def _require_mne():
     return mne
 
 
+#: Every container these corpora actually ship in. ONE list, because six
+#: adapters with six hand-maintained extension tuples is how M3CV -- 2,469
+#: BrainVision recordings -- came to report "no readable recording": its adapter
+#: walked .set/.edf/.fif/.cnt and the release is .vhdr.
+#:
+#: Only the HEADER of a multi-file format is listed. BrainVision is a .vhdr
+#: pointing at a .eeg and a .vmrk, and walking .eeg as well would read every
+#: recording twice.
+READABLE_EXTS: Tuple[str, ...] = (
+    ".edf", ".bdf", ".set", ".fif", ".cnt", ".vhdr", ".mff",
+)
+
+
+def read_raw_any(path: str, preload: bool = True):
+    """Open a recording by what it IS, not by which adapter reached it.
+
+    Each adapter used to carry its own if/elif chain over extensions, so a
+    corpus published in a format its adapter's chain did not mention fell
+    through to read_raw_edf and failed on a file that was never an EDF.
+    """
+    mne = _require_mne()
+    low = path.lower()
+    if low.endswith(".bdf"):
+        return mne.io.read_raw_bdf(path, preload=preload, verbose="ERROR")
+    if low.endswith(".set"):
+        return mne.io.read_raw_eeglab(path, preload=preload, verbose="ERROR")
+    if low.endswith(".fif"):
+        return mne.io.read_raw_fif(path, preload=preload, verbose="ERROR")
+    if low.endswith(".cnt"):
+        return mne.io.read_raw_cnt(path, preload=preload, verbose="ERROR")
+    if low.endswith(".vhdr"):
+        return mne.io.read_raw_brainvision(path, preload=preload, verbose="ERROR")
+    if low.endswith(".mff"):
+        return mne.io.read_raw_egi(path, preload=preload, verbose="ERROR")
+    return mne.io.read_raw_edf(path, preload=preload, verbose="ERROR")
+
+
 def _walk(root: str, exts: Tuple[str, ...], cache: Optional[str] = None,
           quiet: bool = False) -> List[str]:
     """Every recording under root, with progress, and optionally cached.
@@ -411,7 +448,7 @@ def adapt_faced(root: str, args) -> Iterator[Recording]:
     # BDF in .set or .edf, so the extension says nothing about which release
     # this is. The RATE does, per file, which is also the only way to separate
     # FACED's 31 genuinely-250 Hz subjects from a wholesale 250 Hz derivative.
-    files = _walk(root, (".bdf", ".set", ".fif", ".edf"),
+    files = _walk(root, READABLE_EXTS,
                   cache=getattr(args, "file_list", None))
     if not files:
         raise PreprocessError(f"no .bdf/.set/.fif/.edf under {root}")
@@ -419,14 +456,7 @@ def adapt_faced(root: str, args) -> Iterator[Recording]:
         subject = _bids_subject(path) or os.path.splitext(os.path.basename(path))[0]
         if not owns(subject, args):
             continue
-        if path.lower().endswith(".bdf"):
-            raw = mne.io.read_raw_bdf(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".set"):
-            raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".fif"):
-            raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
-        else:
-            raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = read_raw_any(path)
         fs = float(raw.info["sfreq"])
         target = ROUTES["E32_512"].sampling_rate
         if fs < target and not upsample_allowed("faced", fs, args):
@@ -453,7 +483,7 @@ def adapt_tdbrain(root: str, args) -> Iterator[Recording]:
     its neighbours and the model would learn to reproduce the interpolation.
     """
     mne = _require_mne()
-    files = _walk(root, (".edf", ".bdf", ".vhdr"),
+    files = _walk(root, READABLE_EXTS,
                   cache=getattr(args, "file_list", None))
     for path in files:
         base = os.path.basename(path)
@@ -461,12 +491,7 @@ def adapt_tdbrain(root: str, args) -> Iterator[Recording]:
             base.split("_")[0] if "_" in base else os.path.splitext(base)[0])
         if not owns(subject, args):
             continue
-        if path.lower().endswith(".vhdr"):
-            raw = mne.io.read_raw_brainvision(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".bdf"):
-            raw = mne.io.read_raw_bdf(path, preload=True, verbose="ERROR")
-        else:
-            raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = read_raw_any(path)
         yield Recording(
             recording_id=os.path.relpath(path, root), subject_id=subject,
             data=raw.get_data(), channel_names=list(raw.ch_names),
@@ -483,6 +508,7 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
     does not have to be.
     """
     mne = _require_mne()
+    # EDF+ only; this corpus is published in exactly one format.
     for path in _walk(root, (".edf",),
                       cache=getattr(args, "file_list", None)):
         base = os.path.basename(path)
@@ -490,7 +516,7 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
             base[:4] if base.lower().startswith("s") else base)
         if not owns(subject, args):
             continue
-        raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = read_raw_any(path)
         yield Recording(
             recording_id=os.path.relpath(path, root),
             subject_id=subject,
@@ -503,21 +529,14 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
 def adapt_m3cv(root: str, args) -> Iterator[Recording]:
     """M3CV: 64 channels at 250 Hz. Pretraining only, never a downstream split."""
     mne = _require_mne()
-    files = _walk(root, (".set", ".edf", ".fif", ".cnt"),
+    files = _walk(root, READABLE_EXTS,
                   cache=getattr(args, "file_list", None))
     for path in files:
         base = os.path.splitext(os.path.basename(path))[0]
         subject = _bids_subject(path) or base.split("_")[0]
         if not owns(subject, args):
             continue
-        if path.lower().endswith(".set"):
-            raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".cnt"):
-            raw = mne.io.read_raw_cnt(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".fif"):
-            raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
-        else:
-            raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = read_raw_any(path)
         yield Recording(
             recording_id=os.path.relpath(path, root),
             subject_id=subject,
@@ -545,7 +564,7 @@ def adapt_hbn(root: str, args) -> Iterator[Recording]:
     the recording is failed rather than trimmed to length.
     """
     mne = _require_mne()
-    files = _walk(root, (".mff", ".set", ".fif", ".edf"),
+    files = _walk(root, READABLE_EXTS,
                   cache=getattr(args, "file_list", None))
     seen_dirs = set()
     for path in files:
@@ -557,13 +576,9 @@ def adapt_hbn(root: str, args) -> Iterator[Recording]:
             if path in seen_dirs:
                 continue
             seen_dirs.add(path)
-            raw = mne.io.read_raw_egi(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".set"):
-            raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".fif"):
-            raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
+            raw = read_raw_any(path)
         else:
-            raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+            raw = read_raw_any(path)
         names = list(raw.ch_names)
         drop = [n for n in names if n.strip().upper() in
                 {s.upper() for s in HBN_NON_SCALP}]
@@ -594,7 +609,7 @@ def adapt_hgd(root: str, args) -> Iterator[Recording]:
     instead, which is right if HGD is the only corpus on the route.
     """
     mne = _require_mne()
-    for path in _walk(root, (".mat", ".edf", ".fif", ".set"),
+    for path in _walk(root, READABLE_EXTS + (".mat",),
                       cache=getattr(args, "file_list", None)):
         base = os.path.splitext(os.path.basename(path))[0]
         subject = _bids_subject(path) or base.split("_")[0]
@@ -605,12 +620,7 @@ def adapt_hgd(root: str, args) -> Iterator[Recording]:
                 f"{path}: HGD's .mat release needs the braindecode reader; "
                 f"export to FIF or EDF first, or point --root at a converted "
                 f"tree. Not guessing a MATLAB layout.")
-        if path.lower().endswith(".fif"):
-            raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
-        elif path.lower().endswith(".set"):
-            raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
-        else:
-            raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
+        raw = read_raw_any(path)
         yield Recording(
             recording_id=os.path.relpath(path, root),
             subject_id=subject,
@@ -911,7 +921,7 @@ def dump_channels(dataset_id: str, root: str, args, slots, route) -> int:
     if dataset_id == "tueg":
         files = iter_tueg_files(root, getattr(args, "file_list", None))
     else:
-        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+        files = _walk(root, READABLE_EXTS,
                       cache=getattr(args, "file_list", None))
     if not files:
         print(f"ERROR: no readable recording under {root}", file=sys.stderr)
@@ -924,9 +934,7 @@ def dump_channels(dataset_id: str, root: str, args, slots, route) -> int:
     layouts = Counter()
     for path in files[::step][:n]:
         try:
-            raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR") \
-                if path.lower().endswith(".edf") else \
-                mne.io.read_raw(path, preload=False, verbose="ERROR")
+            raw = read_raw_any(path, preload=False)
         except Exception as exc:                               # noqa: BLE001
             print(f"UNREADABLE {os.path.relpath(path, root)}: {exc}")
             continue
@@ -981,7 +989,7 @@ def derive_slots(dataset_id: str, root: str, args, slots, route) -> int:
     from collections import Counter
 
     mne = _require_mne()
-    files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+    files = _walk(root, READABLE_EXTS,
                   cache=getattr(args, "file_list", None))
     if not files:
         print(f"ERROR: no readable recording under {root}", file=sys.stderr)
@@ -993,9 +1001,7 @@ def derive_slots(dataset_id: str, root: str, args, slots, route) -> int:
     seen_counts = Counter()
     for path in files[::step][:n]:
         try:
-            raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR") \
-                if path.lower().endswith(".edf") else \
-                mne.io.read_raw(path, preload=False, verbose="ERROR")
+            raw = read_raw_any(path, preload=False)
         except Exception as exc:                               # noqa: BLE001
             print(f"  UNREADABLE {os.path.relpath(path, root)}: {exc}")
             continue
@@ -1074,7 +1080,7 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     if dataset_id == "tueg":
         files = iter_tueg_files(root, getattr(args, "file_list", None))
     else:
-        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+        files = _walk(root, READABLE_EXTS,
                       cache=getattr(args, "file_list", None))
     if not files:
         # "no readable files" on a directory that plainly has things in it is
@@ -1118,9 +1124,7 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     step = max(1, len(files) // n)
     for path in files[::step][:n]:
         try:
-            raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR") \
-                if path.lower().endswith(".edf") else \
-                mne.io.read_raw(path, preload=False, verbose="ERROR")
+            raw = read_raw_any(path, preload=False)
         except Exception as exc:                               # noqa: BLE001
             failed += 1
             print(f"  UNREADABLE {os.path.relpath(path, root)}: {exc}")
@@ -1442,7 +1446,7 @@ def main(argv=None) -> int:
             return _fail("--write-file-list needs --root.")
         t0 = time.time()
         paths = iter_tueg_files(args.root) if dataset_id == "tueg" else \
-            _walk(args.root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+            _walk(args.root, READABLE_EXTS)
         tmp = f"{args.write_file_list}.{os.getpid()}.tmp"
         os.makedirs(os.path.dirname(os.path.abspath(args.write_file_list)) or ".",
                     exist_ok=True)
