@@ -111,13 +111,14 @@ def shard_files(files: List[str], args, root: str) -> List[str]:
     without anyone counting files first.
     """
     idx, total = args.shard
-    kept = []
-    for path in files:
-        subject = tueg_identity(path, root)["subject"]
-        h = int.from_bytes(hashlib.sha256(subject.encode()).digest()[:4], "big")
-        if h % total == idx:
-            kept.append(path)
-    return kept
+    return [p for p in files
+            if subject_shard(tueg_identity(p, root)["subject"], total) == idx]
+
+
+def subject_shard(subject_id: str, total: int) -> int:
+    """Which array task owns this subject. The one definition of it."""
+    h = int.from_bytes(hashlib.sha256(str(subject_id).encode()).digest()[:4], "big")
+    return h % total
 
 
 #: TUH filenames carry the identity: ``aaaaaaaa_s001_t000.edf`` is subject
@@ -197,6 +198,116 @@ def iter_tueg_files(root: str, cache: Optional[str] = None) -> List[str]:
     return paths
 
 
+#: Per-corpus acquisition facts (mains frequency, expected native rates,
+#: whether the publisher already notched). Loaded from configs so the same fact
+#: is not restated in six shell scripts, and so a corpus whose mains frequency
+#: is a guess is marked as one.
+DEFAULT_REGISTRY = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "configs", "pretrain", "eeg_c1_datasets.yaml")
+
+_REGISTRY_CACHE: Dict[str, Dict] = {}
+
+
+def load_registry(path: Optional[str] = None) -> Dict[str, Dict]:
+    """Read the dataset registry. Missing file is fatal, not defaulted.
+
+    Defaulting a mains frequency is exactly the failure this table exists to
+    prevent, so an unreadable registry stops the run rather than falling back
+    to 50 Hz for everything.
+    """
+    path = path or DEFAULT_REGISTRY
+    if path in _REGISTRY_CACHE:
+        return _REGISTRY_CACHE[path]
+    try:
+        import yaml
+    except ImportError as exc:                                  # pragma: no cover
+        raise PreprocessError(f"pyyaml is needed to read {path}") from exc
+    if not os.path.isfile(path):
+        raise PreprocessError(
+            f"dataset registry {path} not found. It carries the mains "
+            f"frequency per corpus; guessing one silently removes real signal.")
+    with open(path, encoding="utf-8") as f:
+        reg = yaml.safe_load(f) or {}
+    _REGISTRY_CACHE[path] = reg
+    return reg
+
+
+def registry_for(dataset_id: str, args=None) -> Dict:
+    """The registry entry for one corpus, or {} when it has none."""
+    try:
+        reg = load_registry(getattr(args, "registry", None))
+    except PreprocessError:
+        if getattr(args, "mains_hz", None) is not None:
+            return {}          # explicit --mains-hz stands on its own
+        raise
+    return reg.get(dataset_id, {}) or {}
+
+
+def resolved_mains(dataset_id: str, args) -> Tuple[Optional[float], str]:
+    """(frequency, why). --mains-hz beats the registry; --no-notch beats both."""
+    if getattr(args, "no_notch", False):
+        return None, "disabled by --no-notch"
+    if getattr(args, "mains_hz", None) is not None:
+        return float(args.mains_hz), "--mains-hz"
+    entry = registry_for(dataset_id, args)
+    if entry.get("notch_already_applied"):
+        return None, (f"registry: publisher already notched at "
+                      f"{entry.get('powerline_hz')} Hz")
+    if entry.get("powerline_hz") is not None:
+        return float(entry["powerline_hz"]), "registry"
+    return None, "unset"
+
+
+def upsample_allowed(dataset_id: str, fs: float, args) -> bool:
+    """Whether this corpus may legitimately arrive below its route's rate.
+
+    FACED ships 31 of 123 subjects at 250 Hz and PhysioNetMI is 160 Hz
+    throughout; both are the real acquisition, not a preprocessed derivative,
+    and refusing them would drop a quarter of one corpus and all of another.
+    A rate the registry does not list is still refused, because that is how the
+    250 Hz FACED *derivative* is told apart from the 250 Hz FACED *subjects*.
+    """
+    if getattr(args, "allow_upsample_faced", False) and dataset_id == "faced":
+        return True
+    allowed = registry_for(dataset_id, args).get("native_upsample_ok") or []
+    return any(abs(float(a) - fs) < 1e-6 for a in allowed)
+
+
+def owns(subject_id: str, args) -> bool:
+    """Whether this array task is the one that processes this subject.
+
+    Called by every adapter BEFORE the file is read. Filtering after the read
+    would be correct and useless: each of 64 tasks would decode and resample all
+    1.9 TB of HBN and throw away 63/64 of it. Every adapter derives its subject
+    id from the path, so this costs nothing.
+    """
+    if not getattr(args, "shard", None):
+        return True
+    return subject_shard(subject_id, args.shard[1]) == args.shard[0]
+
+
+BIDS_SUBJECT = re.compile(r"(?:^|[/\\])(sub-[A-Za-z0-9]+)(?:[/\\_]|$)")
+
+
+def _bids_subject(path: str) -> Optional[str]:
+    """The BIDS sub-<label> anywhere in the path, or None.
+
+    Subject identity decides the train/val split, so a wrong answer here is a
+    subject leak across the split that nothing downstream can detect. The
+    NEMAR conversions of FACED, M3CV, HBN and HGD are all BIDS, where the label
+    is in both the directory and the filename; taking the parent directory
+    instead would label every recording "eeg".
+    """
+    m = BIDS_SUBJECT.search(path.replace(os.sep, "/"))
+    return m.group(1) if m else None
+
+
+def mains_for(dataset_id: str, args) -> Optional[float]:
+    """Mains frequency for a Recording, from --mains-hz or the registry."""
+    return resolved_mains(dataset_id, args)[0]
+
+
 def adapt_tueg(root: str, args) -> Iterator[Recording]:
     """TUH EEG Corpus: .edf, one recording per file, montage-mixed.
 
@@ -230,7 +341,7 @@ def adapt_tueg(root: str, args) -> Iterator[Recording]:
             channel_names=list(raw.ch_names),
             sampling_rate=float(raw.info["sfreq"]),
             unit="V",
-            mains_hz=args.mains_hz if args.mains_hz else 60.0,
+            mains_hz=mains_for("physionet_mi", args),
             notes={"tuh_session": ident["session"],
                    "tuh_montage": ident["montage"],
                    "tuh_identity_rule": ident["rule"]},
@@ -248,18 +359,17 @@ def adapt_faced(root: str, args) -> Iterator[Recording]:
     indistinguishable from a real one downstream.
     """
     mne = _require_mne()
-    files = _walk(root, (".bdf",))
+    # The BIDS conversions (NEMAR nm000112) carry the same signal as the raw
+    # BDF in .set or .edf, so the extension says nothing about which release
+    # this is. The RATE does, per file, which is also the only way to separate
+    # FACED's 31 genuinely-250 Hz subjects from a wholesale 250 Hz derivative.
+    files = _walk(root, (".bdf", ".set", ".fif", ".edf"))
     if not files:
-        files = _walk(root, (".set", ".fif", ".edf"))
-        if files and not args.allow_upsample_faced:
-            raise PreprocessError(
-                f"no .bdf under {root}, only {os.path.splitext(files[0])[1]} "
-                f"files. That is the 250 Hz preprocessed FACED release, and "
-                f"E32_512 needs 512 Hz -- resampling 250 -> 512 is upsampling, "
-                f"which fabricates the top half of the spectrum.\n\n"
-                f"  Use the raw BDF release, or pass --allow-upsample-faced to "
-                f"override. The official configuration does not set it.")
+        raise PreprocessError(f"no .bdf/.set/.fif/.edf under {root}")
     for path in files:
+        subject = _bids_subject(path) or os.path.splitext(os.path.basename(path))[0]
+        if not owns(subject, args):
+            continue
         if path.lower().endswith(".bdf"):
             raw = mne.io.read_raw_bdf(path, preload=True, verbose="ERROR")
         elif path.lower().endswith(".set"):
@@ -269,17 +379,19 @@ def adapt_faced(root: str, args) -> Iterator[Recording]:
         else:
             raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
         fs = float(raw.info["sfreq"])
-        if fs < ROUTES["E32_512"].sampling_rate and not args.allow_upsample_faced:
+        target = ROUTES["E32_512"].sampling_rate
+        if fs < target and not upsample_allowed("faced", fs, args):
             raise PreprocessError(
-                f"{path} is {fs} Hz and the route needs "
-                f"{ROUTES['E32_512'].sampling_rate} Hz. Refusing to upsample; "
+                f"{path} is {fs} Hz and the route needs {target} Hz. "
+                f"{fs} is not in FACED's native_upsample_ok list, so this is a "
+                f"preprocessed derivative rather than one of the 31 subjects "
+                f"recorded at 250 Hz. Refusing to upsample; "
                 f"--allow-upsample-faced overrides.")
         yield Recording(
             recording_id=os.path.relpath(path, root),
-            subject_id=os.path.basename(os.path.dirname(path)) or
-            os.path.splitext(os.path.basename(path))[0],
+            subject_id=subject,
             data=raw.get_data(), channel_names=list(raw.ch_names),
-            sampling_rate=fs, unit="V", mains_hz=args.mains_hz,
+            sampling_rate=fs, unit="V", mains_hz=mains_for("faced", args),
         )
 
 
@@ -294,19 +406,22 @@ def adapt_tdbrain(root: str, args) -> Iterator[Recording]:
     mne = _require_mne()
     files = _walk(root, (".edf", ".bdf", ".vhdr"))
     for path in files:
+        base = os.path.basename(path)
+        subject = _bids_subject(path) or (
+            base.split("_")[0] if "_" in base else os.path.splitext(base)[0])
+        if not owns(subject, args):
+            continue
         if path.lower().endswith(".vhdr"):
             raw = mne.io.read_raw_brainvision(path, preload=True, verbose="ERROR")
         elif path.lower().endswith(".bdf"):
             raw = mne.io.read_raw_bdf(path, preload=True, verbose="ERROR")
         else:
             raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
-        base = os.path.basename(path)
-        subject = base.split("_")[0] if "_" in base else os.path.splitext(base)[0]
         yield Recording(
             recording_id=os.path.relpath(path, root), subject_id=subject,
             data=raw.get_data(), channel_names=list(raw.ch_names),
             sampling_rate=float(raw.info["sfreq"]), unit="V",
-            mains_hz=args.mains_hz,
+            mains_hz=mains_for("tdbrain", args),
         )
 
 
@@ -319,11 +434,15 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
     """
     mne = _require_mne()
     for path in _walk(root, (".edf",)):
-        raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
         base = os.path.basename(path)
+        subject = _bids_subject(path) or (
+            base[:4] if base.lower().startswith("s") else base)
+        if not owns(subject, args):
+            continue
+        raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
         yield Recording(
             recording_id=os.path.relpath(path, root),
-            subject_id=base[:4] if base.lower().startswith("s") else base,
+            subject_id=subject,
             data=raw.get_data(), channel_names=list(raw.ch_names),
             sampling_rate=float(raw.info["sfreq"]), unit="V",
             mains_hz=args.mains_hz if args.mains_hz else 60.0,
@@ -335,6 +454,10 @@ def adapt_m3cv(root: str, args) -> Iterator[Recording]:
     mne = _require_mne()
     files = _walk(root, (".set", ".edf", ".fif", ".cnt"))
     for path in files:
+        base = os.path.splitext(os.path.basename(path))[0]
+        subject = _bids_subject(path) or base.split("_")[0]
+        if not owns(subject, args):
+            continue
         if path.lower().endswith(".set"):
             raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
         elif path.lower().endswith(".cnt"):
@@ -343,13 +466,13 @@ def adapt_m3cv(root: str, args) -> Iterator[Recording]:
             raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
         else:
             raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
-        base = os.path.splitext(os.path.basename(path))[0]
         yield Recording(
             recording_id=os.path.relpath(path, root),
-            subject_id=base.split("_")[0], data=raw.get_data(),
+            subject_id=subject,
+            data=raw.get_data(),
             channel_names=list(raw.ch_names),
             sampling_rate=float(raw.info["sfreq"]), unit="V",
-            mains_hz=args.mains_hz,
+            mains_hz=mains_for("m3cv", args),
         )
 
 
@@ -373,6 +496,10 @@ def adapt_hbn(root: str, args) -> Iterator[Recording]:
     files = _walk(root, (".mff", ".set", ".fif", ".edf"))
     seen_dirs = set()
     for path in files:
+        base = os.path.basename(os.path.normpath(path))
+        subject = _bids_subject(path) or base.split("_")[0].split(".")[0]
+        if not owns(subject, args):
+            continue
         if path.lower().endswith(".mff"):
             if path in seen_dirs:
                 continue
@@ -394,13 +521,12 @@ def adapt_hbn(root: str, args) -> Iterator[Recording]:
                 f"Refusing to drop a row by position.")
         keep = [n for n in names if n not in drop]
         data = raw.get_data(picks=[names.index(n) for n in keep])
-        base = os.path.basename(os.path.normpath(path))
         yield Recording(
             recording_id=os.path.relpath(path, root),
-            subject_id=base.split("_")[0].split(".")[0],
+            subject_id=subject,
             data=data, channel_names=keep,
             sampling_rate=float(raw.info["sfreq"]), unit="V",
-            mains_hz=args.mains_hz,
+            mains_hz=mains_for("hbn", args),
             notes={"removed_channels": drop, "n_channels_before": len(names)},
         )
 
@@ -415,7 +541,11 @@ def adapt_hgd(root: str, args) -> Iterator[Recording]:
     instead, which is right if HGD is the only corpus on the route.
     """
     mne = _require_mne()
-    for path in _walk(root, (".mat", ".edf", ".fif")):
+    for path in _walk(root, (".mat", ".edf", ".fif", ".set")):
+        base = os.path.splitext(os.path.basename(path))[0]
+        subject = _bids_subject(path) or base.split("_")[0]
+        if not owns(subject, args) and not path.lower().endswith(".mat"):
+            continue
         if path.lower().endswith(".mat"):
             raise PreprocessError(
                 f"{path}: HGD's .mat release needs the braindecode reader; "
@@ -423,15 +553,17 @@ def adapt_hgd(root: str, args) -> Iterator[Recording]:
                 f"tree. Not guessing a MATLAB layout.")
         if path.lower().endswith(".fif"):
             raw = mne.io.read_raw_fif(path, preload=True, verbose="ERROR")
+        elif path.lower().endswith(".set"):
+            raw = mne.io.read_raw_eeglab(path, preload=True, verbose="ERROR")
         else:
             raw = mne.io.read_raw_edf(path, preload=True, verbose="ERROR")
-        base = os.path.splitext(os.path.basename(path))[0]
         yield Recording(
             recording_id=os.path.relpath(path, root),
-            subject_id=base.split("_")[0], data=raw.get_data(),
+            subject_id=subject,
+            data=raw.get_data(),
             channel_names=list(raw.ch_names),
             sampling_rate=float(raw.info["sfreq"]), unit="V",
-            mains_hz=args.mains_hz,
+            mains_hz=mains_for("hgd", args),
         )
 
 
@@ -514,11 +646,24 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
 
     ids, _ = channel_ids_for(slots)
     ids = [i if mapping.valid[k] else 0 for k, i in enumerate(ids)]   # PAD_ID
+    # Recorded for EVERY corpus, not just FACED: PhysioNetMI is 160 Hz against
+    # a 256 Hz route and M3CV is 250 against 256, so a shard whose top spectrum
+    # is interpolation rather than measurement must say so in its own
+    # provenance. Otherwise it is indistinguishable downstream from a shard
+    # that was genuinely sampled that high.
+    prov_rate = {}
+    if rec.sampling_rate < route.sampling_rate:
+        prov_rate = {
+            "upsampled_from_hz": float(rec.sampling_rate),
+            "true_nyquist_hz": float(rec.sampling_rate) / 2.0,
+            "spectrum_above_hz_is_interpolated": float(rec.sampling_rate) / 2.0,
+        }
     prov = cfg.provenance({
         "dataset_id": dataset_id,
         "mains_hz": mains,
         "source_sampling_rate": rec.sampling_rate,
         "target_sampling_rate": route.sampling_rate,
+        **prov_rate,
         "unmatched_source_channels": mapping.unmatched_sources,
         "empty_slots": mapping.empty_slots,
         "unknown_channel_names": mapping.unknown_names,
@@ -533,6 +678,7 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
         (starts / route.sampling_rate).tolist(), rec.sampling_rate, prov)
     entry["qc"] = window_qc(windows, mapping.valid, route.sampling_rate)
     entry["source_sampling_rate"] = float(rec.sampling_rate)
+    entry["upsampled"] = bool(rec.sampling_rate < route.sampling_rate)
     entry["empty_slots"] = list(mapping.empty_slots)
     entry["unmatched_source_channels"] = list(mapping.unmatched_sources)
     entry["placed_total"] = len(mapping.matrix_rows)
@@ -663,6 +809,45 @@ def _shard_spec(text: str):
     return (i, n)
 
 
+def mains_peak_ratios(raw, seconds: float = 60.0) -> Optional[Dict[str, float]]:
+    """Band power at 50 and 60 Hz relative to the spectrum either side of it.
+
+    Two of these corpora publish PowerLineFrequency as n/a, and a notch at the
+    wrong frequency is silent in both directions: it leaves the interference in
+    and takes real signal out. This measures rather than assumes. A ratio near
+    1.0 means no peak -- which is itself an answer, and the right one for a
+    corpus the publisher already notched.
+    """
+    fs = float(raw.info["sfreq"])
+    if fs < 130.0:
+        # Below a ~130 Hz sampling rate there is no 60 Hz band to compare
+        # against a 65 Hz baseline. PhysioNetMI at 160 Hz is the marginal case
+        # and it does have room; anything slower cannot answer the question.
+        return None
+    n = int(min(seconds, raw.n_times / fs) * fs)
+    if n < int(4 * fs):
+        return None
+    x = np.asarray(raw.get_data(start=0, stop=n), dtype=np.float64)
+    x = x - x.mean(axis=-1, keepdims=True)
+    freqs = np.fft.rfftfreq(x.shape[-1], d=1.0 / fs)
+    psd = (np.abs(np.fft.rfft(x, axis=-1)) ** 2).mean(axis=0)
+
+    def band(lo, hi):
+        m = (freqs >= lo) & (freqs < hi)
+        return float(psd[m].mean()) if m.any() else float("nan")
+
+    out = {}
+    for name, centre in (("50", 50.0), ("60", 60.0)):
+        if centre + 5.0 >= fs / 2.0:
+            continue
+        peak = band(centre - 1.0, centre + 1.0)
+        base = np.nanmean([band(centre - 6.0, centre - 2.0),
+                           band(centre + 2.0, centre + 6.0)])
+        if base and np.isfinite(base) and base > 0:
+            out[name] = float(peak / base)
+    return out or None
+
+
 def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     """Report what the corpus actually is, without processing any of it.
 
@@ -690,6 +875,7 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     rates, montages, rules, counts = Counter(), Counter(), Counter(), Counter()
     union_hits, unmatched = Counter(), Counter()
     coverage: List[int] = []
+    mains_ratios: Dict[str, List[float]] = {"50": [], "60": []}
     seconds = 0.0
     subjects = set()
     failed = 0
@@ -712,6 +898,14 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
             montages[ident["montage"] or "(none)"] += 1
             rules[ident["rule"]] += 1
             subjects.add(ident["subject"])
+        if getattr(args, "verify_powerline", False):
+            try:
+                ratios = mains_peak_ratios(raw)
+            except Exception:                                   # noqa: BLE001
+                ratios = None
+            for k, v in (ratios or {}).items():
+                if np.isfinite(v):
+                    mains_ratios[k].append(v)
         mapping = map_to_slots(raw.ch_names, slots)
         coverage.append(int(mapping.valid.sum()))
         for j, filled in enumerate(mapping.valid):
@@ -761,6 +955,38 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
         else:
             print("  every slot filled in every file read")
 
+    # -- is the registry's mains frequency actually the one in the data? ---- #
+    if getattr(args, "verify_powerline", False):
+        entry = registry_for(dataset_id, args)
+        claimed = entry.get("powerline_hz")
+        print(f"\nPOWERLINE, band power at the line relative to 4 Hz either "
+              f"side, over the files read:")
+        medians = {}
+        for k in ("50", "60"):
+            vals = mains_ratios[k]
+            if not vals:
+                print(f"  {k} Hz : not measurable at this sampling rate")
+                continue
+            med = float(np.median(vals))
+            medians[k] = med
+            share = sum(1 for v in vals if v > 2.0) / len(vals)
+            print(f"  {k} Hz : median x{med:.2f}   "
+                  f"peak in {share*100:.0f}% of {len(vals)} file(s)")
+        if len(medians) == 2:
+            winner = max(medians, key=medians.get)
+            if max(medians.values()) < 1.5:
+                print("  VERDICT: no line peak at either frequency. Consistent "
+                      "with a corpus the publisher already notched -- check "
+                      "notch_already_applied before adding a second filter.")
+            elif claimed is not None and abs(float(claimed) - float(winner)) > 1:
+                print(f"  VERDICT: the data peaks at {winner} Hz but the "
+                      f"registry says {claimed:g} Hz. DO NOT run the array "
+                      f"until this is resolved -- notching {claimed:g} Hz here "
+                      f"would remove signal and leave the interference.")
+            else:
+                print(f"  VERDICT: peak at {winner} Hz, matching the registry. "
+                      f"Re-run the real job with --psd-verified.")
+
     # -- what was dropped, and whether any of it is a real electrode -------- #
     print(f"\nDROPPED channel names ({len(unmatched)} distinct), most common:")
     known, unknown = [], []
@@ -808,6 +1034,18 @@ def main(argv=None) -> int:
                         "frequency leaves the interference and removes signal.")
     p.add_argument("--no-notch", action="store_true",
                    help="skip mains notch entirely")
+    p.add_argument("--registry", default=None, metavar="PATH",
+                   help=f"dataset registry with the per-corpus mains frequency "
+                        f"and native rates (default: {DEFAULT_REGISTRY})")
+    p.add_argument("--verify-powerline", action="store_true",
+                   help="with --inspect: measure the 49-51 and 59-61 Hz bands "
+                        "against their neighbours and report which one carries "
+                        "a peak. FACED and PhysioNetMI publish no trustworthy "
+                        "PowerLineFrequency field; this is how the registry's "
+                        "value gets confirmed instead of assumed.")
+    p.add_argument("--psd-verified", action="store_true",
+                   help="acknowledge that --verify-powerline has been run for "
+                        "this corpus; silences the reminder.")
     p.add_argument("--highpass-hz", type=float, default=0.5)
     p.add_argument("--clip-sigma", type=float, default=20.0)
     p.add_argument("--window-seconds", type=float, default=4.0)
@@ -910,9 +1148,20 @@ def main(argv=None) -> int:
     slots = spec.slots if not (args.hgd_own_slots and dataset_id == "hgd") \
         else PRETRAIN_DATASETS["hgd"].slots
 
+    mains_hz, mains_why = resolved_mains(dataset_id, args)
+    print(f"mains: {mains_hz if mains_hz is not None else 'no notch'} "
+          f"({mains_why})", file=sys.stderr)
+    entry = registry_for(dataset_id, args)
+    if entry.get("verify_powerline_by_psd") and mains_hz is not None \
+            and not getattr(args, "psd_verified", False):
+        print(f"  NOTE: {dataset_id}'s mains frequency is inferred, not "
+              f"published. Run --inspect N --verify-powerline once and confirm "
+              f"the peak is at {mains_hz:g} Hz before the full array.",
+              file=sys.stderr)
+
     cfg = PreprocessConfig(
         highpass_hz=args.highpass_hz,
-        notch_hz=None if args.no_notch else args.mains_hz,
+        notch_hz=mains_hz,
         clip_sigma=args.clip_sigma, window_seconds=args.window_seconds,
         stride_seconds=args.stride_seconds, val_fraction=args.val_fraction,
         split_seed=args.split_seed)
@@ -1029,6 +1278,16 @@ def main(argv=None) -> int:
     else:
       try:
           for rec in adapter(args.root or "", args):
+              # Sharding for the streaming adapters. TUEG shards its file list
+              # up front because it has one; these adapters yield Recordings, so
+              # the filter goes here -- but on the same subject hash, so a
+              # subject lands on exactly one task either way. Without this every
+              # task of an --array=0-63 read the whole corpus and raced its
+              # siblings for the same output paths.
+              # Backstop. Every adapter calls owns() before reading, which is
+              # where the saving is; this catches one that forgets to.
+              if not owns(rec.subject_id, args):
+                  continue
               n_seen += 1
               if args.max_recordings and n_seen > args.max_recordings:
                   break

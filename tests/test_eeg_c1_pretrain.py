@@ -270,23 +270,150 @@ def test_11_hbn_129_to_128_is_by_name_and_traceable():
 
 
 # --- 12 --------------------------------------------------------------------- #
-def test_12_faced_250hz_is_refused_by_default(tmp_path):
-    from EEG.preprocess_pretrain_corpus import adapt_faced
-    from physiowave.eeg_c1.preprocess import PreprocessError
+class _Args:
+    """The subset of the CLI namespace the adapters and registry read."""
+    allow_upsample_faced = False
+    mains_hz = None
+    no_notch = False
+    registry = None
 
-    root = tmp_path / "faced"
-    root.mkdir()
-    (root / "sub01.set").write_bytes(b"not really eeglab")
 
-    class Args:
-        allow_upsample_faced = False
-        mains_hz = 50.0
+def test_12_upsampling_is_allowed_only_at_a_corpus_native_rate():
+    """FACED ships 31 of 123 subjects at 250 Hz; that is acquisition, not a
+    derivative. A rate the registry does not list stays refused, which is the
+    only thing separating those subjects from the 250 Hz preprocessed release.
+    """
+    from EEG.preprocess_pretrain_corpus import upsample_allowed
 
-    with pytest.raises(PreprocessError) as exc:
-        list(adapt_faced(str(root), Args()))
-    msg = str(exc.value).lower()
-    assert "250" in msg and "bdf" in msg
-    assert "--allow-upsample-faced" in str(exc.value)
+    assert upsample_allowed("faced", 250.0, _Args())
+    assert not upsample_allowed("faced", 128.0, _Args())
+    assert not upsample_allowed("faced", 200.0, _Args())
+    # PhysioNetMI is 160 Hz throughout against a 256 Hz route.
+    assert upsample_allowed("physionet_mi", 160.0, _Args())
+    # TDBRAIN records at 500 and lists nothing: a 250 Hz TDBRAIN file is wrong.
+    assert not upsample_allowed("tdbrain", 250.0, _Args())
+
+    forced = _Args()
+    forced.allow_upsample_faced = True
+    assert upsample_allowed("faced", 128.0, forced)
+    assert not upsample_allowed("tdbrain", 128.0, forced)   # FACED-only escape
+
+
+# --- 12b -------------------------------------------------------------------- #
+def test_12b_registry_supplies_mains_and_m3cv_is_not_notched_twice():
+    """A wrong mains frequency is silent in both directions, so it comes from a
+    checked-in table rather than whichever shell script launched the job.
+    """
+    from EEG.preprocess_pretrain_corpus import resolved_mains
+
+    assert resolved_mains("faced", _Args())[0] == 50.0
+    assert resolved_mains("tdbrain", _Args())[0] == 50.0
+    assert resolved_mains("physionet_mi", _Args())[0] == 60.0
+    assert resolved_mains("hbn", _Args())[0] == 60.0
+    assert resolved_mains("hgd", _Args())[0] == 50.0
+    assert resolved_mains("tueg", _Args())[0] == 60.0
+
+    # M3CV is published already notched at 49-51 Hz. Filtering it again would
+    # be a second stopband on an already-empty one.
+    freq, why = resolved_mains("m3cv", _Args())
+    assert freq is None
+    assert "already notched" in why
+
+    explicit = _Args()
+    explicit.mains_hz = 60.0
+    assert resolved_mains("m3cv", explicit) == (60.0, "--mains-hz")
+
+    off = _Args()
+    off.no_notch = True
+    assert resolved_mains("faced", off)[0] is None
+
+
+# --- 12c -------------------------------------------------------------------- #
+def test_12c_physionet_channel_padding_resolves_to_electrodes():
+    """PhysioNet's EDF+ pads labels to four characters with periods. Before this
+    was handled, all 64 channels landed as UNK, per-file slot coverage was 0 of
+    64, and every recording in the corpus failed the coverage gate.
+    """
+    from channel_embedding import CHANNEL_TO_ID, normalize_channel_name
+
+    for raw, want in (("Fc5.", "FC5"), ("C3..", "C3"), ("Cz..", "Cz"),
+                      ("Iz..", "Iz"), ("Fp1.", "Fp1"), ("Af7.", "AF7"),
+                      ("Po7.", "PO7"), ("T10.", "T10")):
+        got = normalize_channel_name(raw)
+        assert got == want, f"{raw!r} -> {got!r}, expected {want!r}"
+        assert got in CHANNEL_TO_ID
+
+    # The wrappers that were already handled must keep working.
+    assert normalize_channel_name("EEG Fp1-REF") == "Fp1"
+    assert normalize_channel_name("T3") == "T7"
+    assert normalize_channel_name("E128") == "E128"
+
+
+# --- 12d -------------------------------------------------------------------- #
+def test_12d_bids_subject_identity_is_taken_from_the_label():
+    """Subject identity decides the train/val split, so a wrong answer here is a
+    subject leaking across it that nothing downstream can detect. The earlier
+    FACED adapter used the parent directory, which in BIDS is always "eeg".
+    """
+    from EEG.preprocess_pretrain_corpus import _bids_subject
+
+    cases = {
+        "HBN/R3/sub-NDARAB123/eeg/sub-NDARAB123_task-rest_eeg.set": "sub-NDARAB123",
+        "faced/sub-101/eeg/sub-101_task-emotion_eeg.edf": "sub-101",
+        "hgd/sub-14/eeg/sub-14_task-motor_eeg.set": "sub-14",
+        "tdbrain/sub-19681349/ses-1/eeg/x.edf": "sub-19681349",
+    }
+    for path, want in cases.items():
+        assert _bids_subject(path) == want
+    assert _bids_subject("nobids/S001R03.edf") is None
+    # Distinct subjects must not collapse onto one id.
+    ids = {_bids_subject(p) for p in cases}
+    assert len(ids) == len(cases)
+
+
+# --- 12e -------------------------------------------------------------------- #
+def test_12e_streaming_adapters_shard_by_subject():
+    """--array=0-63 must give each task 1/64 of the corpus, not all of it.
+
+    TUEG shards a file list it builds up front. The other six adapters stream
+    Recordings, and nothing applied --shard to them: every task of an array read
+    the whole corpus and raced its siblings for the same output paths. The check
+    now runs inside each adapter, before the file is opened -- filtering after
+    the read would be correct and useless, since each of 64 tasks would still
+    decode all of HBN and discard 63/64 of it.
+    """
+    from EEG.preprocess_pretrain_corpus import owns, subject_shard
+
+    class Sharded:
+        shard = None
+
+    subjects = [f"sub-{i:05d}" for i in range(2000)]
+
+    # A subject belongs to exactly one task, for any partition.
+    for total in (2, 4, 16, 64):
+        buckets = [0] * total
+        for sub in subjects:
+            idx = subject_shard(sub, total)
+            assert 0 <= idx < total
+            buckets[idx] += 1
+        assert sum(buckets) == len(subjects)
+        assert all(b > 0 for b in buckets), f"an empty task at N={total}"
+        # Roughly balanced: no task may carry more than 3x the mean.
+        assert max(buckets) < 3 * (len(subjects) / total)
+
+    # owns() partitions the corpus and never duplicates or drops a subject.
+    seen = []
+    for idx in range(8):
+        a = Sharded()
+        a.shard = (idx, 8)
+        seen += [s for s in subjects if owns(s, a)]
+    assert sorted(seen) == sorted(subjects)
+
+    # No --shard means one process owns everything.
+    assert all(owns(s, Sharded()) for s in subjects[:50])
+
+    # The two sharding paths must agree, or a subject lands on two tasks.
+    assert subject_shard("aaaaaaaa", 16) == subject_shard("aaaaaaaa", 16)
 
 
 # --- 13 --------------------------------------------------------------------- #

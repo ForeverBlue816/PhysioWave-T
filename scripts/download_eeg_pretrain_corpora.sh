@@ -1,0 +1,163 @@
+#!/bin/bash
+# ============================================================================
+# Fetch the six remaining C1 pretraining corpora into one layout.
+#
+#   bash scripts/download_eeg_pretrain_corpora.sh layout
+#   bash scripts/download_eeg_pretrain_corpora.sh physionet_mi
+#   bash scripts/download_eeg_pretrain_corpora.sh hbn R3
+#   bash scripts/download_eeg_pretrain_corpora.sh hbn all
+#
+# ONE DATASET PER INVOCATION, NAMED EXPLICITLY. There is no "download
+# everything": these total roughly 2 TB, most of it HBN, and a command that
+# starts two terabytes of transfer because it was run without arguments is a
+# command that gets run without arguments.
+#
+# TDBRAIN IS NOT DOWNLOADED HERE and cannot be. It needs an ORCID login and an
+# accepted data use agreement, and accepting an agreement is not something a
+# script does on your behalf. `tdbrain` prints what to do instead.
+#
+# HBN is on open S3, but the "Not for Commercial Use" releases are excluded
+# from the main model -- R1-R11 are the standard ones and are what `all` fetches.
+#
+# SIZES, so nothing starts a transfer that will not fit:
+#   PhysioNetMI  1.9 GB zip / 3.4 GB unpacked
+#   FACED        22.7 GB          M3CV  ~30 GB          HGD  25.1 GB
+#   TDBRAIN      reserve 130 GB unpacked
+#   HBN          1.875 TB for R1-R11 (103,120,140,230,224,91,245,157,185,160,220)
+#
+# AFTER DOWNLOADING, inspect before processing. Every adapter has been checked
+# against synthetic trees with these corpora's conventions, not against your
+# copy:
+#   DATASET=<id> INSPECT=40 VERIFY_POWERLINE=1 bash EEG/preprocess_eeg_corpus.sh
+# ============================================================================
+
+set -uo pipefail
+
+EEG_ROOT="${EEG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/eeg}"
+
+usage() {
+    sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    echo "datasets: layout physionet_mi faced m3cv hgd hbn tdbrain"
+}
+
+need() {
+    command -v "$1" >/dev/null 2>&1 && return 0
+    echo "ERROR: $1 is not on PATH. $2" >&2
+    return 1
+}
+
+layout() {
+    mkdir -p "${EEG_ROOT}"/{FACED,TDBRAIN,PhysioNetMI,M3CV,HBN,HGD}/{raw,processed,manifests}
+    echo "layout under ${EEG_ROOT}:"
+    ls -d "${EEG_ROOT}"/*/ 2>/dev/null
+    echo ""
+    echo "'processed' and 'manifests' are there for per-corpus scratch. The"
+    echo "pipeline itself writes shards and manifests into"
+    echo "  \${DATA_ROOT:-${EEG_ROOT}}/eeg_c1_corpus/<dataset>/"
+    echo "which is where TUEG already is and where the merge step reads from."
+}
+
+case "${1:-}" in
+
+layout) layout ;;
+
+physionet_mi)
+    # Open access, no agreement. 64 channels at 160 Hz, EDF+.
+    dest="${EEG_ROOT}/PhysioNetMI/raw"; mkdir -p "${dest}"
+    if command -v aws >/dev/null 2>&1; then
+        echo "==> S3 (faster than the HTTP mirror)"
+        aws s3 sync --no-sign-request \
+            s3://physionet-open/eegmmidb/1.0.0/ "${dest}/eegmmidb-1.0.0"
+    else
+        need wget "Install it, or use the AWS CLI." || exit 1
+        echo "==> HTTP mirror"
+        ( cd "${dest}" && wget -r -N -c -np \
+            https://physionet.org/files/eegmmidb/1.0.0/ )
+    fi
+    ;;
+
+faced|m3cv|hgd)
+    # The NEMAR BIDS conversions. nemar-cli needs node:  npm i -g nemar-cli
+    case "$1" in
+        faced) acc=nm000112; dir=FACED ;;
+        m3cv)  acc=nm000166; dir=M3CV  ;;
+        hgd)   acc=nm000172; dir=HGD   ;;
+    esac
+    need nemar "npm install -g nemar-cli" || exit 1
+    dest="${EEG_ROOT}/${dir}/raw"; mkdir -p "${dest}"
+    echo "==> NEMAR ${acc} -> ${dest}"
+    ( cd "${dest}" && nemar dataset download "${acc}" )
+    if [[ "$1" == "faced" ]]; then
+        echo ""
+        echo "FACED note: 92 subjects are 1000 Hz and 31 are 250 Hz, in this"
+        echo "same release. Both are accepted -- the 250 Hz ones are the real"
+        echo "acquisition, and every shard written from one records"
+        echo "upsampled_from_hz in its provenance. A rate that is NEITHER is"
+        echo "refused, because that is the preprocessed derivative."
+    fi
+    if [[ "$1" == "m3cv" ]]; then
+        echo ""
+        echo "M3CV note: this release is already cleaned (band-pass, 49-51 Hz"
+        echo "notch, ICA, 1000 -> 250 Hz). The registry marks it"
+        echo "notch_already_applied, so no second notch is run. Do not describe"
+        echo "it as raw 1000 Hz data."
+    fi
+    ;;
+
+hbn)
+    need aws "pip install awscli" || exit 1
+    rel="${2:-}"
+    if [[ -z "${rel}" ]]; then
+        echo "ERROR: name a release, or 'all' for R1-R11 (1.875 TB)." >&2
+        echo "  bash $0 hbn R3      # 140 GB, enough to validate the adapter" >&2
+        echo "  bash $0 hbn all     # every standard release" >&2
+        exit 1
+    fi
+    fetch_one() {
+        local r="$1"
+        local dest="${EEG_ROOT}/HBN/raw/${r}"
+        mkdir -p "${dest}"
+        echo "==> HBN ${r} -> ${dest}"
+        aws s3 cp "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}" \
+            "${dest}" --recursive --no-sign-request
+    }
+    if [[ "${rel}" == "all" ]]; then
+        for i in $(seq 1 11); do fetch_one "R${i}"; done
+    else
+        fetch_one "${rel}"
+    fi
+    echo ""
+    echo "HBN note: files report 129 EEG channels. The adapter removes the"
+    echo "NAMED vertex reference to reach 128 and writes what it removed into"
+    echo "every shard's provenance. It refuses to drop a row by position, so a"
+    echo "release whose reference is labelled differently fails loudly rather"
+    echo "than quietly deleting whichever channel came last."
+    ;;
+
+tdbrain)
+    cat <<'MSG'
+TDBRAIN is not downloaded by this script.
+
+It requires an ORCID login and an accepted Data Use Agreement, and the DUA also
+forbids redistribution -- so the transfer has to be yours, made under your own
+acceptance of it.
+
+  1. https://brainclinics.com/resources/tdbrain-dataset
+  2. Sign in with ORCID, accept the DUA.
+  3. Unpack into  $EEG_ROOT/TDBRAIN/raw  (reserve ~130 GB).
+
+Then, as with every other corpus:
+
+  DATASET=tdbrain INSPECT=40 VERIFY_POWERLINE=1 bash EEG/preprocess_eeg_corpus.sh
+
+Read the coverage line in that report before launching anything. TDBRAIN
+records 26 electrodes against E32_512's 32 slots, so the expected per-file
+coverage is 26 of 32 (81%) and the expected empty-slot rate is 18.8% -- both
+inside the gates. The six unrecorded slots stay zero with valid_channel_mask
+False. Nothing interpolates them: a spatially interpolated channel is a smooth
+function of its neighbours, and the model would learn the interpolation.
+MSG
+    ;;
+
+*) usage; exit 1 ;;
+esac

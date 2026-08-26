@@ -97,6 +97,10 @@ CHANNEL_VOCAB = list(_RESERVED) + [
     # 128 rows its route requires. Appended after the E-numbers because
     # append-only means the end of the list, not the end of a section.
     "AFF7", "AFF8", "PPO7", "PPO8",
+    # The inferior temporal pair. Standard 10-10 positions that the list simply
+    # never reached; PhysioNetMI records both, and without them two real
+    # electrodes per recording resolve to <unk> rather than to themselves.
+    "T9", "T10",
 ]
 CHANNEL_TO_ID = {name: i for i, name in enumerate(CHANNEL_VOCAB)}
 assert len(CHANNEL_TO_ID) == len(CHANNEL_VOCAB), "duplicate channel name in CHANNEL_VOCAB"
@@ -307,7 +311,12 @@ def normalize_channel_name(name: str) -> str:
         if s.upper().endswith(suffix):
             s = s[: -len(suffix)].strip()
             break
-    s = s.strip()
+    # PhysioNet's EDF+ pads every label to four characters with periods --
+    # "Fc5.", "C3..", "Cz..", "Iz..". Without this, none of the 64 channels of
+    # the motor-imagery corpus matches a slot and every recording in it fails
+    # the coverage gate. No 10-20/10-10/10-5 or EGI name contains a period, so
+    # stripping trailing ones cannot collide with a real electrode.
+    s = s.rstrip(". ").strip()
     if not s:
         return ""
     # Case-insensitive match against the vocabulary's own spelling.
