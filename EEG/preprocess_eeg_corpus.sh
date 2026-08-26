@@ -103,6 +103,26 @@ PSD_VERIFIED="${PSD_VERIFIED:-0}"
 ALLOW_UPSAMPLE_FACED="${ALLOW_UPSAMPLE_FACED:-0}"
 HGD_OWN_SLOTS="${HGD_OWN_SLOTS:-0}"
 
+# An EMPTY directory is not an absent one, and `bash ... layout` creates all six
+# before anything is downloaded -- so the -d test passes for every corpus that
+# has not been fetched yet, and the failure surfaces pages later as "no readable
+# files". Count first.
+if [[ -d "${RAW_ROOT}" ]]; then
+    _n_files=$(find -L "${RAW_ROOT}" -type f \
+        \( -iname '*.edf' -o -iname '*.bdf' -o -iname '*.set' \
+           -o -iname '*.fif' -o -iname '*.cnt' -o -iname '*.vhdr' \) \
+        2>/dev/null | head -1 | wc -l)
+    if [[ "${_n_files}" -eq 0 ]]; then
+        echo "ERROR: ${RAW_ROOT} exists but holds no EDF/BDF/SET/FIF/CNT/VHDR." >&2
+        echo "       The download has not run, or it landed somewhere else." >&2
+        echo "         bash scripts/download_eeg_pretrain_corpora.sh ${DATASET}" >&2
+        echo "       Or point RAW_ROOT at where the files actually are:" >&2
+        echo "         DATASET=${DATASET} RAW_ROOT=/path/to/corpus \\" >&2
+        echo "             bash EEG/preprocess_eeg_corpus.sh" >&2
+        exit 1
+    fi
+fi
+
 if [[ ! -d "${RAW_ROOT}" ]]; then
     echo "ERROR: no ${DATASET} corpus at ${RAW_ROOT}" >&2
     echo "       Set RAW_ROOT. This script never downloads a corpus: TDBRAIN" >&2

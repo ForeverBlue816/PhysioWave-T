@@ -46,6 +46,29 @@ need() {
     return 1
 }
 
+# `aws` on PATH is not the same as a working AWS CLI. PyPI carries an abandoned
+# Python-2 package literally named `aws`, and `pip install aws` puts its
+# entry point at the same bin/aws an awscli install would use -- so it is found,
+# it is executed, and it dies on a print statement from 2012. Run it before
+# trusting it.
+have_working_aws() {
+    command -v aws >/dev/null 2>&1 || return 1
+    aws --version >/dev/null 2>&1
+}
+
+aws_repair_hint() {
+    cat >&2 <<'MSG'
+
+  The `aws` on PATH is the abandoned Python-2 package of that name, not the
+  AWS CLI. They install to the same bin/aws. To replace it:
+
+      pip uninstall -y aws
+      pip install awscli
+      aws --version          # should print aws-cli/1.x or /2.x
+
+MSG
+}
+
 layout() {
     mkdir -p "${EEG_ROOT}"/{FACED,TDBRAIN,PhysioNetMI,M3CV,HBN,HGD}/{raw,processed,manifests}
     echo "layout under ${EEG_ROOT}:"
@@ -64,16 +87,20 @@ layout) layout ;;
 physionet_mi)
     # Open access, no agreement. 64 channels at 160 Hz, EDF+.
     dest="${EEG_ROOT}/PhysioNetMI/raw"; mkdir -p "${dest}"
-    if command -v aws >/dev/null 2>&1; then
+    if have_working_aws; then
         echo "==> S3 (faster than the HTTP mirror)"
         aws s3 sync --no-sign-request \
             s3://physionet-open/eegmmidb/1.0.0/ "${dest}/eegmmidb-1.0.0"
     else
-        need wget "Install it, or use the AWS CLI." || exit 1
-        echo "==> HTTP mirror"
-        ( cd "${dest}" && wget -r -N -c -np \
+        command -v aws >/dev/null 2>&1 && aws_repair_hint
+        need wget "Install it, or repair the AWS CLI as above." || exit 1
+        echo "==> HTTP mirror (wget; the AWS CLI is unusable here)"
+        ( cd "${dest}" && wget -r -N -c -np -nH --cut-dirs=3 \
             https://physionet.org/files/eegmmidb/1.0.0/ )
     fi
+    echo ""
+    echo "downloaded $(find "${dest}" -name '*.edf' 2>/dev/null | wc -l) .edf file(s)"
+    echo "expected 1526 (109 subjects x 14 runs)"
     ;;
 
 faced|m3cv|hgd)
@@ -105,7 +132,16 @@ faced|m3cv|hgd)
     ;;
 
 hbn)
-    need aws "pip install awscli" || exit 1
+    if ! have_working_aws; then
+        if command -v aws >/dev/null 2>&1; then
+            echo "ERROR: the AWS CLI on PATH does not run." >&2
+            aws_repair_hint
+        else
+            echo "ERROR: aws is not on PATH. pip install awscli" >&2
+        fi
+        echo "  HBN is S3-only -- there is no HTTP mirror to fall back to." >&2
+        exit 1
+    fi
     rel="${2:-}"
     if [[ -z "${rel}" ]]; then
         echo "ERROR: name a release, or 'all' for R1-R11 (1.875 TB)." >&2
