@@ -50,6 +50,9 @@ if [[ -f "${PWPREP:-${HOME}/pwprep}/bin/activate" ]]; then
 fi
 
 export EEG_ROOT="${EEG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/eeg}"
+# A compute node has room for more parallelism than a login node, which is
+# where the conservative default comes from.
+export AWS_CONCURRENCY="${AWS_CONCURRENCY:-8}"
 RELEASES="${RELEASES:-R3}"
 
 if ! aws --version >/dev/null 2>&1; then

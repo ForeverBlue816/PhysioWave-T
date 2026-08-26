@@ -288,12 +288,49 @@ hbn)
         fi
 
         mkdir -p "${dest}"
+
+        # THROTTLE. The CLI defaults to ten concurrent transfers with a large
+        # queue, which on 100-245 GB of multi-megabyte files is enough resident
+        # memory for a login node to SIGKILL the process -- exit 137, partway
+        # through, looking like a corrupt download rather than a policy limit.
+        # Written to a temp config rather than `aws configure set`, which would
+        # edit ~/.aws/config permanently and change every other aws command the
+        # user runs.
+        local awscfg
+        awscfg=$(mktemp "${TMPDIR:-/tmp}/pw_aws_cfg.XXXXXX") || return 1
+        cat > "${awscfg}" <<CFG
+[default]
+s3 =
+    max_concurrent_requests = ${AWS_CONCURRENCY:-4}
+    max_queue_size = 100
+    multipart_chunksize = 8MB
+    multipart_threshold = 64MB
+CFG
+        local prev_cfg="${AWS_CONFIG_FILE:-}"
+        export AWS_CONFIG_FILE="${awscfg}"
+
         # sync, not `cp --recursive`. At 100-245 GB per release a transfer WILL
         # be interrupted, and cp restarts every file from the beginning; sync
         # skips what is already there with a matching size. That is the
         # difference between resuming a release and re-fetching it.
         aws s3 sync "${src}" "${dest}" --no-sign-request
         local rc=$?
+
+        rm -f "${awscfg}"
+        if [[ -n "${prev_cfg}" ]]; then export AWS_CONFIG_FILE="${prev_cfg}"
+        else unset AWS_CONFIG_FILE; fi
+
+        # 137 is SIGKILL. On a login node that is the site's limit, not a
+        # problem with the data -- and sync is resumable, so the answer is to
+        # rerun it somewhere it is allowed to finish.
+        if [[ "${rc}" -eq 137 ]] || [[ "${rc}" -eq 143 ]]; then
+            echo "" >&2
+            echo "    KILLED (exit ${rc}) -- a signal, not a download error." >&2
+            echo "    A login node will not let a transfer this size finish." >&2
+            echo "    What is on disk is intact and sync resumes from it:" >&2
+            echo "      sbatch --export=ALL,RELEASES=${r} \\" >&2
+            echo "             scripts/slurm/cineca_hbn_download.sbatch" >&2
+        fi
 
         local n
         n=$(find -L "${dest}" -type f \( -iname '*.set' -o -iname '*.fdt' \
@@ -311,11 +348,13 @@ hbn)
         fi
         return "${rc}"
     }
+    _hbn_rc=0
     if [[ "${rel}" == "all" ]]; then
-        for i in $(seq 1 11); do fetch_one "R${i}"; done
+        for i in $(seq 1 11); do fetch_one "R${i}" || _hbn_rc=$?; done
     else
-        fetch_one "${rel}"
+        fetch_one "${rel}" || _hbn_rc=$?
     fi
+    [[ "${_hbn_rc:-0}" -eq 0 ]] || exit "${_hbn_rc}"
     echo ""
     echo "HBN note: files report 129 EEG channels. The adapter removes the"
     echo "NAMED vertex reference to reach 128 and writes what it removed into"
