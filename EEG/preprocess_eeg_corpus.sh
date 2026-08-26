@@ -39,6 +39,8 @@
 #                   What to reach for when INSPECT reports poor coverage.
 #   DERIVE_SLOTS    PATH: write a candidate slot list for this route, derived
 #                   from the corpus, plus the vocabulary names it needs.
+#   FILE_LIST       cached corpus listing ($OUT_DIR/<dataset>_files.txt).
+#                   Delete it after adding or removing raw files.
 #   VERIFY_POWERLINE  1: with INSPECT, measure the 50/60 Hz bands
 #   PSD_VERIFIED    1: acknowledge you have done that; silences the reminder
 #   MAINS_HZ        override the registry (unset)
@@ -101,6 +103,10 @@ SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
 DUMP_CHANNELS="${DUMP_CHANNELS:-}"
 DERIVE_SLOTS="${DERIVE_SLOTS:-}"
+# Cached file listing. Walking a BIDS tree of tens of thousands of entries on a
+# parallel filesystem takes minutes, and an --array=0-63 would otherwise pay it
+# once per task.
+FILE_LIST="${FILE_LIST:-${OUT_DIR}/${DATASET}_files.txt}"
 MAINS_HZ="${MAINS_HZ:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
 STRIDE_SECONDS="${STRIDE_SECONDS:-}"
@@ -161,6 +167,7 @@ ARGS=(--dataset "${DATASET}" --root "${RAW_ROOT}" --out-dir "${OUT_DIR}"
 [[ -n "${INSPECT}" ]]               && ARGS+=(--inspect "${INSPECT}")
 [[ -n "${DUMP_CHANNELS}" ]]         && ARGS+=(--dump-channels "${DUMP_CHANNELS}")
 [[ -n "${DERIVE_SLOTS}" ]]          && ARGS+=(--derive-slots "${DERIVE_SLOTS}")
+[[ -n "${FILE_LIST}" ]]             && ARGS+=(--file-list "${FILE_LIST}")
 [[ -n "${SHARD}" ]]                 && ARGS+=(--shard "${SHARD}")
 [[ -n "${MAX_RECORDINGS}" ]]        && ARGS+=(--max-recordings "${MAX_RECORDINGS}")
 [[ -n "${STRIDE_SECONDS}" ]]        && ARGS+=(--stride-seconds "${STRIDE_SECONDS}")

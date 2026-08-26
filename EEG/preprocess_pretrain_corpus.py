@@ -92,13 +92,55 @@ def _require_mne():
     return mne
 
 
-def _walk(root: str, exts: Tuple[str, ...]) -> List[str]:
-    hits = []
+def _walk(root: str, exts: Tuple[str, ...], cache: Optional[str] = None,
+          quiet: bool = False) -> List[str]:
+    """Every recording under root, with progress, and optionally cached.
+
+    Silence here is indistinguishable from a hang. Walking a BIDS tree of tens
+    of thousands of entries on a parallel filesystem takes minutes, and this
+    printed nothing at all until it finished -- which is how TUEG's tree walk
+    came to look like two frozen array tasks. It now says what it is doing
+    within a couple of seconds and keeps counting.
+
+    `cache` reads the listing if the file exists and writes it if it does not,
+    so an array does not walk the same tree once per task.
+    """
+    if cache and os.path.isfile(cache):
+        with open(cache) as f:
+            hits = [ln.strip() for ln in f if ln.strip()]
+        if not quiet:
+            print(f"  {len(hits):,} file(s) from the cached listing {cache}",
+                  flush=True)
+        return hits
+
+    t0 = time.time()
+    hits: List[str] = []
+    n_dirs = 0
+    announced = False
     for dirpath, _, files in os.walk(root):
+        n_dirs += 1
         for fn in sorted(files):
             if fn.lower().endswith(exts):
                 hits.append(os.path.join(dirpath, fn))
-    return sorted(hits)
+        if not quiet and not announced and time.time() - t0 > 2.0:
+            print(f"  scanning {root} for {'/'.join(exts)} ...", flush=True)
+            announced = True
+        if announced and n_dirs % 2000 == 0:
+            print(f"    {n_dirs:,} directories, {len(hits):,} recording(s), "
+                  f"{time.time()-t0:.0f}s", flush=True)
+    hits = sorted(hits)
+    if announced:
+        print(f"  scan finished: {len(hits):,} recording(s) in "
+              f"{n_dirs:,} directories, {time.time()-t0:.0f}s", flush=True)
+    if cache and hits:
+        tmp = f"{cache}.{os.getpid()}.tmp"
+        os.makedirs(os.path.dirname(os.path.abspath(cache)) or ".", exist_ok=True)
+        with open(tmp, "w") as f:
+            f.write("\n".join(hits) + "\n")
+        os.replace(tmp, cache)
+        if not quiet:
+            print(f"  cached the listing at {cache}", flush=True)
+    return hits
 
 
 def shard_files(files: List[str], args, root: str) -> List[str]:
@@ -369,7 +411,8 @@ def adapt_faced(root: str, args) -> Iterator[Recording]:
     # BDF in .set or .edf, so the extension says nothing about which release
     # this is. The RATE does, per file, which is also the only way to separate
     # FACED's 31 genuinely-250 Hz subjects from a wholesale 250 Hz derivative.
-    files = _walk(root, (".bdf", ".set", ".fif", ".edf"))
+    files = _walk(root, (".bdf", ".set", ".fif", ".edf"),
+                  cache=getattr(args, "file_list", None))
     if not files:
         raise PreprocessError(f"no .bdf/.set/.fif/.edf under {root}")
     for path in files:
@@ -410,7 +453,8 @@ def adapt_tdbrain(root: str, args) -> Iterator[Recording]:
     its neighbours and the model would learn to reproduce the interpolation.
     """
     mne = _require_mne()
-    files = _walk(root, (".edf", ".bdf", ".vhdr"))
+    files = _walk(root, (".edf", ".bdf", ".vhdr"),
+                  cache=getattr(args, "file_list", None))
     for path in files:
         base = os.path.basename(path)
         subject = _bids_subject(path) or (
@@ -439,7 +483,8 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
     does not have to be.
     """
     mne = _require_mne()
-    for path in _walk(root, (".edf",)):
+    for path in _walk(root, (".edf",),
+                      cache=getattr(args, "file_list", None)):
         base = os.path.basename(path)
         subject = _bids_subject(path) or (
             base[:4] if base.lower().startswith("s") else base)
@@ -458,7 +503,8 @@ def adapt_physionet_mi(root: str, args) -> Iterator[Recording]:
 def adapt_m3cv(root: str, args) -> Iterator[Recording]:
     """M3CV: 64 channels at 250 Hz. Pretraining only, never a downstream split."""
     mne = _require_mne()
-    files = _walk(root, (".set", ".edf", ".fif", ".cnt"))
+    files = _walk(root, (".set", ".edf", ".fif", ".cnt"),
+                  cache=getattr(args, "file_list", None))
     for path in files:
         base = os.path.splitext(os.path.basename(path))[0]
         subject = _bids_subject(path) or base.split("_")[0]
@@ -499,7 +545,8 @@ def adapt_hbn(root: str, args) -> Iterator[Recording]:
     the recording is failed rather than trimmed to length.
     """
     mne = _require_mne()
-    files = _walk(root, (".mff", ".set", ".fif", ".edf"))
+    files = _walk(root, (".mff", ".set", ".fif", ".edf"),
+                  cache=getattr(args, "file_list", None))
     seen_dirs = set()
     for path in files:
         base = os.path.basename(os.path.normpath(path))
@@ -547,7 +594,8 @@ def adapt_hgd(root: str, args) -> Iterator[Recording]:
     instead, which is right if HGD is the only corpus on the route.
     """
     mne = _require_mne()
-    for path in _walk(root, (".mat", ".edf", ".fif", ".set")):
+    for path in _walk(root, (".mat", ".edf", ".fif", ".set"),
+                      cache=getattr(args, "file_list", None)):
         base = os.path.splitext(os.path.basename(path))[0]
         subject = _bids_subject(path) or base.split("_")[0]
         if not owns(subject, args) and not path.lower().endswith(".mat"):
@@ -863,7 +911,8 @@ def dump_channels(dataset_id: str, root: str, args, slots, route) -> int:
     if dataset_id == "tueg":
         files = iter_tueg_files(root, getattr(args, "file_list", None))
     else:
-        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+                      cache=getattr(args, "file_list", None))
     if not files:
         print(f"ERROR: no readable recording under {root}", file=sys.stderr)
         return 1
@@ -932,7 +981,8 @@ def derive_slots(dataset_id: str, root: str, args, slots, route) -> int:
     from collections import Counter
 
     mne = _require_mne()
-    files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+    files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+                  cache=getattr(args, "file_list", None))
     if not files:
         print(f"ERROR: no readable recording under {root}", file=sys.stderr)
         return 1
@@ -1024,7 +1074,8 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     if dataset_id == "tueg":
         files = iter_tueg_files(root, getattr(args, "file_list", None))
     else:
-        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"),
+                      cache=getattr(args, "file_list", None))
     if not files:
         # "no readable files" on a directory that plainly has things in it is
         # the least useful thing this can say. Name what is actually there.
