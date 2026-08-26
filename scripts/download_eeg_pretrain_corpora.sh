@@ -239,8 +239,22 @@ hbn)
             echo "ERROR: the AWS CLI on PATH does not run." >&2
             aws_repair_hint
         else
-            echo "ERROR: aws is not on PATH. pip install awscli" >&2
+            echo "ERROR: aws is not on PATH." >&2
+            echo "" >&2
+            # Overwhelmingly the reason: the prep venv is not active. Everything
+            # in this pipeline that reads EEG lives in it, and a shell that has
+            # lost it fails on whichever tool is reached for first.
+            if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+                echo "  No virtualenv is active. The preparation venv is where" >&2
+                echo "  mne and the AWS CLI live:" >&2
+                echo "    source \$HOME/pwprep/bin/activate" >&2
+                echo "  (your prompt should read (pwprep) again)" >&2
+            else
+                echo "  Active venv: ${VIRTUAL_ENV}" >&2
+                echo "    pip install awscli" >&2
+            fi
         fi
+        echo "" >&2
         echo "  HBN is S3-only -- there is no HTTP mirror to fall back to." >&2
         exit 1
     fi
