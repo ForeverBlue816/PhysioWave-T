@@ -310,8 +310,16 @@ def test_12b_registry_supplies_mains_and_m3cv_is_not_notched_twice():
     assert resolved_mains("tdbrain", _Args())[0] == 50.0
     assert resolved_mains("physionet_mi", _Args())[0] == 60.0
     assert resolved_mains("hbn", _Args())[0] == 60.0
-    assert resolved_mains("hgd", _Args())[0] == 50.0
     assert resolved_mains("tueg", _Args())[0] == 60.0
+
+    # HGD is measured to have no line peak at either frequency, and its notch
+    # would take 50 Hz AND the 100 Hz harmonic -- the latter inside the
+    # 70-140 Hz band the dataset exists to measure. Skipped, with the reason
+    # recorded, and kept distinct from "the publisher already notched it".
+    freq, why = resolved_mains("hgd", _Args())
+    assert freq is None
+    assert "notch skipped" in why
+    assert "high-gamma" in why
 
     # M3CV is published already notched at 49-51 Hz. Filtering it again would
     # be a second stopband on an already-empty one.
