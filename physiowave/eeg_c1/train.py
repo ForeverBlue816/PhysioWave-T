@@ -306,11 +306,22 @@ class EEGC1Trainer:
         print("  routes:")
         for rid, r in ROUTES.items():
             print(f"    {r.describe()}")
-        print("  target vs realised mixture (by step / by window):")
+        counts = self.train_index.window_counts()
+        total_w = max(1, sum(counts.values()))
+        policy = getattr(self.schedule, "weight_policy", "explicit")
+        print(f"  mixture policy: {policy}")
+        print("    dataset          corpus%   step%  window%   passes/epoch")
         for d in self.schedule.dataset_ids:
-            print(f"    {d:<14s} target {self.schedule.weights[d]*100:5.1f}%   "
-                  f"step {mixture['by_step'][d]*100:5.1f}%   "
-                  f"window {mixture['by_window'][d]*100:5.1f}%")
+            b = self.schedule.batch_by_route[PRETRAIN_DATASETS[d].route_id]
+            seen = (mixture["by_step"][d] * self.schedule.steps_per_epoch
+                    * b * self.schedule.num_replicas)
+            # passes/epoch is the number that says whether a small corpus is
+            # being read a hundred times to fill a quota. Under `proportional`
+            # every row here is 1.0.
+            passes = seen / max(1, counts.get(d, 0))
+            print(f"    {d:<14s} {counts.get(d,0)/total_w*100:7.2f}% "
+                  f"{mixture['by_step'][d]*100:6.2f}% "
+                  f"{mixture['by_window'][d]*100:7.2f}%   {passes:6.2f}x")
         print(f"  channel vocab sha256    {vocab_payload()['channel_vocab_sha256'][:16]}")
         print(f"  steps/epoch {self.schedule.steps_per_epoch}  "
               f"epochs {self.epochs}  grad_accum {self.grad_accum}")

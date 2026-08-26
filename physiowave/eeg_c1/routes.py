@@ -23,7 +23,7 @@ the sequence length changes, the meaning of a position does not.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # --------------------------------------------------------------------------- #
 # Canonical electrode slots
@@ -220,14 +220,18 @@ def datasets_for_route(route_id: str) -> List[str]:
     return [d for d, s in PRETRAIN_DATASETS.items() if s.route_id == route_id]
 
 
-def default_sampling_weights() -> Dict[str, float]:
+def balanced_sampling_weights() -> Dict[str, float]:
     """P(route) = 1/4, then uniform over that route's datasets.
 
-    Window counts differ by orders of magnitude -- TUEG alone dwarfs the other
-    six -- so sampling proportionally to size would make this a TUEG run with
-    six rounding errors attached. The weights are the point of the mixture and
-    they are configuration, not a consequence of how much data happened to be
-    collected.
+    Every route gets equal attention regardless of how much data happened to be
+    collected for it. The cost is repetition: PhysioNetMI holds ~39k training
+    windows against TUEG's 13.7M, so an eighth of the mixture means each of its
+    windows is revisited on the order of a hundred times per run while a TUEG
+    window is seen less than once.
+
+    Kept, and selectable with ``weights: balanced``, because for a run whose
+    point is the four frontends rather than the corpus this is the right
+    trade -- but it is no longer the default.
     """
     weights: Dict[str, float] = {}
     per_route = 1.0 / len(ROUTES)
@@ -238,3 +242,46 @@ def default_sampling_weights() -> Dict[str, float]:
         for dataset_id in members:
             weights[dataset_id] = per_route / len(members)
     return weights
+
+
+def proportional_sampling_weights(
+        window_counts: Dict[str, int],
+        batch_by_route: Optional[Dict[str, int]] = None) -> Dict[str, float]:
+    """Each dataset contributes windows in proportion to how many it has.
+
+    An epoch is then one pass over the corpus: every window is seen once, and a
+    small dataset is not revisited a hundred times to fill a quota.
+
+    THE DIVISION BY BATCH SIZE IS THE POINT. These weights are probabilities
+    over STEPS, and a step draws ``batch_by_route[route]`` windows -- 64 on
+    E19_256, 12 on E128_512, because a 128-channel window is 6.7x the tokens of
+    a 19-channel one. Weighting steps by window count directly would therefore
+    give E19_256 five times the windows its share of the corpus warrants.
+    Dividing by the route's batch size cancels it exactly:
+
+        P(d) ∝ n_d / b_d   =>   windows(d) ∝ P(d)·b_d = n_d
+
+    which is the identity that makes ``by_window`` in the epoch log come out
+    equal to each dataset's share of the corpus.
+    """
+    batch_by_route = batch_by_route or {}
+    raw: Dict[str, float] = {}
+    for dataset_id, n in window_counts.items():
+        if n <= 0 or dataset_id not in PRETRAIN_DATASETS:
+            continue
+        route_id = PRETRAIN_DATASETS[dataset_id].route_id
+        b = float(batch_by_route.get(route_id, 1) or 1)
+        raw[dataset_id] = float(n) / b
+    total = sum(raw.values())
+    if total <= 0:
+        return {}
+    return {k: v / total for k, v in raw.items()}
+
+
+def default_sampling_weights() -> Dict[str, float]:
+    """The configured mixture when no corpus is in hand to measure.
+
+    Only reachable where window counts are unavailable; RouteSchedule counts the
+    manifest and goes proportional instead.
+    """
+    return balanced_sampling_weights()

@@ -36,7 +36,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from .routes import PRETRAIN_DATASETS, ROUTES, Route, default_sampling_weights
+from .routes import (PRETRAIN_DATASETS, ROUTES, Route,
+                     balanced_sampling_weights,
+                     proportional_sampling_weights)
 
 
 # --------------------------------------------------------------------------- #
@@ -256,12 +258,32 @@ class RouteSchedule:
         self.start_step = 0
 
         available = set(index.by_dataset())
-        w = dict(weights or default_sampling_weights())
+        counts = index.window_counts()
+
+        # `weights` may be an explicit {dataset: weight} map, or one of two
+        # named policies. The default is proportional: an epoch is one pass over
+        # the corpus and nothing is revisited to fill a quota.
+        if weights is None or (isinstance(weights, str) and
+                               weights.lower() in ("proportional", "size", "auto")):
+            self.weight_policy = "proportional"
+            w = proportional_sampling_weights(counts, self.batch_by_route)
+        elif isinstance(weights, str) and weights.lower() in ("balanced", "uniform"):
+            self.weight_policy = "balanced"
+            w = balanced_sampling_weights()
+        elif isinstance(weights, str):
+            raise SystemExit(
+                f"unknown sampling policy {weights!r}. Use 'proportional' "
+                f"(one pass over the corpus), 'balanced' (P(route)=1/4), or an "
+                f"explicit {{dataset: weight}} mapping.")
+        else:
+            self.weight_policy = "explicit"
+            w = dict(weights)
+
         w = {k: v for k, v in w.items() if k in available and v > 0}
         if not w:
             raise SystemExit(
                 "no configured dataset is present in the manifest. Configured: "
-                f"{sorted(weights or default_sampling_weights())}; present: "
+                f"{sorted(weights) if weights else sorted(counts)}; present: "
                 f"{sorted(available)}")
         total = sum(w.values())
         self.weights = {k: v / total for k, v in w.items()}
@@ -272,8 +294,10 @@ class RouteSchedule:
         if steps_per_epoch is None:
             # One pass over the corpus in expectation: the dataset whose share
             # of the mixture is smallest relative to its size sets the length,
-            # so no dataset is silently repeated many times per epoch.
-            counts = index.window_counts()
+            # so no dataset is silently repeated many times per epoch. Under the
+            # proportional policy every dataset hits that bound at once, and the
+            # min is the exact one-pass length rather than a floor set by
+            # whichever corpus is most starved.
             per_step = np.array(
                 [self.batch_by_route[PRETRAIN_DATASETS[d].route_id] * self.num_replicas
                  for d in self.dataset_ids], dtype=np.float64)

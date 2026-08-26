@@ -23,10 +23,25 @@ data:
   # scripts/build_eeg_c1_manifest.py merges them into these two files.
   manifest_train: null
   manifest_val: null
-  # P(route)=1/4, then uniform within a route. Null means "use that default".
-  # These govern the share of STEPS; the share of windows differs because the
-  # micro-batch is route-specific, and both are logged every epoch.
-  weights: null
+  # How much of the mixture each dataset gets.
+  #
+  #   proportional  (default, and what null means) -- in proportion to how many
+  #                 windows it actually holds. An epoch is one pass over the
+  #                 corpus: every window is seen once and nothing is revisited
+  #                 to fill a quota. PhysioNetMI holds ~39k windows against
+  #                 TUEG's 13.7M, and under the old default that eighth of the
+  #                 mixture meant re-reading each of those 39k windows on the
+  #                 order of a hundred times per run.
+  #   balanced      P(route)=1/4, then uniform within a route. Equal attention
+  #                 per route regardless of size, at the cost of that repetition.
+  #   {id: weight}  an explicit mapping, normalised.
+  #
+  # These govern the share of STEPS. The share of WINDOWS differs, because the
+  # micro-batch is route-specific -- 64 on E19_256, 12 on E128_512. Under
+  # `proportional` the step shares are deliberately NOT proportional: they are
+  # divided by the route's batch size so that the WINDOW shares come out equal
+  # to each dataset's share of the corpus. Both are logged every epoch.
+  weights: proportional
 
 model:
   max_level: 3

@@ -416,6 +416,59 @@ def test_12e_streaming_adapters_shard_by_subject():
     assert subject_shard("aaaaaaaa", 16) == subject_shard("aaaaaaaa", 16)
 
 
+# --- 12f -------------------------------------------------------------------- #
+def test_12f_proportional_sampling_sees_every_window_once():
+    """"As much data as a dataset has" -- not a quota a small corpus repeats to.
+
+    The mixture weights are probabilities over STEPS, and a step draws
+    batch_by_route[route] windows: 64 on E19_256, 12 on E128_512. Weighting
+    steps by window count directly would hand E19_256 five times the windows
+    its share of the corpus warrants, so the weights divide by the route's batch
+    size and the WINDOW shares come out equal to the corpus shares.
+    """
+    from physiowave.eeg_c1.data import (DEFAULT_BATCH_BY_ROUTE, CorpusIndex,
+                                        RouteSchedule)
+
+    counts = {"tueg": 13_711_294, "physionet_mi": 39_000, "m3cv": 400_000,
+              "faced": 1_100_000, "tdbrain": 90_000, "hbn": 4_500_000,
+              "hgd": 47_000}
+    index = CorpusIndex([
+        ShardInfo(f"/x/{d}.h5", d, PRETRAIN_DATASETS[d].route_id, n)
+        for d, n in counts.items()])
+    total = sum(counts.values())
+
+    sched = RouteSchedule(index, weights="proportional", seed=42, num_replicas=4)
+    assert sched.weight_policy == "proportional"
+    mix = sched.realised_mixture()
+
+    for d, n in counts.items():
+        # Window share tracks corpus share.
+        assert abs(mix["by_window"][d] - n / total) < 0.01, d
+        # And that means one pass, which is the requirement.
+        b = DEFAULT_BATCH_BY_ROUTE[PRETRAIN_DATASETS[d].route_id]
+        seen = mix["by_step"][d] * sched.steps_per_epoch * b * 4
+        assert 0.85 < seen / n < 1.20, f"{d} seen {seen/n:.2f}x per epoch"
+
+    # The step shares are deliberately NOT the corpus shares -- HBN's small
+    # micro-batch buys it more steps for the same number of windows.
+    assert mix["by_step"]["hbn"] > mix["by_step"]["tueg"]
+    assert counts["hbn"] < counts["tueg"]
+
+    # null means proportional.
+    assert RouteSchedule(index, weights=None, seed=42).weight_policy == "proportional"
+
+    # The old behaviour is still reachable, and still repeats small corpora.
+    bal = RouteSchedule(index, weights="balanced", seed=42, num_replicas=4)
+    bmix = bal.realised_mixture()
+    b = DEFAULT_BATCH_BY_ROUTE[PRETRAIN_DATASETS["physionet_mi"].route_id]
+    pmi = bmix["by_step"]["physionet_mi"] * bal.steps_per_epoch * b * 4
+    assert bmix["by_window"]["physionet_mi"] > 20 * (counts["physionet_mi"] / total)
+    assert pmi > 0
+
+    with pytest.raises(SystemExit):
+        RouteSchedule(index, weights="whatever-that-means", seed=42)
+
+
 # --- 13 --------------------------------------------------------------------- #
 def test_13_deap_is_never_a_pretraining_dataset():
     assert "deap" not in PRETRAIN_DATASETS
@@ -448,7 +501,9 @@ def test_15_route_sampler_mixture_and_ddp_agreement():
     index = _fake_index()
     lengths = {d: 5000 for d in PRETRAIN_DATASETS}
 
-    single = RouteSchedule(index, steps_per_epoch=4000, seed=42)
+    # `balanced` is the policy that means P(route)=1/4, and it still does.
+    single = RouteSchedule(index, weights="balanced", steps_per_epoch=4000,
+                           seed=42)
     single.set_epoch(0)
     plan = single.plan()
     by_route = {}
@@ -457,6 +512,17 @@ def test_15_route_sampler_mixture_and_ddp_agreement():
         by_route[rid] = by_route.get(rid, 0) + 1
     for rid, n in by_route.items():
         assert abs(n / len(plan) - 0.25) < 0.03, f"{rid} drew {n/len(plan):.3f}"
+
+    # The DEFAULT is proportional, and these seven datasets are all the same
+    # size -- so each takes an equal share of WINDOWS, and therefore an unequal
+    # share of steps, since a route's micro-batch ranges from 64 down to 12.
+    prop = RouteSchedule(index, steps_per_epoch=4000, seed=42)
+    assert prop.weight_policy == "proportional"
+    windows = prop.realised_mixture()["by_window"]
+    for d in PRETRAIN_DATASETS:
+        assert abs(windows[d] - 1.0 / len(PRETRAIN_DATASETS)) < 0.02, d
+    steps = prop.realised_mixture()["by_step"]
+    assert steps["hbn"] > 3 * steps["tueg"], "batch size was not divided out"
 
     ranks = [RouteSchedule(index, steps_per_epoch=500, seed=42,
                            num_replicas=4, rank=r) for r in range(4)]
