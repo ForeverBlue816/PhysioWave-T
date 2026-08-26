@@ -30,10 +30,24 @@ tdbrain:
   powerline_hz: 50
   verify_powerline_by_psd: true
   expected_sampling_rates: [500.0]
+  # V3.1 is BDF/BDF+ throughout -- the BrainVision and .csv releases are
+  # withdrawn -- which brings the download to ~15 GB and ~20 GB unpacked, not
+  # the 100+ GB the older formats needed.
+  format: bdf
+  # EVERY V3 file carries a BioSemi Status channel as its LAST channel, and in
+  # the resting EO/EC files it is all zeros. It is dropped because "Status" is
+  # not an electrode name and matches no slot, which is the right outcome and
+  # is why the slot list is matched BY NAME: a positional rule would have
+  # placed an all-zero channel into a real electrode's slot and marked it valid.
+  known_non_eeg: [Status]
   notes: >-
     26 recorded electrodes into 32 canonical slots; the 6 unrecorded slots stay
     zero with valid_channel_mask False. Analogue low-pass near 100 Hz at
     acquisition, so nothing above that is real regardless of the 512 Hz target.
+    V3.1 also adds beta Oddball ERP files in BDF+ alongside the resting
+    recordings; both are unlabelled signal as far as pretraining is concerned.
+    Distributed as a PASSWORD-PROTECTED zip; the password arrives in the Data
+    Use Agreement email.
 
 physionet_mi:
   route: E64_256

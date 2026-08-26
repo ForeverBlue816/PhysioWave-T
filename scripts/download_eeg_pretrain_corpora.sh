@@ -268,19 +268,38 @@ forbids redistribution -- so the transfer has to be yours, made under your own
 acceptance of it.
 
   1. https://brainclinics.com/resources/tdbrain-dataset
-  2. Sign in with ORCID, accept the DUA.
-  3. Unpack into  $EEG_ROOT/TDBRAIN/raw  (reserve ~130 GB).
+  2. Register with an INSTITUTIONAL address. Their spam protection may drop
+     mail to gmail and the like, and the download password comes by email.
+  3. Take "TDBRAIN Dataset V3.1". ~15 GB zipped, ~20 GB unpacked.
+  4. Put the zip under $EEG_ROOT/TDBRAIN/raw.
+
+The zip is PASSWORD PROTECTED. The password is in the DUA email. Unpack with:
+
+    TDBRAIN_PW='<from the email>' \
+    python scripts/unpack_archive.py TDBRAIN_V3.1.zip \
+        --extract-to . --password-env TDBRAIN_PW
+
+--password-env rather than --password so it stays out of shell history and out
+of `ps`. If it reports AES encryption, Python's zipfile cannot read that: use
+`7z x` or `pip install pyzipper` and rerun.
 
 Then, as with every other corpus:
 
   DATASET=tdbrain INSPECT=40 VERIFY_POWERLINE=1 bash EEG/preprocess_eeg_corpus.sh
 
-Read the coverage line in that report before launching anything. TDBRAIN
-records 26 electrodes against E32_512's 32 slots, so the expected per-file
-coverage is 26 of 32 (81%) and the expected empty-slot rate is 18.8% -- both
-inside the gates. The six unrecorded slots stay zero with valid_channel_mask
-False. Nothing interpolates them: a spatially interpolated channel is a smooth
-function of its neighbours, and the model would learn the interpolation.
+Read the coverage line before launching anything. TDBRAIN records 26 electrodes
+against E32_512's 32 slots, so expect 26 of 32 (81%) and an empty-slot rate of
+18.8% -- both inside the gates. The six unrecorded slots stay zero with
+valid_channel_mask False. Nothing interpolates them: a spatially interpolated
+channel is a smooth function of its neighbours, and the model would learn the
+interpolation.
+
+Two things to check in that report, both new in V3:
+  * The format is BDF/BDF+. The BrainVision and .csv releases are withdrawn.
+  * Every file carries a BioSemi "Status" channel as its LAST channel, all
+    zeros in the resting recordings. It should appear under DROPPED and NOT in
+    the filled slots. It is dropped because slots are matched by NAME; a
+    positional rule would have put an all-zero channel in an electrode's slot.
 MSG
     ;;
 

@@ -91,8 +91,22 @@ def inspect(path: str, ratio_limit: float) -> tuple[int, zipfile.ZipFile | None]
     return 0, z
 
 
-def extract(z: zipfile.ZipFile, dest: str) -> int:
+#: ZIP's AES entries use compression method 99, which the standard library does
+#: not implement -- it raises a bare "compression type 99" that says nothing
+#: about passwords. Named so the failure can be explained instead of surfaced.
+AES_COMPRESSION = 99
+
+
+def extract(z: zipfile.ZipFile, dest: str, encrypted: bool = False) -> int:
     infos = z.infolist()
+    if any(i.compress_type == AES_COMPRESSION for i in infos):
+        print("\n  This archive uses AES encryption, which Python's zipfile "
+              "cannot read.", file=sys.stderr)
+        print("  Either of these handles it:", file=sys.stderr)
+        print("    7z x <archive>.zip -o<dir>        # p7zip", file=sys.stderr)
+        print("    pip install pyzipper              # then rerun this script",
+              file=sys.stderr)
+        return 1
     total = sum(i.file_size for i in infos)
     os.makedirs(dest, exist_ok=True)
     print(f"\nextracting {len(infos):,} entries -> {dest}")
@@ -106,7 +120,21 @@ def extract(z: zipfile.ZipFile, dest: str) -> int:
             print(f"\n  REFUSING {info.filename!r}: escapes {dest}",
                   file=sys.stderr)
             return 1
-        z.extract(info, dest)
+        try:
+            z.extract(info, dest)
+        except RuntimeError as exc:
+            msg = str(exc).lower()
+            if "password" in msg:
+                print(f"\n  {'Wrong password' if encrypted else 'This archive is encrypted'}"
+                      f" -- {info.filename!r} could not be decrypted.",
+                      file=sys.stderr)
+                print("  TDBRAIN's password is in the Data Use Agreement email:",
+                      file=sys.stderr)
+                print("    TDBRAIN_PW=... python scripts/unpack_archive.py "
+                      "<zip> --extract-to . --password-env TDBRAIN_PW",
+                      file=sys.stderr)
+                return 1
+            raise
         done += info.file_size
         if n % 200 == 0 or n == len(infos):
             pct = done / max(1, total) * 100
@@ -124,21 +152,37 @@ def main(argv=None) -> int:
                    help="extract here. Omitted: inspect and report only.")
     p.add_argument("--ratio-limit", type=float, default=50.0,
                    help="refuse above this expansion factor (default 50)")
+    p.add_argument("--password", default=None, metavar="PW",
+                   help="password for an encrypted archive (TDBRAIN ships one). "
+                        "Prefer --password-env so it stays out of shell history "
+                        "and out of `ps`.")
+    p.add_argument("--password-env", default=None, metavar="VAR",
+                   help="read the password from this environment variable")
     args = p.parse_args(argv)
 
     if not os.path.isfile(args.archive):
         print(f"ERROR: no such file: {args.archive}", file=sys.stderr)
         return 1
 
+    password = args.password
+    if args.password_env:
+        password = os.environ.get(args.password_env)
+        if not password:
+            print(f"ERROR: ${args.password_env} is unset or empty.",
+                  file=sys.stderr)
+            return 1
+
     rc, z = inspect(args.archive, args.ratio_limit)
     if rc or z is None:
         return rc
+    if password:
+        z.setpassword(password.encode())
     if args.extract_to is None:
         print(f"\nTo extract:\n  python {sys.argv[0]} {args.archive} "
               f"--extract-to <dir>")
         return 0
     with z:
-        return extract(z, args.extract_to)
+        return extract(z, args.extract_to, bool(password))
 
 
 if __name__ == "__main__":
