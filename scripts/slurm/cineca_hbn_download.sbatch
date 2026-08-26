@@ -87,10 +87,13 @@ echo "============================================================"
 echo "  ${_fail} release(s) reported an error"
 if [[ "${_fail}" -gt 0 ]]; then
     echo ""
-    echo "  A release that downloaded nothing counts as an error here even when"
-    echo "  aws exited 0 -- `aws s3 sync` against a prefix that does not exist"
-    echo "  does exactly that, and leaves a directory indistinguishable from a"
-    echo "  finished one."
+    # Single quotes: inside double quotes bash runs backticks, and this line
+    # had `aws s3 sync` in it -- so printing the explanation executed the
+    # command it was describing.
+    echo '  A release that downloaded nothing counts as an error here even when'
+    echo '  aws exited 0 -- "aws s3 sync" against a prefix that does not exist'
+    echo '  does exactly that, and leaves a directory indistinguishable from a'
+    echo '  finished one.' 
 fi
 echo "  total $(du -sh "${EEG_ROOT}/HBN/raw" 2>/dev/null | cut -f1)"
 echo ""

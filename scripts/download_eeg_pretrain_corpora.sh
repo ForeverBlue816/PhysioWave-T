@@ -278,14 +278,26 @@ hbn)
         # EXITS 0 HAVING DONE NOTHING, so a wrong bucket path and a completed
         # download are indistinguishable by exit code -- and mkdir has already
         # left a directory that looks exactly like a finished one.
-        local remote
-        remote=$(aws s3 ls "${src}" --no-sign-request 2>&1 | head -3)
-        if [[ -z "${remote}" ]]; then
-            echo "    ERROR: ${src} lists nothing." >&2
-            echo "           Either the release name is wrong or the bucket" >&2
-            echo "           layout moved. Not creating an empty directory." >&2
+        # 2>&1 here was a bug: it folded aws's ERROR TEXT into the variable, so
+        # a failed listing came back non-empty and read as "the prefix exists".
+        # Stderr is kept separate and the exit status is what decides.
+        local remote lserr lsrc
+        lserr=$(mktemp "${TMPDIR:-/tmp}/pw_awsls.XXXXXX" 2>/dev/null) || lserr=/dev/null
+        remote=$(aws s3 ls "${src}" --no-sign-request 2>"${lserr}")
+        lsrc=$?
+        if [[ "${lsrc}" -ne 0 ]] || [[ -z "${remote}" ]]; then
+            echo "    ERROR: cannot list ${src} (aws exit ${lsrc})." >&2
+            if [[ -s "${lserr}" ]]; then
+                echo "    aws said:" >&2
+                sed 's/^/      /' "${lserr}" >&2
+            elif [[ "${lsrc}" -eq 0 ]]; then
+                echo "    The listing was empty: the release name is wrong or" >&2
+                echo "    the bucket layout moved." >&2
+            fi
+            [[ "${lserr}" != /dev/null ]] && rm -f "${lserr}"
             return 1
         fi
+        [[ "${lserr}" != /dev/null ]] && rm -f "${lserr}"
 
         mkdir -p "${dest}"
 
@@ -330,6 +342,10 @@ CFG
         # difference between resuming a release and re-fetching it.
         aws s3 sync "${src}" "${dest}" --no-sign-request
         local rc=$?
+        if [[ "${rc}" -ne 0 ]]; then
+            echo "    aws s3 sync exited ${rc}; its message is above, or in" >&2
+            echo "    the job's .err file if this is running under sbatch." >&2
+        fi
 
         [[ -n "${awscfg}" ]] && rm -f "${awscfg}"
         if [[ -n "${prev_cfg}" ]]; then export AWS_CONFIG_FILE="${prev_cfg}"
