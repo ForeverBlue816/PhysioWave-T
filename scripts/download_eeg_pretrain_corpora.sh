@@ -42,6 +42,7 @@ EEG_ROOT="${EEG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/eeg}"
 usage() {
     sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     echo "datasets: layout physionet_mi faced m3cv hgd hbn tdbrain"
+    echo "checks:   verify-hbn [releases]"
 }
 
 need() {
@@ -55,6 +56,29 @@ need() {
 # entry point at the same bin/aws an awscli install would use -- so it is found,
 # it is executed, and it dies on a print statement from 2012. Run it before
 # trusting it.
+# GNU stat takes -c%s and BSD stat takes -f%z. Picking once, up front, rather
+# than per file: a size check that silently returns 0 on the wrong platform
+# would report every release as INCOMPLETE 0.0%.
+_STAT_FLAG=""
+_pick_stat() {
+    [[ -n "${_STAT_FLAG}" ]] && return 0
+    if stat -c%s "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+        _STAT_FLAG="-c%s"
+    elif stat -f%z "${BASH_SOURCE[0]}" >/dev/null 2>&1; then
+        _STAT_FLAG="-f%z"
+    else
+        echo "ERROR: cannot determine file sizes with stat on this system." >&2
+        return 1
+    fi
+}
+
+tree_bytes() {
+    _pick_stat || return 1
+    find -L "$1" -type f -print0 2>/dev/null \
+        | xargs -0 stat "${_STAT_FLAG}" 2>/dev/null \
+        | awk '{s+=$1} END {print s+0}'
+}
+
 have_working_aws() {
     command -v aws >/dev/null 2>&1 || return 1
     aws --version >/dev/null 2>&1
@@ -257,6 +281,68 @@ hbn)
     echo "every shard's provenance. It refuses to drop a row by position, so a"
     echo "release whose reference is labelled differently fails loudly rather"
     echo "than quietly deleting whichever channel came last."
+    ;;
+
+verify-hbn)
+    # "It finished quickly" is the symptom worth checking. A sync that failed
+    # early, or one that only created the directory tree, leaves exactly the
+    # layout a complete download leaves -- eleven directories named R1..R11 --
+    # and nothing downstream notices until preprocessing reports a corpus a
+    # tenth the expected size.
+    #
+    # So: compare against S3 itself, per release, in objects and in bytes.
+    if ! have_working_aws; then
+        echo "ERROR: the AWS CLI does not run; cannot check against S3." >&2
+        aws_repair_hint
+        exit 1
+    fi
+    rels="${2:-all}"
+    [[ "${rels}" == "all" ]] && rels="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+
+    printf "%-5s %12s %12s %14s %14s  %s\n" \
+        release "local objs" "s3 objs" "local bytes" "s3 bytes" verdict
+    _bad=0
+    for r in ${rels}; do
+        dest="${EEG_ROOT}/HBN/raw/${r}"
+        if [[ ! -d "${dest}" ]]; then
+            printf "%-5s %12s %12s %14s %14s  %s\n" "${r}" - - - - "ABSENT"
+            _bad=$((_bad + 1)); continue
+        fi
+        l_objs=$(find -L "${dest}" -type f 2>/dev/null | wc -l | tr -d ' ')
+        l_bytes=$(tree_bytes "${dest}")
+        summary=$(aws s3 ls --recursive --summarize --no-sign-request \
+            "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}/" 2>/dev/null \
+            | tail -3)
+        s_objs=$(echo "${summary}" | awk '/Total Objects/ {print $3}')
+        s_bytes=$(echo "${summary}" | awk '/Total Size/ {print $3}')
+        s_objs="${s_objs:-0}"; s_bytes="${s_bytes:-0}"
+
+        if [[ "${s_objs}" -eq 0 ]]; then
+            verdict="S3 LISTING FAILED"
+            _bad=$((_bad + 1))
+        elif [[ "${l_objs}" -eq "${s_objs}" ]] && [[ "${l_bytes}" -eq "${s_bytes}" ]]; then
+            verdict="complete"
+        else
+            pct=$(awk -v a="${l_bytes}" -v b="${s_bytes}" \
+                  'BEGIN {printf "%.1f", (b ? 100*a/b : 0)}')
+            verdict="INCOMPLETE ${pct}%"
+            _bad=$((_bad + 1))
+        fi
+        printf "%-5s %12s %12s %14s %14s  %s\n" \
+            "${r}" "${l_objs}" "${s_objs}" "${l_bytes}" "${s_bytes}" "${verdict}"
+    done
+
+    echo ""
+    if [[ "${_bad}" -eq 0 ]]; then
+        echo "every release checked matches S3 in object count and byte count."
+    else
+        echo "${_bad} release(s) do not match S3."
+        echo "  Re-run the sync; it skips what is already there at a matching"
+        echo "  size, so this costs a listing for the parts already done:"
+        echo "    sbatch --export=ALL,RELEASES=\"${rels}\" \\"
+        echo "           scripts/slurm/cineca_hbn_download.sbatch"
+    fi
+    exit "$(( _bad > 0 ))"
     ;;
 
 tdbrain)
