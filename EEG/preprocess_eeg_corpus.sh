@@ -35,6 +35,8 @@
 #   SHARD           "I/N" for an array    (unset = one process does everything)
 #   JOBS            worker processes      (1)
 #   INSPECT         N: report and exit, process nothing
+#   DUMP_CHANNELS   N: print N recordings' channel lists verbatim and exit.
+#                   What to reach for when INSPECT reports poor coverage.
 #   VERIFY_POWERLINE  1: with INSPECT, measure the 50/60 Hz bands
 #   PSD_VERIFIED    1: acknowledge you have done that; silences the reminder
 #   MAINS_HZ        override the registry (unset)
@@ -95,6 +97,7 @@ MAX_EMPTY_RATE="${MAX_EMPTY_RATE:-0.25}"
 MAX_MINUTES="${MAX_MINUTES:-30}"
 SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
+DUMP_CHANNELS="${DUMP_CHANNELS:-}"
 MAINS_HZ="${MAINS_HZ:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
 STRIDE_SECONDS="${STRIDE_SECONDS:-}"
@@ -114,6 +117,13 @@ if [[ -d "${RAW_ROOT}" ]]; then
         2>/dev/null | head -1 | wc -l)
     if [[ "${_n_files}" -eq 0 ]]; then
         echo "ERROR: ${RAW_ROOT} exists but holds no EDF/BDF/SET/FIF/CNT/VHDR." >&2
+        if compgen -G "${RAW_ROOT}/*.zip" >/dev/null 2>&1; then
+            echo "       There IS a .zip here that has not been unpacked:" >&2
+            ls -1 "${RAW_ROOT}"/*.zip 2>/dev/null | sed 's/^/         /' >&2
+            echo "       unzip refuses these archives; use:" >&2
+            echo "         python scripts/unpack_archive.py <file>.zip --extract-to ." >&2
+            exit 1
+        fi
         echo "       The download has not run, or it landed somewhere else." >&2
         echo "         bash scripts/download_eeg_pretrain_corpora.sh ${DATASET}" >&2
         echo "       Or point RAW_ROOT at where the files actually are:" >&2
@@ -146,6 +156,7 @@ ARGS=(--dataset "${DATASET}" --root "${RAW_ROOT}" --out-dir "${OUT_DIR}"
       --max-recording-minutes "${MAX_MINUTES}")
 [[ -n "${MAINS_HZ}" ]]              && ARGS+=(--mains-hz "${MAINS_HZ}")
 [[ -n "${INSPECT}" ]]               && ARGS+=(--inspect "${INSPECT}")
+[[ -n "${DUMP_CHANNELS}" ]]         && ARGS+=(--dump-channels "${DUMP_CHANNELS}")
 [[ -n "${SHARD}" ]]                 && ARGS+=(--shard "${SHARD}")
 [[ -n "${MAX_RECORDINGS}" ]]        && ARGS+=(--max-recordings "${MAX_RECORDINGS}")
 [[ -n "${STRIDE_SECONDS}" ]]        && ARGS+=(--stride-seconds "${STRIDE_SECONDS}")

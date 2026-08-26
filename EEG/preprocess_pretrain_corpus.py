@@ -848,6 +848,66 @@ def mains_peak_ratios(raw, seconds: float = 60.0) -> Optional[Dict[str, float]]:
     return out or None
 
 
+def dump_channels(dataset_id: str, root: str, args, slots, route) -> int:
+    """Print each sampled recording's channel list exactly as it is stored."""
+    from collections import Counter
+
+    mne = _require_mne()
+    if dataset_id == "tueg":
+        files = iter_tueg_files(root, getattr(args, "file_list", None))
+    else:
+        files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+    if not files:
+        print(f"ERROR: no readable recording under {root}", file=sys.stderr)
+        return 1
+
+    n = min(args.dump_channels, len(files))
+    step = max(1, len(files) // n)
+    print(f"{len(files)} file(s); dumping {n}\n")
+
+    layouts = Counter()
+    for path in files[::step][:n]:
+        try:
+            raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR") \
+                if path.lower().endswith(".edf") else \
+                mne.io.read_raw(path, preload=False, verbose="ERROR")
+        except Exception as exc:                               # noqa: BLE001
+            print(f"UNREADABLE {os.path.relpath(path, root)}: {exc}")
+            continue
+        names = list(raw.ch_names)
+        layouts[tuple(names)] += 1
+        mapping = map_to_slots(names, slots)
+        print(f"--- {os.path.relpath(path, root)}")
+        print(f"    {len(names)} channels @ {raw.info['sfreq']:g} Hz, "
+              f"{int(mapping.valid.sum())}/{len(slots)} slots filled")
+        print("    " + " ".join(names))
+        print()
+
+    print(f"{len(layouts)} distinct montage(s) among {n} file(s):")
+    for names, c in layouts.most_common():
+        print(f"  {len(names)} channels x{c} file(s)")
+
+    # The union across layouts is what a corrected slot list has to cover.
+    union: List[str] = []
+    for names in layouts:
+        for nm in names:
+            norm = normalize_channel_name(nm)
+            if norm and norm not in union:
+                union.append(norm)
+    print(f"\nUNION of normalised names across those montages ({len(union)}):")
+    print("  " + " ".join(union))
+    known = [u for u in union if u in CHANNEL_TO_ID]
+    unknown = [u for u in union if u not in CHANNEL_TO_ID]
+    print(f"\n  in the vocabulary : {len(known)}")
+    print(f"  NOT in it         : {len(unknown)}")
+    if unknown:
+        print("  " + " ".join(unknown))
+        print("\n  Names absent from the vocabulary become <unk> and their "
+              "slots stay padded. If these are real electrodes, they belong in "
+              "channel_embedding.py (append only) and in the route's slot list.")
+    return 0
+
+
 def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     """Report what the corpus actually is, without processing any of it.
 
@@ -865,7 +925,31 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     else:
         files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
     if not files:
-        print(f"ERROR: no readable files under {root}", file=sys.stderr)
+        # "no readable files" on a directory that plainly has things in it is
+        # the least useful thing this can say. Name what is actually there.
+        from collections import Counter as _C
+        present, n_any = _C(), 0
+        for dirpath, _dirs, names in os.walk(root):
+            for nm in names:
+                n_any += 1
+                present[os.path.splitext(nm)[1].lower() or "(no extension)"] += 1
+            if n_any > 20000:
+                break
+        print(f"ERROR: no readable recording under {root}", file=sys.stderr)
+        if not n_any:
+            print("  The directory is empty. The download has not run, or it "
+                  "landed elsewhere.", file=sys.stderr)
+        else:
+            print(f"  {n_any:,} file(s) are there, but none with an extension "
+                  f"this adapter reads. What is present:", file=sys.stderr)
+            for ext, c in present.most_common(12):
+                print(f"    {ext:<16} x{c:,}", file=sys.stderr)
+            if ".zip" in present:
+                print("\n  There is still a .zip here -- it has not been "
+                      "unpacked. unzip refuses these archives; use:",
+                      file=sys.stderr)
+                print("    python scripts/unpack_archive.py <file>.zip "
+                      "--extract-to .", file=sys.stderr)
         return 1
 
     n = min(args.inspect, len(files))
@@ -1052,6 +1136,13 @@ def main(argv=None) -> int:
     p.add_argument("--registry", default=None, metavar="PATH",
                    help=f"dataset registry with the per-corpus mains frequency "
                         f"and native rates (default: {DEFAULT_REGISTRY})")
+    p.add_argument("--dump-channels", type=int, default=None, metavar="N",
+                   help="print the VERBATIM channel list of N recordings and "
+                        "exit. When --inspect reports poor slot coverage, the "
+                        "next question is always which names the corpus "
+                        "actually uses, and no summary answers it -- the "
+                        "10-5 'h' positions (FFC5h, CPP3h) and vendor spellings "
+                        "are only visible in full.")
     p.add_argument("--verify-powerline", action="store_true",
                    help="with --inspect: measure the 49-51 and 59-61 Hz bands "
                         "against their neighbours and report which one carries "
@@ -1180,6 +1271,9 @@ def main(argv=None) -> int:
         clip_sigma=args.clip_sigma, window_seconds=args.window_seconds,
         stride_seconds=args.stride_seconds, val_fraction=args.val_fraction,
         split_seed=args.split_seed)
+
+    if args.dump_channels:
+        return dump_channels(dataset_id, args.root, args, slots, route)
 
     if args.write_file_list:
         if not args.root:
