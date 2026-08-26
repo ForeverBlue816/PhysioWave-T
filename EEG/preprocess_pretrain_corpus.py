@@ -552,6 +552,10 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
 MAX_MINUTES_IN_MEMORY = 30.0
 
 
+class _RedoShard(Exception):
+    """Raised inside the resume scan to mean 'this one is to be redone'."""
+
+
 def _process_one_path(payload):
     """One file, start to finish, in a worker process.
 
@@ -861,6 +865,14 @@ def main(argv=None) -> int:
                         "resampling are single-threaded, so a task holding 32 "
                         "cores decodes on one of them unless this is set. "
                         "Only the path-addressable corpora (TUEG) use it.")
+    p.add_argument("--redo-truncated", action="store_true",
+                   help="with --resume, reprocess the recordings a previous run "
+                        "cut short, and only those. Raising "
+                        "--max-recording-minutes helps nothing otherwise: every "
+                        "shard already exists, so resume skips the whole "
+                        "corpus. Each shard records the cap it was written "
+                        "under, so this reaches exactly the ones that lost "
+                        "data.")
     p.add_argument("--resume", action="store_true",
                    help="skip recordings whose shard HDF5 already exists")
     p.add_argument("--split-mode", choices=["exact", "hash"], default=None,
@@ -967,6 +979,15 @@ def main(argv=None) -> int:
                         with h5py.File(done, "r") as f:
                             prov = json.loads(
                                 f.attrs.get("preprocessing_provenance", "{}"))
+                            # Raising the cap only helps the recordings the old
+                            # cap actually cut. Reprocessing the whole corpus to
+                            # reach them costs a full round and another 0.5 TB;
+                            # the shard says whether it was one of them.
+                            was_cut = prov.get("truncated_to_minutes")
+                            if (args.redo_truncated and was_cut
+                                    and (not args.max_recording_minutes
+                                         or was_cut < args.max_recording_minutes)):
+                                raise _RedoShard()
                             valid = np.asarray(f["valid_channel_mask"][...], bool)
                             n_win = int(f["data"].shape[0])
                             ident = tueg_identity(path, args.root)
@@ -990,6 +1011,8 @@ def main(argv=None) -> int:
                                 "duration_seconds": float(
                                     n_win * cfg.window_seconds)})
                         continue
+                    except _RedoShard:
+                        pass          # deliberately reprocess this one
                     except Exception:                          # noqa: BLE001
                         pass
                 keep.append(path)
