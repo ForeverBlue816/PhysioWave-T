@@ -254,20 +254,47 @@ hbn)
     fetch_one() {
         local r="$1"
         local dest="${EEG_ROOT}/HBN/raw/${r}"
-        mkdir -p "${dest}"
+        # TRAILING SLASH, deliberately. Without it "cmi_bids_R1" is a prefix
+        # that also matches cmi_bids_R10 and cmi_bids_R11.
+        local src="s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}/"
+
         echo "==> HBN ${r} -> ${dest}"
+
+        # Does the prefix exist at all? `aws s3 sync` against one that does not
+        # EXITS 0 HAVING DONE NOTHING, so a wrong bucket path and a completed
+        # download are indistinguishable by exit code -- and mkdir has already
+        # left a directory that looks exactly like a finished one.
+        local remote
+        remote=$(aws s3 ls "${src}" --no-sign-request 2>&1 | head -3)
+        if [[ -z "${remote}" ]]; then
+            echo "    ERROR: ${src} lists nothing." >&2
+            echo "           Either the release name is wrong or the bucket" >&2
+            echo "           layout moved. Not creating an empty directory." >&2
+            return 1
+        fi
+
+        mkdir -p "${dest}"
         # sync, not `cp --recursive`. At 100-245 GB per release a transfer WILL
         # be interrupted, and cp restarts every file from the beginning; sync
         # skips what is already there with a matching size. That is the
         # difference between resuming a release and re-fetching it.
-        aws s3 sync "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}" \
-            "${dest}" --no-sign-request
+        aws s3 sync "${src}" "${dest}" --no-sign-request
         local rc=$?
+
         local n
         n=$(find -L "${dest}" -type f \( -iname '*.set' -o -iname '*.fdt' \
             -o -iname '*.edf' -o -iname '*.mff' \) 2>/dev/null | wc -l)
-        echo "    ${r}: exit ${rc}, $(du -sh "${dest}" 2>/dev/null | cut -f1) "\
+        echo "    ${r}: exit ${rc}, $(du -sh "${dest}" 2>/dev/null | cut -f1)"\
              "in ${n} recording file(s)"
+
+        # An empty destination after a "successful" sync is a failure, whatever
+        # the exit code said.
+        if [[ "${n}" -eq 0 ]]; then
+            echo "    ERROR: ${r} downloaded 0 recording files. Treating the" >&2
+            echo "           sync as failed rather than reporting success on" >&2
+            echo "           an empty directory." >&2
+            return 1
+        fi
         return "${rc}"
     }
     if [[ "${rel}" == "all" ]]; then

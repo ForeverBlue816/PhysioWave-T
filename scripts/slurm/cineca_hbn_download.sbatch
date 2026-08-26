@@ -82,10 +82,18 @@ done
 echo ""
 echo "============================================================"
 echo "  ${_fail} release(s) reported an error"
+if [[ "${_fail}" -gt 0 ]]; then
+    echo ""
+    echo "  A release that downloaded nothing counts as an error here even when"
+    echo "  aws exited 0 -- `aws s3 sync` against a prefix that does not exist"
+    echo "  does exactly that, and leaves a directory indistinguishable from a"
+    echo "  finished one."
+fi
 echo "  total $(du -sh "${EEG_ROOT}/HBN/raw" 2>/dev/null | cut -f1)"
 echo ""
 echo "  NEXT, and do not skip it -- every corpus before this one needed a fix"
 echo "  that only appeared on real data:"
+echo "    bash scripts/download_eeg_pretrain_corpora.sh verify-hbn"
 echo "    DATASET=hbn INSPECT=60 VERIFY_POWERLINE=1 bash EEG/preprocess_eeg_corpus.sh"
 echo "============================================================"
 exit "${_fail}"
