@@ -232,8 +232,19 @@ hbn)
         local dest="${EEG_ROOT}/HBN/raw/${r}"
         mkdir -p "${dest}"
         echo "==> HBN ${r} -> ${dest}"
-        aws s3 cp "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}" \
-            "${dest}" --recursive --no-sign-request
+        # sync, not `cp --recursive`. At 100-245 GB per release a transfer WILL
+        # be interrupted, and cp restarts every file from the beginning; sync
+        # skips what is already there with a matching size. That is the
+        # difference between resuming a release and re-fetching it.
+        aws s3 sync "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}" \
+            "${dest}" --no-sign-request
+        local rc=$?
+        local n
+        n=$(find -L "${dest}" -type f \( -iname '*.set' -o -iname '*.fdt' \
+            -o -iname '*.edf' -o -iname '*.mff' \) 2>/dev/null | wc -l)
+        echo "    ${r}: exit ${rc}, $(du -sh "${dest}" 2>/dev/null | cut -f1) "\
+             "in ${n} recording file(s)"
+        return "${rc}"
     }
     if [[ "${rel}" == "all" ]]; then
         for i in $(seq 1 11); do fetch_one "R${i}"; done
