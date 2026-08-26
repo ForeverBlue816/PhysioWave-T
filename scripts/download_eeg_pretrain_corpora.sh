@@ -12,6 +12,10 @@
 # starts two terabytes of transfer because it was run without arguments is a
 # command that gets run without arguments.
 #
+# NOTHING HERE NEEDS npm. FACED, M3CV and HGD come straight from
+# data.nemar.org over HTTPS, resumably; nemar-cli is a node package that adds
+# nothing, and a login node without npm is the normal case.
+#
 # TDBRAIN IS NOT DOWNLOADED HERE and cannot be. It needs an ORCID login and an
 # accepted data use agreement, and accepting an agreement is not something a
 # script does on your behalf. `tdbrain` prints what to do instead.
@@ -54,47 +58,6 @@ need() {
 have_working_aws() {
     command -v aws >/dev/null 2>&1 || return 1
     aws --version >/dev/null 2>&1
-}
-
-# nemar-cli is a node package, and a login node with no npm is the normal case
-# on an HPC system rather than a broken one. None of these three needs root.
-nemar_setup_hint() {
-    local ds="$1" acc="$2"
-    cat >&2 <<MSG
-ERROR: nemar-cli is not installed, and it is a node package.
-
-  1. A module may already provide node:
-
-       module avail nodejs 2>&1 | head
-       module spider node
-       module load nodejs/<version>      # then retry this script
-
-  2. Or install node into \$HOME -- no root, nothing system-wide:
-
-       cd \$HOME
-       curl -fLO https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz
-       tar -xf node-v22.14.0-linux-x64.tar.xz
-       export PATH="\$HOME/node-v22.14.0-linux-x64/bin:\$PATH"
-       npm config set prefix "\$HOME/.npm-global"
-       export PATH="\$HOME/.npm-global/bin:\$PATH"
-       npm install -g nemar-cli
-
-     Put the two PATH lines in ~/.bashrc so they survive a new session.
-     (The system npm prefix is not writable, which is what makes
-     \`npm install -g\` fail with EACCES if the prefix is left at its default.)
-
-  3. Or skip the CLI entirely. NEMAR serves a zip per dataset from its web
-     page, which is how ${EEG_ROOT}/FACED/raw already has one:
-
-       https://nemar.org/dataset/${acc}
-
-     Download it there, put it under \$EEG_ROOT/<Name>/raw, and unpack with
-
-       python scripts/unpack_archive.py <file>.zip --extract-to .
-
-     -- not \`unzip\`, which rejects these archives as possible zip bombs.
-
-MSG
 }
 
 aws_repair_hint() {
@@ -145,19 +108,90 @@ physionet_mi)
     ;;
 
 faced|m3cv|hgd)
-    # The NEMAR BIDS conversions. nemar-cli needs node:  npm i -g nemar-cli
+    # NEMAR serves one zip per published version straight over HTTPS:
+    #   https://data.nemar.org/<accession>/<version>.zip
+    # nemar-cli is a node package and adds nothing here, so it is not used --
+    # a login node with no npm is the normal case, not a broken one.
+    #
+    # VERSIONS ARE PINNED, and verified against nemar.org on 2026-08-26. A
+    # dataset that gets republished moves to a new version and this URL 404s
+    # rather than silently fetching something else; NEMAR_VERSION overrides.
     case "$1" in
-        faced) acc=nm000112; dir=FACED ;;
-        m3cv)  acc=nm000166; dir=M3CV  ;;
-        hgd)   acc=nm000172; dir=HGD   ;;
+        faced) acc=nm000112; dir=FACED; ver=v1.1.3; approx="22.7 GB" ;;
+        m3cv)  acc=nm000166; dir=M3CV;  ver=v1.0.0; approx="21.1 GB" ;;
+        hgd)   acc=nm000172; dir=HGD;   ver=v1.0.3; approx="25.1 GB" ;;
     esac
-    if ! command -v nemar >/dev/null 2>&1; then
-        nemar_setup_hint "$1" "${acc}"
-        exit 1
-    fi
+    ver="${NEMAR_VERSION:-${ver}}"
+    # NEMAR_BASE_URL exists so this branch can be exercised without pulling
+    # 21 GB; it is not something a real run sets.
+    url="${NEMAR_BASE_URL:-https://data.nemar.org}/${acc}/${ver}.zip"
     dest="${EEG_ROOT}/${dir}/raw"; mkdir -p "${dest}"
-    echo "==> NEMAR ${acc} -> ${dest}"
-    ( cd "${dest}" && nemar dataset download "${acc}" )
+    zip="${dest}/${dir}_${acc}_${ver}.zip"
+
+    echo "==> ${dir} ${acc} ${ver}  (~${approx})"
+    echo "    ${url}"
+    echo "    -> ${zip}"
+    echo ""
+
+    # An archive already on disk and sound is not re-fetched. `curl -C -` on a
+    # COMPLETE file is an error in some versions rather than a no-op, so a
+    # second run of this script would otherwise fail on the one thing that
+    # already succeeded -- and re-running is exactly what someone does after an
+    # interrupted 22 GB transfer.
+    _have_it=0
+    if [[ -s "${zip}" ]]; then
+        echo "==> ${zip} exists; checking whether it is complete"
+        if python "$(dirname "${BASH_SOURCE[0]}")/unpack_archive.py" "${zip}" \
+                >/dev/null 2>&1; then
+            echo "    complete and sound -- skipping the download"
+            _have_it=1
+        else
+            echo "    incomplete or unreadable -- resuming the download"
+        fi
+    fi
+
+    if [[ "${_have_it}" -eq 0 ]]; then
+        # -C - resumes a partial file. At this size on a shared login node an
+        # interrupted transfer is likely, and restarting 22 GB from zero because
+        # the flag was missing is the kind of thing that costs an afternoon.
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL -C - --retry 5 --retry-delay 10 \
+                 --connect-timeout 20 -o "${zip}" "${url}"
+            _rc=$?
+            # 33: server refused the range. Start over rather than leave a file
+            # that is half of one transfer and half of another.
+            if [[ "${_rc}" -eq 33 ]]; then
+                echo "    server refused a ranged request; restarting whole" >&2
+                curl -fL --retry 5 --retry-delay 10 \
+                     --connect-timeout 20 -o "${zip}" "${url}"
+                _rc=$?
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            wget -c -O "${zip}" "${url}"
+            _rc=$?
+        else
+            echo "ERROR: neither curl nor wget is available." >&2
+            exit 1
+        fi
+        if [[ "${_rc}" -ne 0 ]]; then
+            echo "" >&2
+            echo "ERROR: download failed (exit ${_rc})." >&2
+            echo "  If it was a 404, the published version has moved. Check" >&2
+            echo "    https://nemar.org/dataset/${acc}" >&2
+            echo "  and re-run with the version it names:" >&2
+            echo "    NEMAR_VERSION=v1.2.3 bash $0 $1" >&2
+            exit 1
+        fi
+    fi
+
+    echo ""
+    echo "==> checking the archive before unpacking"
+    # NOT unzip: Info-ZIP rejects these as possible zip bombs, and the
+    # environment variable it suggests would force a truncated download open
+    # just as readily as a sound one.
+    python "$(dirname "${BASH_SOURCE[0]}")/unpack_archive.py" "${zip}" \
+        --extract-to "${dest}" || exit 1
+
     if [[ "$1" == "faced" ]]; then
         echo ""
         echo "FACED note: 92 subjects are 1000 Hz and 31 are 250 Hz, in this"
