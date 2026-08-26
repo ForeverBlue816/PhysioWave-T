@@ -1,5 +1,16 @@
 #!/bin/bash
 # ============================================================================
+#
+# !! COMPUTE NODES ON THIS SYSTEM HAVE NO ROUTE TO THE PUBLIC INTERNET. !!
+# An aws transfer submitted here fails with "Could not connect to the endpoint
+# URL" and leaves an empty directory. Downloads must run on a LOGIN NODE:
+#
+#     nohup bash scripts/download_hbn_login.sh > ~/hbn.log 2>&1 &
+#
+# That script is built around the login node's process limits -- low
+# concurrency, resumable, and it reruns after being killed. This sbatch is kept
+# only for a site where compute nodes can reach S3.
+#
 # HBN download, as a batch job.
 #
 #   sbatch --export=ALL,RELEASES=R3          scripts/slurm/cineca_hbn_download.sbatch

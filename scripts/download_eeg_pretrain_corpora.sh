@@ -12,6 +12,12 @@
 # starts two terabytes of transfer because it was run without arguments is a
 # command that gets run without arguments.
 #
+# RUN THIS ON A LOGIN NODE. The compute nodes here have no route to the public
+# internet -- an aws or curl transfer from one fails with "Could not connect to
+# the endpoint URL". For HBN, whose releases are large enough that a login node
+# will kill the transfer partway, use scripts/download_hbn_login.sh, which
+# reruns after being killed and resumes.
+#
 # NOTHING HERE NEEDS npm. FACED, M3CV and HGD come straight from
 # data.nemar.org over HTTPS, resumably; nemar-cli is a node package that adds
 # nothing, and a login node without npm is the normal case.
