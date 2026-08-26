@@ -97,7 +97,8 @@ def inspect(path: str, ratio_limit: float) -> tuple[int, zipfile.ZipFile | None]
 AES_COMPRESSION = 99
 
 
-def extract(z: zipfile.ZipFile, dest: str, encrypted: bool = False) -> int:
+def extract(z: zipfile.ZipFile, dest: str, encrypted: bool = False,
+            resume: bool = True) -> int:
     infos = z.infolist()
     if any(i.compress_type == AES_COMPRESSION for i in infos):
         print("\n  This archive uses AES encryption, which Python's zipfile "
@@ -109,6 +110,24 @@ def extract(z: zipfile.ZipFile, dest: str, encrypted: bool = False) -> int:
         return 1
     total = sum(i.file_size for i in infos)
     os.makedirs(dest, exist_ok=True)
+
+    # An entry already on disk at exactly its recorded size is done. A
+    # partially written one is not, and its size will not match, so it is
+    # redone. This is what makes a killed extraction resumable rather than
+    # something to restart from zero.
+    skipped = skipped_bytes = 0
+    if resume:
+        for info in infos:
+            if info.is_dir():
+                continue
+            t = os.path.join(dest, info.filename)
+            if os.path.isfile(t) and os.path.getsize(t) == info.file_size:
+                skipped += 1
+                skipped_bytes += info.file_size
+        if skipped:
+            print(f"\nresuming: {skipped:,} of {len(infos):,} entries "
+                  f"({human(skipped_bytes)}) already extracted")
+
     print(f"\nextracting {len(infos):,} entries -> {dest}")
     done = 0
     for n, info in enumerate(infos, 1):
@@ -120,6 +139,11 @@ def extract(z: zipfile.ZipFile, dest: str, encrypted: bool = False) -> int:
             print(f"\n  REFUSING {info.filename!r}: escapes {dest}",
                   file=sys.stderr)
             return 1
+        if resume and not info.is_dir():
+            t = os.path.join(dest, info.filename)
+            if os.path.isfile(t) and os.path.getsize(t) == info.file_size:
+                done += info.file_size
+                continue
         try:
             z.extract(info, dest)
         except RuntimeError as exc:
@@ -158,6 +182,12 @@ def main(argv=None) -> int:
                         "and out of `ps`.")
     p.add_argument("--password-env", default=None, metavar="VAR",
                    help="read the password from this environment variable")
+    p.add_argument("--no-resume", action="store_true",
+                   help="re-extract entries already present at the right size. "
+                        "Resume is the default: an encrypted 14 GB archive "
+                        "decrypts at a few MB/s in pure Python and will be "
+                        "interrupted, and starting over each time never "
+                        "finishes.")
     args = p.parse_args(argv)
 
     if not os.path.isfile(args.archive):
@@ -182,7 +212,8 @@ def main(argv=None) -> int:
               f"--extract-to <dir>")
         return 0
     with z:
-        return extract(z, args.extract_to, bool(password))
+        return extract(z, args.extract_to, bool(password),
+                       resume=not args.no_resume)
 
 
 if __name__ == "__main__":
