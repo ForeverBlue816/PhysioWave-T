@@ -69,7 +69,21 @@ SLOTS_64: Tuple[str, ...] = (
     "TP7", "CP5", "CP3", "CP1", "CPz", "CP2", "CP4", "CP6", "TP8",
     "P7", "P5", "P3", "P1", "Pz", "P2", "P4", "P6", "P8",
     "PO7", "PO3", "POz", "PO4", "PO8",
-    "O1", "Oz", "O2", "Iz", "P9", "P10",
+    "O1", "Oz", "O2", "Iz",
+    # The last two slots were P9/P10, which --inspect showed NEITHER corpus on
+    # this route records: PhysioNetMI fills 62 of 64 and M3CV 60, both missing
+    # exactly those. Two guaranteed-dead slots in every window of the route.
+    #
+    # PhysioNetMI wants T9/T10 for them and M3CV wants FT9/FT10/TP9/TP10, and
+    # only two are free, so the total filled is 124 either way -- each free slot
+    # serves one corpus. The tiebreak is how much data is behind each: M3CV has
+    # 92,340 windows against PhysioNetMI's 43,519, so TP9/TP10 buys 184,680
+    # electrode-windows of real signal against T9/T10's 87,038.
+    #
+    # T9/T10 and FT9/FT10 stay in the vocabulary and are recorded in every
+    # affected shard's unmatched_source_channels; they are dropped from this
+    # route, not from the corpus.
+    "TP9", "TP10",
 )
 
 #: 128 slots. HBN records on an EGI HydroCel net whose labels are E1..E128 after

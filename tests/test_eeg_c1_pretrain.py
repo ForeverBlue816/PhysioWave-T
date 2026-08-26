@@ -548,6 +548,54 @@ def test_12h_every_shipped_container_is_walked_and_readable():
         assert reader in src, reader
 
 
+# --- 12i -------------------------------------------------------------------- #
+def test_12i_no_route_slot_is_dead_for_every_corpus_on_it():
+    """A slot no corpus on the route records is padding in every window.
+
+    E64_256's last two slots were P9/P10, which --inspect showed neither
+    PhysioNetMI nor M3CV records -- 62/64 and 60/64, both missing exactly those.
+    Two guaranteed-zero channels in every window of the route, while four real
+    electrodes were being dropped for want of a slot.
+    """
+    from physiowave.eeg_c1.preprocess import map_to_slots
+    from physiowave.eeg_c1.routes import SLOTS_64
+
+    assert len(SLOTS_64) == 64 and len(set(SLOTS_64)) == 64
+    assert "P9" not in SLOTS_64 and "P10" not in SLOTS_64
+    assert "TP9" in SLOTS_64 and "TP10" in SLOTS_64
+
+    # The montages as the two --inspect runs reported them.
+    physionet = [
+        "Fc5.", "Fc3.", "Fc1.", "Fcz.", "Fc2.", "Fc4.", "Fc6.", "C5..", "C3..",
+        "C1..", "Cz..", "C2..", "C4..", "C6..", "Cp5.", "Cp3.", "Cp1.", "Cpz.",
+        "Cp2.", "Cp4.", "Cp6.", "Fp1.", "Fpz.", "Fp2.", "Af7.", "Af3.", "Afz.",
+        "Af4.", "Af8.", "F7..", "F5..", "F3..", "F1..", "Fz..", "F2..", "F4..",
+        "F6..", "F8..", "Ft7.", "Ft8.", "T7..", "T8..", "T9..", "T10.", "Tp7.",
+        "Tp8.", "P7..", "P5..", "P3..", "P1..", "Pz..", "P2..", "P4..", "P6..",
+        "P8..", "Po7.", "Po3.", "Poz.", "Po4.", "Po8.", "O1..", "Oz..", "O2..",
+        "Iz..",
+    ]
+    m3cv = [s for s in SLOTS_64 if s not in ("AFz", "Iz", "TP9", "TP10")] + \
+           ["FT9", "FT10", "TP9", "TP10"]
+
+    cov = {}
+    for name, montage in (("physionet_mi", physionet), ("m3cv", m3cv)):
+        mapping = map_to_slots(montage, SLOTS_64)
+        cov[name] = int(mapping.valid.sum())
+        assert cov[name] >= int(0.75 * 64), f"{name} would fail the gate"
+
+    assert cov["physionet_mi"] == 62
+    assert cov["m3cv"] == 62, "M3CV should gain the two freed slots"
+
+    # No slot may be dead for BOTH corpora on the route.
+    filled = set()
+    for montage in (physionet, m3cv):
+        mapping = map_to_slots(montage, SLOTS_64)
+        filled |= {SLOTS_64[j] for j, v in enumerate(mapping.valid) if v}
+    dead = [s for s in SLOTS_64 if s not in filled]
+    assert not dead, f"slots no corpus on E64_256 records: {dead}"
+
+
 # --- 13 --------------------------------------------------------------------- #
 def test_13_deap_is_never_a_pretraining_dataset():
     assert "deap" not in PRETRAIN_DATASETS
