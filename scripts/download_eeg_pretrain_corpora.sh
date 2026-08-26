@@ -283,8 +283,18 @@ hbn)
         # Stderr is kept separate and the exit status is what decides.
         local remote lserr lsrc
         lserr=$(mktemp "${TMPDIR:-/tmp}/pw_awsls.XXXXXX" 2>/dev/null) || lserr=/dev/null
-        remote=$(aws s3 ls "${src}" --no-sign-request 2>"${lserr}")
-        lsrc=$?
+        local ls_try=1
+        while :; do
+            remote=$(aws s3 ls "${src}" --no-sign-request 2>"${lserr}")
+            lsrc=$?
+            [[ "${lsrc}" -eq 0 && -n "${remote}" ]] && break
+            grep -qi "could not connect\|endpoint\|timed out\|connection" \
+                "${lserr}" 2>/dev/null || break
+            [[ "${ls_try}" -ge 3 ]] && break
+            echo "    listing failed to connect; retry ${ls_try}/3 in 15s" >&2
+            sleep 15
+            ls_try=$(( ls_try + 1 ))
+        done
         if [[ "${lsrc}" -ne 0 ]] || [[ -z "${remote}" ]]; then
             echo "    ERROR: cannot list ${src} (aws exit ${lsrc})." >&2
             if [[ -s "${lserr}" ]]; then
@@ -293,6 +303,12 @@ hbn)
             elif [[ "${lsrc}" -eq 0 ]]; then
                 echo "    The listing was empty: the release name is wrong or" >&2
                 echo "    the bucket layout moved." >&2
+            fi
+            if grep -qi "could not connect\|endpoint" "${lserr}" 2>/dev/null; then
+                echo "" >&2
+                echo "    This is a NETWORK failure, not a wrong path: the node" >&2
+                echo "    had no route to S3. The release is fine; resubmit and" >&2
+                echo "    it will likely land on a node that can reach it." >&2
             fi
             [[ "${lserr}" != /dev/null ]] && rm -f "${lserr}"
             return 1
@@ -327,6 +343,8 @@ hbn)
         if [[ -n "${awscfg}" ]]; then
             cat > "${awscfg}" <<CFG
 [default]
+retry_mode = standard
+max_attempts = ${AWS_MAX_ATTEMPTS:-10}
 s3 =
     max_concurrent_requests = ${AWS_CONCURRENCY:-4}
     max_queue_size = 100
@@ -340,11 +358,35 @@ CFG
         # be interrupted, and cp restarts every file from the beginning; sync
         # skips what is already there with a matching size. That is the
         # difference between resuming a release and re-fetching it.
-        aws s3 sync "${src}" "${dest}" --no-sign-request
-        local rc=$?
+        # "Could not connect to the endpoint URL" is what killed R4, R10 and
+        # R11 while seven other releases downloaded fine from other nodes: a
+        # compute node with no route to S3 at that moment. botocore's own
+        # retries do not cover it -- it gives up and returns -- so the sync is
+        # retried here, with backoff, and the transfer resumes from whatever
+        # landed before the connection went.
+        local rc=1 attempt=1
+        local tries="${AWS_SYNC_TRIES:-4}"
+        while [[ "${attempt}" -le "${tries}" ]]; do
+            [[ "${attempt}" -gt 1 ]] && \
+                echo "    attempt ${attempt}/${tries} (resuming)"
+            aws s3 sync "${src}" "${dest}" --no-sign-request
+            rc=$?
+            [[ "${rc}" -eq 0 ]] && break
+            # 130/137/143 are signals -- Ctrl-C or the scheduler. Retrying
+            # something that was deliberately killed just gets killed again.
+            if [[ "${rc}" -eq 130 || "${rc}" -eq 137 || "${rc}" -eq 143 ]]; then
+                break
+            fi
+            if [[ "${attempt}" -lt "${tries}" ]]; then
+                local wait=$(( attempt * 30 ))
+                echo "    exit ${rc}; retrying in ${wait}s" >&2
+                sleep "${wait}"
+            fi
+            attempt=$(( attempt + 1 ))
+        done
         if [[ "${rc}" -ne 0 ]]; then
-            echo "    aws s3 sync exited ${rc}; its message is above, or in" >&2
-            echo "    the job's .err file if this is running under sbatch." >&2
+            echo "    aws s3 sync exited ${rc} after ${attempt} attempt(s)." >&2
+            echo "    Its message is above, or in the job's .err under sbatch." >&2
         fi
 
         [[ -n "${awscfg}" ]] && rm -f "${awscfg}"
