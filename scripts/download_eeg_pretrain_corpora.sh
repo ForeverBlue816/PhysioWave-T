@@ -296,9 +296,24 @@ hbn)
         # Written to a temp config rather than `aws configure set`, which would
         # edit ~/.aws/config permanently and change every other aws command the
         # user runs.
-        local awscfg
-        awscfg=$(mktemp "${TMPDIR:-/tmp}/pw_aws_cfg.XXXXXX") || return 1
-        cat > "${awscfg}" <<CFG
+        # $TMPDIR is set per job on some schedulers and is not always writable
+        # by the time a job body runs. Falling back rather than failing the
+        # whole release: throttling is an optimisation, and losing it is not a
+        # reason to skip a 200 GB download.
+        local awscfg=""
+        local d
+        for d in "${TMPDIR:-}" /tmp "${dest}"; do
+            [[ -z "${d}" || ! -d "${d}" || ! -w "${d}" ]] && continue
+            awscfg=$(mktemp "${d}/pw_aws_cfg.XXXXXX" 2>/dev/null) && break
+            awscfg=""
+        done
+        if [[ -z "${awscfg}" ]]; then
+            echo "    NOTE: no writable temp dir for the aws config; running" >&2
+            echo "          at the CLI's default concurrency." >&2
+        fi
+        local prev_cfg="${AWS_CONFIG_FILE:-}"
+        if [[ -n "${awscfg}" ]]; then
+            cat > "${awscfg}" <<CFG
 [default]
 s3 =
     max_concurrent_requests = ${AWS_CONCURRENCY:-4}
@@ -306,8 +321,8 @@ s3 =
     multipart_chunksize = 8MB
     multipart_threshold = 64MB
 CFG
-        local prev_cfg="${AWS_CONFIG_FILE:-}"
-        export AWS_CONFIG_FILE="${awscfg}"
+            export AWS_CONFIG_FILE="${awscfg}"
+        fi
 
         # sync, not `cp --recursive`. At 100-245 GB per release a transfer WILL
         # be interrupted, and cp restarts every file from the beginning; sync
@@ -316,7 +331,7 @@ CFG
         aws s3 sync "${src}" "${dest}" --no-sign-request
         local rc=$?
 
-        rm -f "${awscfg}"
+        [[ -n "${awscfg}" ]] && rm -f "${awscfg}"
         if [[ -n "${prev_cfg}" ]]; then export AWS_CONFIG_FILE="${prev_cfg}"
         else unset AWS_CONFIG_FILE; fi
 
