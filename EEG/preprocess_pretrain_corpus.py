@@ -254,6 +254,12 @@ def resolved_mains(dataset_id: str, args) -> Tuple[Optional[float], str]:
     if entry.get("notch_already_applied"):
         return None, (f"registry: publisher already notched at "
                       f"{entry.get('powerline_hz')} Hz")
+    if entry.get("skip_notch"):
+        # Distinct from notch_already_applied: nobody filtered this, there is
+        # simply nothing at the line to remove, and the filter would cost more
+        # than it saves. The reason travels into every shard's provenance.
+        return None, (f"registry: notch skipped -- "
+                      f"{entry.get('skip_notch_reason', 'no reason recorded')}")
     if entry.get("powerline_hz") is not None:
         return float(entry["powerline_hz"]), "registry"
     return None, "unset"
@@ -661,6 +667,7 @@ def process_recording(rec: Recording, dataset_id: str, cfg: PreprocessConfig,
     prov = cfg.provenance({
         "dataset_id": dataset_id,
         "mains_hz": mains,
+        "notch_decision": (getattr(args_ref, "_mains_why", None) or "unrecorded"),
         "source_sampling_rate": rec.sampling_rate,
         "target_sampling_rate": route.sampling_rate,
         **prov_rate,
@@ -908,6 +915,100 @@ def dump_channels(dataset_id: str, root: str, args, slots, route) -> int:
     return 0
 
 
+def derive_slots(dataset_id: str, root: str, args, slots, route) -> int:
+    """Build a route slot list FROM THE CORPUS, and say what it needs.
+
+    A slot list is a permanent decision: the channel ids it produces are written
+    into every shard and indexed by the checkpoint's embedding table. So it must
+    not be a transcription of a montage from a paper. This reads the recordings,
+    takes the names present in EVERY sampled montage -- the reliable core, which
+    excludes the aux channels that only some files carry -- and writes that out
+    alongside the vocabulary entries it would need.
+
+    Nothing is applied automatically. The two files it writes are for review and
+    for checking in, because a slot list that changed between two preprocessing
+    runs would silently relabel every channel of whichever shards came first.
+    """
+    from collections import Counter
+
+    mne = _require_mne()
+    files = _walk(root, (".edf", ".bdf", ".set", ".fif", ".cnt", ".mff"))
+    if not files:
+        print(f"ERROR: no readable recording under {root}", file=sys.stderr)
+        return 1
+
+    n = min(args.derive_slots_from, len(files))
+    step = max(1, len(files) // n)
+    montages: List[List[str]] = []
+    seen_counts = Counter()
+    for path in files[::step][:n]:
+        try:
+            raw = mne.io.read_raw_edf(path, preload=False, verbose="ERROR") \
+                if path.lower().endswith(".edf") else \
+                mne.io.read_raw(path, preload=False, verbose="ERROR")
+        except Exception as exc:                               # noqa: BLE001
+            print(f"  UNREADABLE {os.path.relpath(path, root)}: {exc}")
+            continue
+        names = [normalize_channel_name(x) for x in raw.ch_names]
+        montages.append([x for x in names if x])
+        seen_counts[len(names)] += 1
+
+    if not montages:
+        print("ERROR: nothing readable", file=sys.stderr)
+        return 1
+
+    print(f"read {len(montages)} montage(s); channel counts {dict(seen_counts)}")
+
+    # Order comes from the montage that has the most channels, so the slot list
+    # follows the cap's own layout rather than alphabetical noise.
+    core = set(montages[0])
+    union: List[str] = []
+    for m in montages:
+        core &= set(m)
+    for m in sorted(montages, key=len, reverse=True):
+        for nm in m:
+            if nm not in union:
+                union.append(nm)
+    ordered_core = [nm for nm in union if nm in core]
+
+    print(f"  union over montages     {len(union)}")
+    print(f"  present in EVERY one    {len(ordered_core)}")
+    print(f"  route {route.route_id} needs   {route.n_channels}")
+
+    known = [x for x in ordered_core if x in CHANNEL_TO_ID]
+    unknown = [x for x in ordered_core if x not in CHANNEL_TO_ID]
+    print(f"  of the common core, in the vocabulary: {len(known)}, "
+          f"absent: {len(unknown)}")
+
+    if len(ordered_core) != route.n_channels:
+        print(f"\n  NOTE: the common core is {len(ordered_core)}, not "
+              f"{route.n_channels}. Names carried by only some recordings are "
+              f"excluded on purpose -- they are usually EOG/EMG/mastoid. "
+              f"Decide which to add or drop before committing the list; this "
+              f"tool will not pad or truncate it for you, because both choices "
+              f"are silent.")
+
+    out = args.derive_slots
+    with open(out, "w") as f:
+        json.dump({
+            "dataset_id": dataset_id,
+            "route_id": route.route_id,
+            "n_required": route.n_channels,
+            "derived_from_files": len(montages),
+            "slots_common_core": ordered_core,
+            "union": union,
+            "not_in_vocabulary": unknown,
+        }, f, indent=2)
+    add = f"{out}.vocab_additions.txt"
+    with open(add, "w") as f:
+        f.write("\n".join(unknown) + ("\n" if unknown else ""))
+    print(f"\n  wrote {out}")
+    print(f"  wrote {add}  ({len(unknown)} name(s))")
+    print("\n  Neither file is read by anything. Review them, then append the "
+          "names to CHANNEL_VOCAB (append only) and set the route's slot list.")
+    return 0
+
+
 def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
     """Report what the corpus actually is, without processing any of it.
 
@@ -1143,6 +1244,14 @@ def main(argv=None) -> int:
                         "actually uses, and no summary answers it -- the "
                         "10-5 'h' positions (FFC5h, CPP3h) and vendor spellings "
                         "are only visible in full.")
+    p.add_argument("--derive-slots", default=None, metavar="PATH",
+                   help="read the corpus and write a candidate slot list for "
+                        "its route to PATH, plus the vocabulary entries it "
+                        "would need. Nothing is applied: a slot list is "
+                        "permanent once shards exist, so it is reviewed and "
+                        "checked in by hand.")
+    p.add_argument("--derive-slots-from", type=int, default=8, metavar="N",
+                   help="how many recordings --derive-slots reads (default 8)")
     p.add_argument("--verify-powerline", action="store_true",
                    help="with --inspect: measure the 49-51 and 59-61 Hz bands "
                         "against their neighbours and report which one carries "
@@ -1255,6 +1364,7 @@ def main(argv=None) -> int:
         else PRETRAIN_DATASETS["hgd"].slots
 
     mains_hz, mains_why = resolved_mains(dataset_id, args)
+    args._mains_why = mains_why
     print(f"mains: {mains_hz if mains_hz is not None else 'no notch'} "
           f"({mains_why})", file=sys.stderr)
     entry = registry_for(dataset_id, args)
@@ -1271,6 +1381,9 @@ def main(argv=None) -> int:
         clip_sigma=args.clip_sigma, window_seconds=args.window_seconds,
         stride_seconds=args.stride_seconds, val_fraction=args.val_fraction,
         split_seed=args.split_seed)
+
+    if args.derive_slots:
+        return derive_slots(dataset_id, args.root, args, slots, route)
 
     if args.dump_channels:
         return dump_channels(dataset_id, args.root, args, slots, route)

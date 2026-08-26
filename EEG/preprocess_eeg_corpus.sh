@@ -37,6 +37,8 @@
 #   INSPECT         N: report and exit, process nothing
 #   DUMP_CHANNELS   N: print N recordings' channel lists verbatim and exit.
 #                   What to reach for when INSPECT reports poor coverage.
+#   DERIVE_SLOTS    PATH: write a candidate slot list for this route, derived
+#                   from the corpus, plus the vocabulary names it needs.
 #   VERIFY_POWERLINE  1: with INSPECT, measure the 50/60 Hz bands
 #   PSD_VERIFIED    1: acknowledge you have done that; silences the reminder
 #   MAINS_HZ        override the registry (unset)
@@ -98,6 +100,7 @@ MAX_MINUTES="${MAX_MINUTES:-30}"
 SHARD="${SHARD:-}"
 INSPECT="${INSPECT:-}"
 DUMP_CHANNELS="${DUMP_CHANNELS:-}"
+DERIVE_SLOTS="${DERIVE_SLOTS:-}"
 MAINS_HZ="${MAINS_HZ:-}"
 MAX_RECORDINGS="${MAX_RECORDINGS:-}"
 STRIDE_SECONDS="${STRIDE_SECONDS:-}"
@@ -157,6 +160,7 @@ ARGS=(--dataset "${DATASET}" --root "${RAW_ROOT}" --out-dir "${OUT_DIR}"
 [[ -n "${MAINS_HZ}" ]]              && ARGS+=(--mains-hz "${MAINS_HZ}")
 [[ -n "${INSPECT}" ]]               && ARGS+=(--inspect "${INSPECT}")
 [[ -n "${DUMP_CHANNELS}" ]]         && ARGS+=(--dump-channels "${DUMP_CHANNELS}")
+[[ -n "${DERIVE_SLOTS}" ]]          && ARGS+=(--derive-slots "${DERIVE_SLOTS}")
 [[ -n "${SHARD}" ]]                 && ARGS+=(--shard "${SHARD}")
 [[ -n "${MAX_RECORDINGS}" ]]        && ARGS+=(--max-recordings "${MAX_RECORDINGS}")
 [[ -n "${STRIDE_SECONDS}" ]]        && ARGS+=(--stride-seconds "${STRIDE_SECONDS}")

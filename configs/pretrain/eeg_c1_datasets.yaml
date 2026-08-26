@@ -74,10 +74,29 @@ hgd:
   powerline_hz: 50
   verify_powerline_by_psd: true
   expected_sampling_rates: [500.0]
+  # MEASURED, not assumed: --inspect --verify-powerline over 40 recordings put
+  # the 49-51 Hz band at 1.00x its neighbours and 59-61 Hz at 0.99x. There is no
+  # line interference in this corpus -- consistent with a lab the authors built
+  # specifically to record high-frequency movement-related EEG.
+  #
+  # Notching anyway would not be harmless. The filter runs at the native 500 Hz
+  # with two harmonics, so it removes 50 Hz AND 100 Hz -- and 100 Hz is in the
+  # middle of the 70-140 Hz high-gamma band that is the entire reason this
+  # dataset exists. Taking a stopband out of the signal of interest to suppress
+  # interference that measurably is not there is a bad trade in one direction
+  # only.
+  skip_notch: true
+  skip_notch_reason: >-
+    no line peak at 50 or 60 Hz in 40 recordings (1.00x / 0.99x); the 100 Hz
+    harmonic would land inside the high-gamma band of interest
   notes: >-
-    Subject 14 has roughly half its sensors degraded in the official test split;
-    per-recording slot coverage and the QC block record it. The task is repeated
-    EXECUTED movement, not pure imagery, whatever the BIDS task label says.
+    128 electrodes on a standard 10-05 montage at 500 Hz, referenced to Cz with
+    residual signal remaining on Cz. The montage uses 10-05 halfway positions
+    (FFC5h, CPP3h, TPP9h), which is why a slot list of 10-10 names catches only
+    58% of it. Subject 14 has roughly half its sensors degraded in the official
+    test split; per-recording slot coverage and the QC block record it. The task
+    is repeated EXECUTED movement, not pure imagery, whatever the BIDS task
+    label says.
 
 tueg:
   route: E19_256
