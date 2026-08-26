@@ -56,6 +56,47 @@ have_working_aws() {
     aws --version >/dev/null 2>&1
 }
 
+# nemar-cli is a node package, and a login node with no npm is the normal case
+# on an HPC system rather than a broken one. None of these three needs root.
+nemar_setup_hint() {
+    local ds="$1" acc="$2"
+    cat >&2 <<MSG
+ERROR: nemar-cli is not installed, and it is a node package.
+
+  1. A module may already provide node:
+
+       module avail nodejs 2>&1 | head
+       module spider node
+       module load nodejs/<version>      # then retry this script
+
+  2. Or install node into \$HOME -- no root, nothing system-wide:
+
+       cd \$HOME
+       curl -fLO https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz
+       tar -xf node-v22.14.0-linux-x64.tar.xz
+       export PATH="\$HOME/node-v22.14.0-linux-x64/bin:\$PATH"
+       npm config set prefix "\$HOME/.npm-global"
+       export PATH="\$HOME/.npm-global/bin:\$PATH"
+       npm install -g nemar-cli
+
+     Put the two PATH lines in ~/.bashrc so they survive a new session.
+     (The system npm prefix is not writable, which is what makes
+     \`npm install -g\` fail with EACCES if the prefix is left at its default.)
+
+  3. Or skip the CLI entirely. NEMAR serves a zip per dataset from its web
+     page, which is how ${EEG_ROOT}/FACED/raw already has one:
+
+       https://nemar.org/dataset/${acc}
+
+     Download it there, put it under \$EEG_ROOT/<Name>/raw, and unpack with
+
+       python scripts/unpack_archive.py <file>.zip --extract-to .
+
+     -- not \`unzip\`, which rejects these archives as possible zip bombs.
+
+MSG
+}
+
 aws_repair_hint() {
     cat >&2 <<'MSG'
 
@@ -110,7 +151,10 @@ faced|m3cv|hgd)
         m3cv)  acc=nm000166; dir=M3CV  ;;
         hgd)   acc=nm000172; dir=HGD   ;;
     esac
-    need nemar "npm install -g nemar-cli" || exit 1
+    if ! command -v nemar >/dev/null 2>&1; then
+        nemar_setup_hint "$1" "${acc}"
+        exit 1
+    fi
     dest="${EEG_ROOT}/${dir}/raw"; mkdir -p "${dest}"
     echo "==> NEMAR ${acc} -> ${dest}"
     ( cd "${dest}" && nemar dataset download "${acc}" )
