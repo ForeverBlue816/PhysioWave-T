@@ -1001,22 +1001,37 @@ def inspect_corpus(dataset_id: str, root: str, args, slots, route) -> int:
               f"because {route.route_id} has no slot for them:")
         for name, c in known:
             print(f"    {name:<18} x{c}")
-        print("  That is expected for a 19-slot route and is not a naming bug.")
+        print(f"  {route.route_id} has {len(slots)} slots and the recording "
+              f"has more electrodes than fit; that is not a naming bug.")
 
-    # -- what it will cost -------------------------------------------------- #
+    # -- what it will produce, and what it does NOT tell you ---------------- #
     if read and seconds > 0:
         per_file = seconds / read
         est_files = len(files) - int(failed / max(1, read) * len(files))
         win = int(est_files * per_file / args.window_seconds)
         bytes_per = len(slots) * route.window_samples * 4
-        print(f"\nPROJECTED COST, from {read} file(s) at "
-              f"{per_file/60:.1f} min each:")
-        print(f"  {est_files:,} files  ~{est_files*per_file/3600:,.0f} hours")
+        total_h = est_files * per_file / 3600
+        print(f"\nPROJECTED OUTPUT, from {read} file(s) averaging "
+              f"{per_file/60:.1f} min of RECORDING each:")
+        print(f"  {est_files:,} files  ~{total_h:,.0f} hours of signal")
         print(f"  ~{win:,} windows of {len(slots)}x{route.window_samples}")
         print(f"  ~{win*bytes_per/1e12:.2f} TB uncompressed, "
               f"~{win*bytes_per*0.5/1e12:.2f} TB after gzip")
         print("  MAX_RECORDINGS or STRIDE_SECONDS cap this if it is too large "
               "for the filesystem.")
+        # These are DURATIONS, not runtimes. Header reads cost milliseconds;
+        # what the array actually spends its time on is decoding, filtering and
+        # resampling, which this mode never does. Sizing an array off the
+        # "hours" line above reads a number about the corpus as a number about
+        # the job, and they differ by more than an order of magnitude.
+        print(f"\n  THE {total_h:,.0f} HOURS ABOVE IS SIGNAL DURATION, NOT "
+              f"COMPUTE TIME. --inspect opens headers only.")
+        print("  To size the array, measure one task on a few files:")
+        print(f"    time JOBS=8 MAX_RECORDINGS=40 OUT_DIR=/tmp/{dataset_id}_probe \\")
+        print(f"        DATASET={dataset_id} RAW_ROOT={root} \\")
+        print("        bash EEG/preprocess_eeg_corpus.sh")
+        print(f"  then: {est_files:,} files / (40 / elapsed) / N_TASKS, against "
+              f"the sbatch --time.")
     return 0
 
 
