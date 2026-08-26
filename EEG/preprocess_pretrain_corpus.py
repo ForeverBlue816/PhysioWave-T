@@ -1323,7 +1323,6 @@ def main(argv=None) -> int:
     p.add_argument("--allow-upsample-faced", action="store_true",
                    help="permit FACED's 250 Hz release. The official "
                         "configuration never sets this.")
-    p.add_argument("--hgd-own-slots", action="store_true")
     p.add_argument("--unk-rate-max", type=float, default=0.01,
                    help="fail if more than this fraction of the channels placed "
                         "into slots carry an <unk> id")
@@ -1411,8 +1410,7 @@ def main(argv=None) -> int:
 
     spec = PRETRAIN_DATASETS[dataset_id]
     route = ROUTES[spec.route_id]
-    slots = spec.slots if not (args.hgd_own_slots and dataset_id == "hgd") \
-        else PRETRAIN_DATASETS["hgd"].slots
+    slots = spec.slots
 
     mains_hz, mains_why = resolved_mains(dataset_id, args)
     args._mains_why = mains_why

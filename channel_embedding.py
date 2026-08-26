@@ -101,6 +101,22 @@ CHANNEL_VOCAB = list(_RESERVED) + [
     # never reached; PhysioNetMI records both, and without them two real
     # electrodes per recording resolve to <unk> rather than to themselves.
     "T9", "T10",
+    # HGD's montage, which is 10-05 rather than 10-10. Fifty of these are
+    # HALFWAY positions -- FFC5h sits between FFC5 and FFC3 -- and they are
+    # spelled with a lowercase h, which is the canonical form and the one
+    # normalize_channel_name resolves "FFC5H" and "ffc5h" onto. Without them
+    # 54 of HGD's 128 electrodes resolved to <unk>, per-file slot coverage was
+    # 74 of 128, and the coverage gate skipped 100% of the corpus.
+    #
+    # M1/M2 are the mastoids and PO5/PO6 are ordinary 10-10 positions that this
+    # list, like T9/T10 above, had simply never reached.
+    "M1", "M2", "PO5", "PO6", "TPP9h", "TPP10h", "FFC5h", "FFC3h",
+    "FFC4h", "FFC6h", "FCC5h", "FCC3h", "FCC4h", "FCC6h", "CCP5h", "CCP3h",
+    "CCP4h", "CCP6h", "CPP5h", "CPP3h", "CPP4h", "CPP6h", "AFP3h", "AFP4h",
+    "AFF5h", "AFF6h", "FFT7h", "FFC1h", "FFC2h", "FFT8h", "FTT9h", "FTT7h",
+    "FCC1h", "FCC2h", "FTT8h", "FTT10h", "TTP7h", "CCP1h", "CCP2h", "TTP8h",
+    "TPP7h", "CPP1h", "CPP2h", "TPP8h", "PPO9h", "PPO5h", "PPO6h", "PPO10h",
+    "POO9h", "POO3h", "POO4h", "POO10h", "OI1h", "OI2h",
 ]
 CHANNEL_TO_ID = {name: i for i, name in enumerate(CHANNEL_VOCAB)}
 assert len(CHANNEL_TO_ID) == len(CHANNEL_VOCAB), "duplicate channel name in CHANNEL_VOCAB"

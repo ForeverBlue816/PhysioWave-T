@@ -54,8 +54,6 @@
 #   ALLOW_UPSAMPLE_FACED  1: accept FACED at a rate the registry does not list.
 #                   The official configuration never sets this. FACED's 31
 #                   genuinely-250 Hz subjects are accepted WITHOUT it.
-#   HGD_OWN_SLOTS   1: place HGD on its own 128 10-5 names instead of the EGI
-#                   slots HBN uses. Right only if HGD is alone on E128_512.
 # ============================================================================
 
 set -uo pipefail
@@ -113,7 +111,6 @@ STRIDE_SECONDS="${STRIDE_SECONDS:-}"
 VERIFY_POWERLINE="${VERIFY_POWERLINE:-0}"
 PSD_VERIFIED="${PSD_VERIFIED:-0}"
 ALLOW_UPSAMPLE_FACED="${ALLOW_UPSAMPLE_FACED:-0}"
-HGD_OWN_SLOTS="${HGD_OWN_SLOTS:-0}"
 
 # An EMPTY directory is not an absent one, and `bash ... layout` creates all six
 # before anything is downloaded -- so the -d test passes for every corpus that
@@ -175,7 +172,6 @@ ARGS=(--dataset "${DATASET}" --root "${RAW_ROOT}" --out-dir "${OUT_DIR}"
 [[ "${JOBS}" -gt 1 ]]               && ARGS+=(--jobs "${JOBS}")
 [[ "${VERIFY_POWERLINE}" == "1" ]]  && ARGS+=(--verify-powerline)
 [[ "${PSD_VERIFIED}" == "1" ]]      && ARGS+=(--psd-verified)
-[[ "${HGD_OWN_SLOTS}" == "1" ]]     && ARGS+=(--hgd-own-slots)
 if [[ "${ALLOW_UPSAMPLE_FACED}" == "1" ]]; then
     echo "WARNING: --allow-upsample-faced accepts FACED at ANY rate, including" >&2
     echo "         the 250 Hz preprocessed release. The 31 subjects genuinely" >&2

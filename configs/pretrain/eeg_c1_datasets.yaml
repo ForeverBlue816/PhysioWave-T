@@ -89,9 +89,16 @@ hgd:
   skip_notch_reason: >-
     no line peak at 50 or 60 Hz in 40 recordings (1.00x / 0.99x); the 100 Hz
     harmonic would land inside the high-gamma band of interest
+  # Cz is the recording reference and the authors note residual signal remains
+  # on it, so it is a real but attenuated channel rather than a dead one. It
+  # occupies slot 15 and will read low-variance in the QC block; that is the
+  # montage, not a bad electrode.
+  reference: Cz
   notes: >-
     128 electrodes on a standard 10-05 montage at 500 Hz, referenced to Cz with
-    residual signal remaining on Cz. The montage uses 10-05 halfway positions
+    residual signal remaining on Cz. Fifty of the electrodes are 10-05 halfway
+    positions (FFC5h, CPP3h, TPP9h); the slot list is measured from the corpus
+    with --derive-slots, not transcribed. The montage uses 10-05 halfway positions
     (FFC5h, CPP3h, TPP9h), which is why a slot list of 10-10 names catches only
     58% of it. Subject 14 has roughly half its sensors degraded in the official
     test split; per-recording slot coverage and the QC block record it. The task

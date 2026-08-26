@@ -477,6 +477,49 @@ def test_12f_proportional_sampling_sees_every_window_once():
         RouteSchedule(index, weights="whatever-that-means", seed=42)
 
 
+# --- 12g -------------------------------------------------------------------- #
+def test_12g_hgd_montage_is_10_05_and_fully_resolvable():
+    """HGD's 128 electrodes must every one map to a real vocabulary id.
+
+    The first version of this slot list was assembled from 10-10 names and a
+    guess. HGD is 10-05: fifty of its electrodes are HALFWAY positions -- FFC5h
+    lies between FFC5 and FFC3 -- so only 74 of 128 resolved, per-file coverage
+    sat below the gate, and every recording in the corpus would have been
+    skipped. The list is now measured from the corpus with --derive-slots.
+    """
+    from physiowave.eeg_c1.routes import SLOTS_128, SLOTS_128_HGD
+
+    assert len(SLOTS_128_HGD) == 128
+    assert len(set(SLOTS_128_HGD)) == 128, "a duplicate slot would drop a channel"
+
+    ids, unknown = channel_ids_for(SLOTS_128_HGD)
+    assert not unknown, f"{len(unknown)} HGD slots are not electrodes: {unknown[:8]}"
+    assert PAD_ID not in ids and 1 not in ids, "a slot resolved to <pad>/<unk>"
+
+    # The halfway positions are spelled with a lowercase h, and normalisation
+    # folds the spellings a recording might use onto that one.
+    h_slots = [x for x in SLOTS_128_HGD if x[-1] == "h"]
+    assert len(h_slots) == 50, f"{len(h_slots)} halfway positions, expected 50"
+    for name in ("FFC5h", "TPP10h", "OI2h", "AFP3h"):
+        assert name in SLOTS_128_HGD
+        assert normalize_channel_name(name.upper()) == name
+        assert normalize_channel_name(name.lower()) == name
+
+    # HGD and HBN share the route's SHAPE, never electrode identities: HBN
+    # records EGI net positions and these are scalp labels. Any overlap would
+    # train one electrode's embedding on the other's signal.
+    assert not (set(SLOTS_128_HGD) & set(SLOTS_128))
+
+    # Cz is the recording reference, kept as a real (attenuated) channel.
+    assert SLOTS_128_HGD.index("Cz") == 15
+    assert "M1" in SLOTS_128_HGD and "M2" in SLOTS_128_HGD
+
+    # The aux channels the 133-channel files carry are not electrodes and must
+    # not have crept into the montage.
+    for aux in ("EOG", "EOGh", "EOGv", "EMG_RH", "EMG_LH", "EMG_RF"):
+        assert aux not in SLOTS_128_HGD
+
+
 # --- 13 --------------------------------------------------------------------- #
 def test_13_deap_is_never_a_pretraining_dataset():
     assert "deap" not in PRETRAIN_DATASETS
