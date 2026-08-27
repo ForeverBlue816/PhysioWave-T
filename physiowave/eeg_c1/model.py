@@ -24,6 +24,57 @@ token counts with nothing to resize and nothing to learn per route.
 Routing is by ``route_id``, which the data carries. There is no learned gate
 and this is not a mixture of experts: the recording's montage is known before
 the model sees it.
+
+The objective
+-------------
+
+::
+
+                             clean EEG x
+                             /         \
+                    target branch     online branch
+                          |                 |
+                Wavelet + ScaleFold     choose mask
+                          |                 |
+                     clean spec        mask raw EEG
+                          |                 |
+                       DETACH        Wavelet + ScaleFold
+                          |                 |
+                    target_spec         PatchEmbed
+                                            |
+                                       mask token
+                                            |
+                                   shared Transformer
+                                      /          \
+                              spec decoder    raw decoder
+                                   |                |
+                               pred_spec         pred_raw
+
+    L = L_spec + lambda_raw * L_raw + lambda_fold * L_foldKL
+
+    L_spec = masked MSE      ( pred_spec, stopgrad(clean folded wavelet) )
+    L_raw  = masked SmoothL1 ( pred_raw,  stopgrad(clean preprocessed EEG) )
+
+Three properties this shape exists to get, each of which the previous version
+lacked:
+
+**The target is stop-gradient.** It is produced by the very frontend being
+trained -- learnable wavelet filters and a learnable ScaleFold -- so without
+``detach`` the reconstruction term could be reduced by moving the target
+instead of by predicting it. Nothing about that is a representation getting
+better.
+
+**The corruption happens to the SIGNAL, before the frontend.** The frontend
+contains temporal convolution and cross-scale attention, so a patch that is
+masked at the token site has already spread into its neighbours' features by
+the time the mask token replaces it. Masking the raw samples first closes that
+path. The mask token is kept as well: with the samples zeroed, the frontend's
+response to a zero-filled stretch would otherwise identify the missing patch
+just as reliably.
+
+**There is a second target.** Reconstructing only the folded wavelet
+representation lets the frontend choose what is easy to reconstruct. Predicting
+the preprocessed EEG as well ties the tokens to the measured signal.
 """
 
 from __future__ import annotations
@@ -41,6 +92,43 @@ from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncode
 from wavelet_modules import ScaleFold, SoftGateWaveletDecomp
 
 from .routes import ROUTES, Route
+
+
+def apply_patch_mask_to_signal(x: torch.Tensor, mask: torch.Tensor,
+                               patch_t: int,
+                               fill_value: float = 0.0) -> torch.Tensor:
+    """Zero exactly the ``(channel, time-patch)`` regions the token mask names.
+
+    ``x`` is ``[B, C, T]`` and ``mask`` is ``[B, C*P]`` in the CHANNEL-MAJOR
+    order the tokens use: token ``c*P + p`` is channel ``c``, patch ``p``. So a
+    mask is not a time mask shared across electrodes -- Fp1's patch 4 can be
+    masked while Fp2's patch 4 is visible, and only Fp1's samples are removed.
+    Reshaping to ``[B, C, P, patch_t]`` is that same order read back, not a
+    reinterpretation of it.
+
+    Zero is the fill because the preprocessed signal is z-scored per window, so
+    zero is its mean rather than an arbitrary value the frontend could learn to
+    recognise as "masked". No noise is injected: that would put a second,
+    uncontrolled corruption into an objective whose point is a controlled one.
+    """
+    B, C, T = x.shape
+    n_patches = T // patch_t
+    if n_patches * patch_t != T:
+        raise ValueError(f"T={T} is not a whole number of {patch_t}-wide patches")
+    if mask.shape != (B, C * n_patches):
+        raise ValueError(
+            f"mask {tuple(mask.shape)} does not match [B, C*P] = "
+            f"[{B}, {C * n_patches}]")
+
+    patches = x.reshape(B, C, n_patches, patch_t)          # [B, C, P, pt]
+    keep = ~mask.reshape(B, C, n_patches, 1)               # [B, C, P, 1]
+    if fill_value == 0.0:
+        out = patches * keep.to(patches.dtype)
+    else:
+        out = torch.where(keep, patches,
+                          torch.as_tensor(fill_value, dtype=patches.dtype,
+                                          device=patches.device))
+    return out.reshape(B, C, T)
 
 
 class WaveletFrontend(nn.Module):
@@ -108,6 +196,10 @@ class MultiRouteEEGPretrainer(nn.Module):
                  depth: int = 6,
                  num_heads: int = 6,
                  mlp_ratio: float = 4.0,
+                 # Corrupt the SIGNAL before the frontend rather than only the
+                 # tokens after it. False reproduces the older ordering, which
+                 # exists for the ablation and not as a recommendation.
+                 mask_before_frontend: bool = True,
                  dropout: float = 0.1,
                  norm: str = "rmsnorm",
                  ffn: str = "swiglu",
@@ -172,7 +264,19 @@ class MultiRouteEEGPretrainer(nn.Module):
                                      dropout=dropout)
             for rate, patch_t in rate_to_patch_t.items()
         })
+        # The second decoder, predicting the preprocessed EEG rather than the
+        # folded wavelet representation. Per RATE for the same reason as the
+        # first: a 0.5 s patch is 128 samples at 256 Hz and 256 at 512, and
+        # nothing else about the head depends on the route. PRETRAINING ONLY --
+        # it is not part of what export_eeg_pretrained_encoder.py ships, and
+        # the downstream encoder does not grow by it.
+        self.raw_reconstruction_heads = nn.ModuleDict({
+            rate: ReconstructionHead(embed_dim=embed_dim, patch_dim=patch_t,
+                                     dropout=dropout)
+            for rate, patch_t in rate_to_patch_t.items()
+        })
         self._rate_patch_t = dict(rate_to_patch_t)
+        self.mask_before_frontend = bool(mask_before_frontend)
 
         # -- shared -------------------------------------------------------- #
         self.channel_encoder = None
@@ -253,11 +357,20 @@ class MultiRouteEEGPretrainer(nn.Module):
             report[f"patch_embed.{rate}"] = count(pe)
         for rate, head in self.reconstruction_heads.items():
             report[f"reconstruction_head.{rate}"] = count(head)
+        for rate, head in self.raw_reconstruction_heads.items():
+            report[f"raw_reconstruction_head.{rate}"] = count(head)
         if self.channel_encoder is not None:
             report["channel_encoder"] = count(self.channel_encoder)
             report["channel_to_token"] = count(self.channel_to_token)
             report["channel_token_gate"] = 1
         report["mask_token"] = self.mask_token.numel()
+        # What a fine-tuning checkpoint actually carries. Both decoders are
+        # pretraining-only, so quoting `total` as the size of the downstream
+        # encoder would overstate it.
+        report["pretraining_only"] = sum(
+            count(h) for h in list(self.reconstruction_heads.values())
+            + list(self.raw_reconstruction_heads.values())) + self.mask_token.numel()
+        report["downstream_encoder"] = report["total"] - report["pretraining_only"]
         return report
 
     def vocab_fingerprint(self) -> Dict[str, object]:
@@ -419,14 +532,58 @@ class MultiRouteEEGPretrainer(nn.Module):
                                 time_size=route.patches_per_channel)
         return self.shared_transformer(tokens)
 
-    def forward(self, x, route_id, channel_meta=None, mask_ratio=None,
-                mask_generator=None):
-        """One route's masked-reconstruction step.
+    def _build_token_view(self, spec, rate, code, n_channels, n_patches):
+        """``[B, C, T] spec -> [B, C*P, D]`` tokens, ready for the encoder.
 
-        Returns a dict rather than a tuple: the trainer needs the validity mask
-        and the fold's KL as well as the three tensors the loss is built from,
-        and a five-tuple whose order has to be remembered is how those get
-        silently swapped.
+        Patcher, channel code, position encoding -- the three steps that are
+        identical for the clean view and the corrupted one, so that the two
+        cannot drift apart by being written twice.
+        """
+        tokens = self.patch_embed_by_rate[rate](spec.unsqueeze(1))  # [B, C*P, D]
+        if code is not None:
+            tokens = self._inject_channel_tokens(tokens, code, n_channels,
+                                                 n_patches)
+        return self.pos_embed(tokens, freq_size=n_channels, time_size=n_patches)
+
+    @staticmethod
+    def _check_mask_override(mask_override, batch, n_tokens, valid_tokens,
+                             device):
+        """An explicit mask, validated. For tests and figures, not training."""
+        m = mask_override
+        if not torch.is_tensor(m):
+            raise TypeError(f"mask_override must be a tensor, got {type(m)}")
+        if m.dtype != torch.bool:
+            raise TypeError(f"mask_override must be bool, got {m.dtype}")
+        if tuple(m.shape) != (batch, n_tokens):
+            raise ValueError(
+                f"mask_override {tuple(m.shape)} != [B, C*P] = "
+                f"[{batch}, {n_tokens}]")
+        m = m.to(device)
+        if valid_tokens is not None and bool((m & ~valid_tokens).any()):
+            # Refused rather than silently cleared: a caller that asked to mask
+            # a padded slot has the token order wrong, and quietly dropping
+            # those entries would hide it behind a mask ratio that is a little
+            # lower than requested.
+            bad = int((m & ~valid_tokens).sum())
+            raise ValueError(
+                f"mask_override selects {bad} padded channel token(s). Padded "
+                f"slots hold no measurement and are never reconstruction "
+                f"targets.")
+        return m
+
+    def forward(self, x, route_id, channel_meta=None, mask_ratio=None,
+                mask_generator=None, mask_override=None):
+        """One route's masked-reconstruction step, as two views of one window.
+
+        The clean view supplies both detached targets and the mask. The online
+        view is the same signal with the masked patches zeroed BEFORE the
+        wavelet frontend, so nothing inside a masked patch can reach a visible
+        token through the frontend's temporal convolution or its cross-scale
+        attention.
+
+        Returns a dict rather than a tuple: there are now two predictions, two
+        targets, the validity mask and the fold's KL, and an eight-tuple whose
+        order has to be remembered is how those get silently swapped.
         """
         route = self.route(route_id)
         if x.shape[-2] != route.n_channels or x.shape[-1] != route.window_samples:
@@ -436,95 +593,190 @@ class MultiRouteEEGPretrainer(nn.Module):
         if mask_ratio is None:
             mask_ratio = self.mask_ratio
 
-        C, P = route.n_channels, route.patches_per_channel
+        n_channels = route.n_channels
+        n_patches = route.patches_per_channel
+        patch_t = route.patch_t
         rate = route.rate_key
+        batch = x.shape[0]
 
-        # 0. a padded slot holds no measurement; make that true of the tensor
-        x = self._zero_padded_channels(x, channel_meta)
+        # -- A. the clean signal -------------------------------------------- #
+        # A padded slot holds no measurement; make that true of the tensor
+        # before anything -- including the target -- reads it.
+        clean_x = self._zero_padded_channels(x, channel_meta)   # [B, C, T]
 
-        # 1. route-specific wavelet expert, then the dynamic fold
-        spec = self.wavelet_frontends[route_id](x)          # [B, C, T]
+        # -- B. the target view, and the mask ------------------------------- #
+        clean_spec = self.wavelet_frontends[route_id](clean_x)  # [B, C, T]
 
-        # 2. rate-specific patcher
-        tokens = self.patch_embed_by_rate[rate](spec.unsqueeze(1))   # [B, C*P, D]
-        target = self.patchify(spec, route.patch_t)                  # [B, C*P, pt]
+        # DETACHED. Both targets come from the frontend that is being trained,
+        # so a target left attached could be moved toward the prediction rather
+        # than the other way round.
+        target_spec = self.patchify(clean_spec, patch_t).detach()   # [B, C*P, pt]
+        target_raw = self.patchify(clean_x, patch_t).detach()       # [B, C*P, pt]
 
-        # 3. shared C1 code, broadcast over each channel's own time patches
         code = self._channel_code(channel_meta)
-        if code is not None:
-            tokens = self._inject_channel_tokens(tokens, code, C, P)
+        clean_tokens = self._build_token_view(clean_spec, rate, code,
+                                              n_channels, n_patches)
 
-        # 4. shared 2-D position encoding
-        tokens = self.pos_embed(tokens, freq_size=C, time_size=P)
-
-        # 5. mask, then the shared encoder
         valid_tokens = self._valid_token_mask(
-            channel_meta, C, P, tokens.shape[0], tokens.device)
-        mask = self._select_mask(tokens, mask_ratio, valid_tokens,
-                                 mask_generator)
-        masked = tokens.clone()
-        masked[mask] = self.mask_token.expand_as(tokens)[mask]
-        encoded = self.shared_transformer(masked)
+            channel_meta, n_channels, n_patches, batch, clean_tokens.device)
 
-        # 6. rate-specific decoder
-        pred = self.reconstruction_heads[rate](encoded)              # [B, C*P, pt]
+        if mask_override is not None:
+            mask = self._check_mask_override(
+                mask_override, batch, n_channels * n_patches, valid_tokens,
+                clean_tokens.device)
+        else:
+            # From the clean view, and detached: mask selection is a decision
+            # about which tokens to hide, not a differentiable operation.
+            mask = self._select_mask(clean_tokens.detach(), mask_ratio,
+                                     valid_tokens, mask_generator)
+
+        # -- C. the online view --------------------------------------------- #
+        if self.mask_before_frontend:
+            masked_x = apply_patch_mask_to_signal(clean_x, mask, patch_t)
+            online_spec = self.wavelet_frontends[route_id](masked_x)
+            online_tokens = self._build_token_view(online_spec, rate, code,
+                                                   n_channels, n_patches)
+        else:
+            # The ablation ordering: the frontend sees the whole window and only
+            # the tokens are replaced. One frontend pass, so no second one is
+            # paid for a view that would be identical.
+            online_spec = clean_spec
+            online_tokens = clean_tokens
+
+        # The fold's KL and alpha are module state overwritten by each call, so
+        # they are read HERE -- after the last frontend call in this forward --
+        # and belong to the online pass. Reading them earlier would report the
+        # clean pass's statistics for a step trained on the corrupted one.
+        fold_reg = self.wavelet_frontends[route_id].reg_loss
+        fold_alpha = self.wavelet_frontends[route_id].alpha_mean
+
+        # -- D. mask token, encoder, two decoders --------------------------- #
+        # Kept even though the samples are already gone: the frontend's response
+        # to a zero-filled stretch is itself a signature, and without the mask
+        # token the encoder could find the missing patch by that alone.
+        masked_tokens = online_tokens.clone()
+        masked_tokens[mask] = self.mask_token.expand_as(online_tokens)[mask]
+        encoded = self.shared_transformer(masked_tokens)
+
+        pred_spec = self.reconstruction_heads[rate](encoded)      # [B, C*P, pt]
+        pred_raw = self.raw_reconstruction_heads[rate](encoded)   # [B, C*P, pt]
+
+        with torch.no_grad():
+            # Diagnostic, never a loss: if this is ~0 under
+            # mask_before_frontend, the corruption is not reaching the frontend.
+            delta = (clean_spec - online_spec).abs().mean() \
+                if self.mask_before_frontend else torch.zeros(
+                    (), device=clean_spec.device)
 
         return {
-            "pred": pred,
-            "target": target,
+            "pred_spec": pred_spec,
+            "target_spec": target_spec,
+            "pred_raw": pred_raw,
+            "target_raw": target_raw,
             "mask": mask,
             "valid_tokens": valid_tokens,
-            "spec": spec,
-            "tokens": tokens,
-            "fold_reg": self.wavelet_frontends[route_id].reg_loss,
-            "fold_alpha": self.wavelet_frontends[route_id].alpha_mean,
+            "clean_spec": clean_spec.detach(),
+            "online_spec": online_spec,
+            "clean_online_spec_delta": delta,
+            "fold_reg": fold_reg,
+            "fold_alpha": fold_alpha,
+            "mask_before_frontend": self.mask_before_frontend,
             "route_id": route_id,
+            # -- compatibility aliases -------------------------------------- #
+            # scripts/visualize_eeg_pretraining.py and the older tests read
+            # these three names. They point at the spec objective, which is what
+            # they meant before there was a second one.
+            "pred": pred_spec,
+            "target": target_spec,
+            "spec": clean_spec.detach(),
+            "tokens": online_tokens,
         }
 
 
-def masked_reconstruction_loss(out, fold_kl: float = 1e-3):
-    """``masked patch MSE + fold_kl * ScaleFold KL``, plus the reported metrics.
+def masked_reconstruction_loss(out, spec_weight: float = 1.0,
+                               raw_weight: float = 0.25,
+                               fold_kl: float = 1e-3,
+                               raw_beta: float = 0.5):
+    """``L = w_spec*MSE(spec) + w_raw*SmoothL1(raw) + fold_kl*KL``, and metrics.
 
-    Only masked tokens enter the reconstruction term, and padded channel slots
-    are never masked, so they never enter it either -- there is no second place
-    validity has to be applied.
+    Both terms are computed over masked tokens only. Padded channel slots are
+    never masked -- ``_select_mask`` excludes them and ``_check_mask_override``
+    refuses them -- so validity does not have to be applied a second time here,
+    and the denominator is the number of masked tokens rather than the number
+    of tokens.
+
+    SmoothL1 for the raw term rather than MSE. The preprocessed EEG is clipped
+    but still holds clinical events an order of magnitude above the background,
+    and under a squared penalty a handful of those would set the gradient for
+    the whole auxiliary term.
+
+    The old single-argument call ``masked_reconstruction_loss(out, 1e-3)`` is
+    NOT compatible: the second positional is now spec_weight. Callers pass
+    fold_kl by name.
     """
-    pred, target, mask = out["pred"], out["target"], out["mask"]
-    sel = mask.unsqueeze(-1).expand_as(pred)
+    pred_spec, target_spec = out["pred_spec"], out["target_spec"]
+    pred_raw, target_raw = out["pred_raw"], out["target_raw"]
+    mask = out["mask"]
+
     n = int(mask.sum())
-    if n == 0:
-        zero = pred.sum() * 0.0
-        return zero, {"loss_masked_mse": 0.0, "masked_mae": 0.0,
-                      "masked_rmse": 0.0, "masked_corr": 0.0,
-                      "actual_mask_ratio": 0.0, "loss_fold_kl": 0.0,
-                      "loss_total": 0.0}
-
-    p = pred[sel]
-    t = target[sel]
-    mse = torch.nn.functional.mse_loss(p, t)
-
     reg = out.get("fold_reg")
-    kl = reg if reg is not None else pred.sum() * 0.0
-    total = mse + fold_kl * kl
+
+    if n == 0:
+        # Differentiable zero, not a Python 0.0: the caller calls .backward()
+        # on this and an epoch whose first step happened to mask nothing must
+        # not be the one that raises.
+        zero = pred_spec.sum() * 0.0 + pred_raw.sum() * 0.0
+        return zero, {
+            "loss_total": 0.0, "loss_masked_spec_mse": 0.0,
+            "loss_masked_raw_smoothl1": 0.0, "loss_fold_kl": 0.0,
+            "masked_spec_mae": 0.0, "masked_spec_rmse": 0.0,
+            "masked_raw_mae": 0.0, "masked_raw_rmse": 0.0,
+            "masked_corr": 0.0, "actual_mask_ratio": 0.0,
+            "clean_online_spec_delta": 0.0,
+            # compatibility aliases, as below
+            "loss_masked_mse": 0.0, "masked_mae": 0.0, "masked_rmse": 0.0,
+        }
+
+    sel = mask.unsqueeze(-1).expand_as(pred_spec)
+    p_spec, t_spec = pred_spec[sel], target_spec[sel]
+    p_raw, t_raw = pred_raw[sel], target_raw[sel]
+
+    loss_spec = torch.nn.functional.mse_loss(p_spec, t_spec)
+    loss_raw = torch.nn.functional.smooth_l1_loss(p_raw, t_raw, beta=raw_beta)
+
+    kl = reg if reg is not None else pred_spec.sum() * 0.0
+    total = spec_weight * loss_spec + raw_weight * loss_raw + fold_kl * kl
 
     with torch.no_grad():
-        mae = (p - t).abs().mean()
-        rmse = mse.sqrt()
-        pc, tc = p - p.mean(), t - t.mean()
+        spec_mae = (p_spec - t_spec).abs().mean()
+        spec_rmse = loss_spec.sqrt()
+        raw_mae = (p_raw - t_raw).abs().mean()
+        raw_rmse = torch.nn.functional.mse_loss(p_raw, t_raw).sqrt()
+        pc, tc = p_spec - p_spec.mean(), t_spec - t_spec.mean()
         denom = pc.norm() * tc.norm()
-        corr = (pc @ tc / denom) if float(denom) > 0 else torch.zeros((),
-                                                                     device=p.device)
+        corr = (pc @ tc / denom) if float(denom) > 0 else torch.zeros(
+            (), device=p_spec.device)
         valid = out.get("valid_tokens")
-        denom_tokens = (int(valid.sum()) if valid is not None
-                        else mask.numel())
+        denom_tokens = int(valid.sum()) if valid is not None else mask.numel()
         ratio = n / max(1, denom_tokens)
+        delta = out.get("clean_online_spec_delta")
 
     return total, {
         "loss_total": float(total.detach()),
-        "loss_masked_mse": float(mse.detach()),
+        "loss_masked_spec_mse": float(loss_spec.detach()),
+        "loss_masked_raw_smoothl1": float(loss_raw.detach()),
         "loss_fold_kl": float(kl.detach() if torch.is_tensor(kl) else kl),
-        "masked_mae": float(mae),
-        "masked_rmse": float(rmse),
+        "masked_spec_mae": float(spec_mae),
+        "masked_spec_rmse": float(spec_rmse),
+        "masked_raw_mae": float(raw_mae),
+        "masked_raw_rmse": float(raw_rmse),
         "masked_corr": float(corr),
         "actual_mask_ratio": float(ratio),
+        "clean_online_spec_delta": float(delta) if delta is not None else 0.0,
+        # Compatibility aliases. The history JSONL and the figure captions
+        # were written against these names when the spec term was the whole
+        # objective, so they still resolve to it.
+        "loss_masked_mse": float(loss_spec.detach()),
+        "masked_mae": float(spec_mae),
+        "masked_rmse": float(spec_rmse),
     }

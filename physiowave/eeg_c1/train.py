@@ -3,7 +3,15 @@ Training loop for the EEG C1 multi-route pretrainer.
 
 The objective is unchanged from the legacy pretrainer:
 
-    loss = masked patch MSE  +  fold_kl * ScaleFold KL
+    loss = spec_weight * masked MSE on the DETACHED clean folded-wavelet
+           patches
+         + raw_weight  * masked SmoothL1 on the DETACHED preprocessed EEG
+           patches
+         + fold_kl     * ScaleFold KL
+
+    Under mask_before_frontend the masked patches are zeroed in the SIGNAL
+    before the wavelet frontend runs, so nothing inside a masked patch can
+    reach a visible token through the frontend.
 
 and nothing else. No reference consistency, no contrastive term, no query
 specialisation -- those belong to the WAST/TARE path, which this one does not
@@ -152,7 +160,19 @@ class EEGC1Trainer:
 
         self.epochs = int(tcfg.get("epochs", 10))
         self.grad_accum = int(tcfg.get("grad_accumulation_steps", 1))
-        self.fold_kl = float(tcfg.get("fold_kl", 1e-3))
+        # The objective's weights. Read from an `objective:` block, falling
+        # back to `train:` keys so an existing config keeps working.
+        ocfg = cfg.get("objective", {}) or {}
+        def _obj(name, train_name, default):
+            if name in ocfg:
+                return ocfg[name]
+            return tcfg.get(train_name, default)
+        self.spec_weight = float(_obj("spec_weight", "spec_recon_weight", 1.0))
+        self.raw_weight = float(_obj("raw_weight", "raw_recon_weight", 0.25))
+        self.raw_beta = float(_obj("raw_beta", "raw_smooth_l1_beta", 0.5))
+        self.fold_kl = float(_obj("fold_kl", "fold_kl", 1e-3))
+        self.mask_before_frontend = bool(
+            _obj("mask_before_frontend", "mask_before_frontend", True))
         self.mask_ratio = float(mcfg.get("mask_ratio", 0.5))
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
@@ -188,6 +208,7 @@ class EEGC1Trainer:
             wavelet_names=mcfg.get("wavelet_names"),
             wave_init_mode=mcfg.get("wave_init_mode", "pad"),
             use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
+            mask_before_frontend=self.mask_before_frontend,
             fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
             fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
             masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
@@ -299,7 +320,16 @@ class EEGC1Trainer:
             print(f"  frontend {rid:<10s}     {report[f'wavelet_frontend.{rid}']:,}")
         for rate in sorted(self.raw_model.patch_embed_by_rate):
             print(f"  patch_embed {rate:<7s}    {report[f'patch_embed.{rate}']:,}"
-                  f"   decoder {report[f'reconstruction_head.{rate}']:,}")
+                  f"   spec decoder {report[f'reconstruction_head.{rate}']:,}"
+                  f"   raw decoder {report[f'raw_reconstruction_head.{rate}']:,}")
+        print(f"  downstream encoder      {report['downstream_encoder']:,}"
+              f"   (+{report['pretraining_only']:,} pretraining-only:"
+              f" both decoders and the mask token)")
+        print(f"  objective: spec {self.spec_weight:g} x MSE"
+              f"  + raw {self.raw_weight:g} x SmoothL1(beta={self.raw_beta:g})"
+              f"  + fold_kl {self.fold_kl:g} x KL")
+        print(f"  masking: {'signal before the frontend' if self.mask_before_frontend else 'tokens only, after the frontend'}"
+              f"   targets: detached")
         if "channel_encoder" in report:
             print(f"  channel encoder (C1)    {report['channel_encoder']:,}"
                   f"  + proj {report['channel_to_token']:,}")
@@ -362,7 +392,33 @@ class EEGC1Trainer:
 
     def load(self, path: str):
         ck = torch.load(path, map_location="cpu", weights_only=False)
-        self.raw_model.load_state_dict(ck["model"])
+        # STRICT, deliberately. A checkpoint from the single-decoder objective
+        # has no raw_reconstruction_heads, and loading it loosely would resume
+        # a run whose optimizer state, scheduler position and step count all
+        # belong to a different objective -- reported as a continuation of it.
+        # Resuming and initialising from are not the same operation.
+        try:
+            self.raw_model.load_state_dict(ck["model"])
+        except RuntimeError as exc:
+            missing = [k for k in self.raw_model.state_dict()
+                       if k not in ck["model"]]
+            raw_missing = [k for k in missing
+                           if k.startswith("raw_reconstruction_heads.")]
+            if raw_missing:
+                raise SystemExit(
+                    f"{path} has no raw reconstruction head, so it was written "
+                    f"by the single-decoder objective and is not a resume of "
+                    f"this one.\n\n"
+                    f"  Its optimizer state, scheduler position and step count "
+                    f"belong to a different loss, and continuing from them "
+                    f"would be reported as one run when it is two.\n\n"
+                    f"  To carry the representation over instead, export it and "
+                    f"start a new run:\n"
+                    f"    python scripts/export_eeg_pretrained_encoder.py "
+                    f"--checkpoint {path} ...\n\n"
+                    f"  ({len(raw_missing)} missing key(s), e.g. "
+                    f"{raw_missing[0]})") from exc
+            raise
         self.optimizer.load_state_dict(ck["optimizer"])
         self.scheduler.load_state_dict(ck["scheduler"])
         if ck.get("scaler"):
@@ -409,7 +465,10 @@ class EEGC1Trainer:
             with ctx:
                 out = self.model(x, batch["route_id"], channel_meta=meta,
                                  mask_ratio=self.mask_ratio)
-                loss, metrics = masked_reconstruction_loss(out, self.fold_kl)
+                loss, metrics = masked_reconstruction_loss(
+                    out, spec_weight=self.spec_weight,
+                    raw_weight=self.raw_weight, fold_kl=self.fold_kl,
+                    raw_beta=self.raw_beta)
 
             self.scaler.scale(loss / self.grad_accum).backward()
             grad_norm = float("nan")
@@ -480,11 +539,15 @@ class EEGC1Trainer:
                 out = self.raw_model(x, batch["route_id"], channel_meta=meta,
                                      mask_ratio=self.mask_ratio,
                                      mask_generator=gen)
-                _, metrics = masked_reconstruction_loss(out, self.fold_kl)
+                _, metrics = masked_reconstruction_loss(
+                    out, spec_weight=self.spec_weight,
+                    raw_weight=self.raw_weight, fold_kl=self.fold_kl,
+                    raw_beta=self.raw_beta)
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
         it.close()
         means = acc.mean()
-        for k in ("loss_total", "loss_masked_mse"):
+        for k in ("loss_total", "loss_masked_spec_mse",
+                  "loss_masked_raw_smoothl1", "loss_masked_mse"):
             if k in means:
                 means[k] = _reduce_mean(means[k], self.distributed, self.device)
         return means

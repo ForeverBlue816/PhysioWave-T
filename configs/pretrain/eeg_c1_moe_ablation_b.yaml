@@ -1,0 +1,12 @@
+# Ablation B -- detach + raw fidelity, masking still after the frontend
+#
+# Differs from eeg_c1_moe.yaml in exactly the two objective lines below, so a
+# difference in results is attributable to them and to nothing else.
+defaults: [pretrain/eeg_c1_moe]
+
+objective:
+  spec_weight: 1.0
+  raw_weight: 0.25
+  raw_beta: 0.5
+  fold_kl: 1.0e-3
+  mask_before_frontend: false

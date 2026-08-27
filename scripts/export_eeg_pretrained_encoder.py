@@ -22,6 +22,9 @@ What comes out:
 
 What does not:
 
+    raw_reconstruction_heads.*  the second pretraining decoder, which predicts
+                             the preprocessed EEG. Pretraining-only, like the
+                             one below.
     reconstruction_heads.*   the pretraining decoder. It predicts folded
                              wavelet patches, which no downstream head wants,
                              and keeping it invites fine-tuning against the
@@ -49,7 +52,10 @@ from physiowave.eeg_c1.routes import ROUTES                    # noqa: E402
 
 KEEP_PREFIXES = ("channel_encoder.", "channel_to_token.", "shared_transformer.",
                  "pos_embed.", "mask_token")
-DROP_PREFIXES = ("reconstruction_heads.",)
+#: Documentation of what the allowlist above already excludes. Both decoders
+#: are pretraining-only: the spec head predicts folded wavelet patches and the
+#: raw head predicts preprocessed EEG, and fine-tuning needs neither.
+DROP_PREFIXES = ("reconstruction_heads.", "raw_reconstruction_heads.")
 
 
 def main(argv=None) -> int:

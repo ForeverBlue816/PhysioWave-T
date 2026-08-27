@@ -47,6 +47,38 @@ data:
   # leaving HBN near 30%.
   weights: balanced
 
+# ---------------------------------------------------------------------------
+# The self-supervised objective
+#
+#   L = spec_weight * MSE( pred_spec, stopgrad(clean folded wavelet) )
+#     + raw_weight  * SmoothL1( pred_raw, stopgrad(clean preprocessed EEG) )
+#     + fold_kl     * ScaleFold KL
+#
+# Both targets are stop-gradient: they are produced by the frontend being
+# trained, so an attached target could be moved toward the prediction instead.
+#
+# mask_before_frontend zeroes the masked patches in the SIGNAL before the
+# wavelet frontend, rather than only replacing tokens after it. The frontend
+# has temporal convolution and cross-scale attention, so without this a masked
+# patch has already spread into its neighbours' features by the time the mask
+# token replaces it.
+#
+# THE THREE ABLATION MODES, which differ in these two lines and nothing else:
+#
+#   A  raw_weight: 0.0   mask_before_frontend: false   -- detach alone
+#   B  raw_weight: 0.25  mask_before_frontend: false   -- + raw fidelity
+#   C  raw_weight: 0.25  mask_before_frontend: true    -- + no-leak masking
+#
+# C is this file. The pre-detach objective is deliberately NOT reachable: a
+# target that can be moved by the model is not a configuration option, and the
+# runs that used it already exist as checkpoints.
+objective:
+  spec_weight: 1.0
+  raw_weight: 0.25
+  raw_beta: 0.5              # SmoothL1 knee, in z-scored units
+  fold_kl: 1.0e-3
+  mask_before_frontend: true
+
 model:
   max_level: 3
   wave_kernel_size: 16
