@@ -50,7 +50,7 @@ EEG_ROOT="${EEG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/eeg}"
 usage() {
     sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     echo "datasets: layout physionet_mi faced m3cv hgd hbn tdbrain"
-    echo "checks:   verify-hbn [releases]"
+    echo "checks:   verify-hbn [releases]   probe-hbn [releases]"
 }
 
 need() {
@@ -87,15 +87,21 @@ tree_bytes() {
         | awk '{s+=$1} END {print s+0}'
 }
 
-#: The releases that actually exist in the bucket, verified by listing it on
-#: 2026-08-27: cmi_bids_R1 .. cmi_bids_R9, plus cmi_bids_NC. There is no R10 or
-#: R11 there -- the published release table lists eleven, but only nine are
-#: mirrored to fcp-indi, and asking for the other two produced a bare "cannot
-#: read the remote size" that was retried for hours.
+#: What `all` expands to. Listing the parent prefix on 2026-08-27 returned
+#: cmi_bids_R1 .. cmi_bids_R9 and cmi_bids_NC, with no R10 or R11 -- and those
+#: two would sort between R1 and R2, so they were not merely cut off.
+#:
+#: HBN's own release table DOES list R10 and R11 at the same S3 URIs, 295
+#: subjects each. The two disagree. A parent listing is not proof a prefix is
+#: absent, so a release named explicitly is still attempted and the direct
+#: probe in fetch_one gives the real answer; only `all` is limited to what was
+#: actually seen, because expanding it to a name that 404s is how hours went
+#: into retrying nothing.
 #:
 #: cmi_bids_NC is the "Not for Commercial Use" release and is deliberately NOT
-#: in this list: the main model is trained on the standard releases only.
+#: here: the main model uses the standard releases only.
 HBN_RELEASES_ALL="R1 R2 R3 R4 R5 R6 R7 R8 R9"
+HBN_RELEASES_DOCUMENTED="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
 
 have_working_aws() {
     command -v aws >/dev/null 2>&1 || return 1
@@ -445,11 +451,11 @@ CFG
     else
         case " ${HBN_RELEASES_ALL} " in
             *" ${rel} "*) ;;
-            *) echo "ERROR: ${rel} is not a release in this bucket." >&2
-               echo "       Available: ${HBN_RELEASES_ALL}" >&2
-               echo "       (cmi_bids_NC exists but is the Not-for-Commercial-" >&2
-               echo "       Use release and is excluded from the main model.)" >&2
-               exit 1 ;;
+            *) echo "NOTE: ${rel} was not in the parent listing on 2026-08-27," >&2
+               echo "      which showed ${HBN_RELEASES_ALL} and NC. HBN's own" >&2
+               echo "      release table does list R10 and R11 at these URIs," >&2
+               echo "      so this is attempted anyway -- the direct probe" >&2
+               echo "      below is what actually settles it." >&2 ;;
         esac
         fetch_one "${rel}" || _hbn_rc=$?
     fi
@@ -460,6 +466,33 @@ CFG
     echo "every shard's provenance. It refuses to drop a row by position, so a"
     echo "release whose reference is labelled differently fails loudly rather"
     echo "than quietly deleting whichever channel came last."
+    ;;
+
+probe-hbn)
+    # Does a given prefix hold anything? The parent listing and HBN's release
+    # table disagree about R10 and R11, and this is the test that decides:
+    # listing the prefix ITSELF rather than looking for it in its parent.
+    if ! have_working_aws; then
+        echo "ERROR: the AWS CLI does not run." >&2; aws_repair_hint; exit 1
+    fi
+    rels="${2:-${HBN_RELEASES_DOCUMENTED}}"
+    echo "listing each prefix directly (not via the parent):"
+    echo ""
+    for r in ${rels}; do
+        pfx="s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_${r}/"
+        n=$(aws s3 ls "${pfx}" --no-sign-request 2>&1 | head -5)
+        if [[ -z "${n}" ]]; then
+            printf "  %-4s EMPTY -- nothing under %s\n" "${r}" "${pfx}"
+        elif echo "${n}" | grep -qi "error\|could not"; then
+            printf "  %-4s ERROR: %s\n" "${r}" "$(echo "${n}" | head -1)"
+        else
+            printf "  %-4s exists (%s...)\n" "${r}" \
+                "$(echo "${n}" | head -1 | awk '{print $NF}')"
+        fi
+    done
+    echo ""
+    echo "A prefix that lists objects here is fetchable regardless of whether"
+    echo "it appeared in the parent listing."
     ;;
 
 verify-hbn)
