@@ -21,10 +21,25 @@
 # The corpora are NOT preprocessed here. That step needs mne and belongs under
 # $HOME/pwprep; this job reads the manifests it produced.
 # ============================================================================
+# SCALE. Four nodes of four GPUs, sixteen ranks. batch_size_by_route is PER
+# RANK, so the effective batch is sixteen times it and the optimizer sees
+# sixteen times as many windows per step as a single-GPU run at the same
+# setting. Two consequences worth deciding on rather than discovering:
+#
+#   * steps_per_epoch falls by the same factor -- the sampler divides the
+#     corpus by batch x world_size -- so an epoch is a quarter as many steps as
+#     it was on four GPUs, and a schedule expressed in epochs is unchanged
+#     while one expressed in steps is not.
+#   * the learning rate was chosen at a smaller effective batch. LR is NOT
+#     scaled here, because doing it silently is worse than not doing it: decide
+#     it and pass LR= explicitly.
+#
+# Falling back to one node is NUM_GPUS=4 with --nodes=1; the launcher switches
+# rendezvous accordingly.
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
 #SBATCH --time=24:00:00
-#SBATCH --nodes=1
+#SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:4
@@ -50,8 +65,26 @@ fi
 source "${PROJECT_DIR}/scripts/cineca_env.sh"
 cd "${PROJECT_DIR}"
 
-export NUM_GPUS="${NUM_GPUS:-4}"
+export NUM_GPUS="${NUM_GPUS:-4}"                  # per node
+export NNODES="${NNODES:-${SLURM_NNODES:-1}}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-$((SLURM_CPUS_PER_TASK / NUM_GPUS))}"
+
+# Which objective to train. The default is the full one; the ablations exist to
+# separate its three contributions and are selected here, not by editing a file.
+export CONFIG="${CONFIG:-pretrain/eeg_c1_moe}"
+
+# WHERE THE RANKS MEET. One task per node, and torchrun starts NUM_GPUS local
+# ranks inside each. The endpoint is the first node in the allocation, and the
+# port is derived from the job id so two concurrent jobs on overlapping nodes
+# do not try to rendezvous with each other.
+MASTER_ADDR="$(scontrol show hostnames "${SLURM_JOB_NODELIST}" | head -n1)"
+export MASTER_ADDR
+export MASTER_PORT="${MASTER_PORT:-$(( 20000 + SLURM_JOB_ID % 20000 ))}"
+export RDZV_ID="${SLURM_JOB_ID}"
+
+# NCCL over the fabric rather than over whatever it picks first. If a run hangs
+# at startup with all ranks joined, this is the first thing to check.
+export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 
 # Large caches and checkpoints belong on $FAST, never in $HOME (50 GB quota).
 export DATA_ROOT="${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus}"
@@ -59,14 +92,20 @@ export OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 
 echo "============================================================"
 echo "  EEG C1 multi-route pretraining  (job ${SLURM_JOB_ID})"
-echo "  gpus=${NUM_GPUS}  OMP_NUM_THREADS=${OMP_NUM_THREADS}"
+echo "  config     ${CONFIG}"
+echo "  ${NNODES} node(s) x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
+echo "  rendezvous ${MASTER_ADDR}:${MASTER_PORT} (id ${RDZV_ID})"
+echo "  nodes      $(scontrol show hostnames "${SLURM_JOB_NODELIST}" | tr '\n' ' ')"
+echo "  OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 echo "  epochs=${EPOCHS:-<script default>}  resume=${RESUME:-<none>}"
 pw_print_layout
 echo "  DATA_ROOT  =${DATA_ROOT}"
 echo "  OUTPUT_DIR =${OUTPUT_DIR}   (resubmit with RESUME=auto to continue)"
 echo "============================================================"
 
-bash EEG/pretrain_eeg_c1_moe.sh
+# One task per node; torchrun forks NUM_GPUS ranks inside each. --export=ALL so
+# MASTER_ADDR, MASTER_PORT and CONFIG reach every node.
+srun --ntasks-per-node=1 --export=ALL bash EEG/pretrain_eeg_c1_moe.sh
 _rc=$?
 
 echo ""

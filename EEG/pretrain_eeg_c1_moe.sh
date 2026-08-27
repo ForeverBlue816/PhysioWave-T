@@ -19,7 +19,9 @@
 #
 # ENVIRONMENT VARIABLES, all optional:
 #
-#   NUM_GPUS              processes for torchrun                    (4)
+#   NUM_GPUS              GPUs per node                              (4)
+#   NNODES                nodes                            ($SLURM_NNODES or 1)
+#   CONFIG                which objective          (pretrain/eeg_c1_moe = full)
 #   EPOCHS                                                          (50)
 #   MAX_STEPS             stop after this many optimizer steps      (unset)
 #   BATCH_SIZE_BY_ROUTE   "E19_256=64,E32_512=48,E64_256=24,E128_512=12"
@@ -42,7 +44,11 @@ source "$(pwd)/scripts/cineca_env.sh"
 
 pw_require_python_deps || exit 1
 
-NUM_GPUS="${NUM_GPUS:-4}"
+NUM_GPUS="${NUM_GPUS:-4}"          # GPUs per node
+NNODES="${NNODES:-${SLURM_NNODES:-1}}"
+# Which objective. pretrain/eeg_c1_moe is the full one; the two ablations
+# differ from it in exactly the raw_weight and mask_before_frontend lines.
+CONFIG="${CONFIG:-pretrain/eeg_c1_moe}"
 EPOCHS="${EPOCHS:-50}"
 GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-4}"
 LR="${LR:-3e-4}"
@@ -103,7 +109,9 @@ mkdir -p "${OUTPUT_DIR}"
 
 echo "============================================================"
 echo "  EEG C1 multi-route pretraining"
-echo "  gpus=${NUM_GPUS}  epochs=${EPOCHS}  grad_accum=${GRAD_ACCUMULATION}"
+echo "  config=${CONFIG}"
+echo "  nodes=${NNODES} x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
+echo "  epochs=${EPOCHS}  grad_accum=${GRAD_ACCUMULATION}"
 echo "  lr=${LR}  wd=${WEIGHT_DECAY}  mask_ratio=${MASK_RATIO}  seed=${SEED}"
 echo "  train manifest ${MANIFEST_TRAIN}"
 echo "  val   manifest ${MANIFEST_VAL}"
@@ -114,15 +122,40 @@ echo "============================================================"
 
 # The full command, recorded next to the checkpoints, so a run can be reproduced
 # from its own output directory rather than from shell history.
-CMD=("${PW_TORCHRUN[@]}" --standalone --nproc_per_node="${NUM_GPUS}"
+# --standalone brings up its own rendezvous on localhost, which is right for
+# one node and wrong for four: every node would elect itself rank 0 and the
+# job would run as N independent one-node trainings that never all-reduce.
+# Above one node, c10d against a named endpoint is what joins them.
+if [[ "${NNODES}" -gt 1 ]]; then
+    if [[ -z "${MASTER_ADDR:-}" ]]; then
+        echo "ERROR: NNODES=${NNODES} but MASTER_ADDR is unset. The sbatch" >&2
+        echo "       sets it from the nodelist; exporting it is how the ranks" >&2
+        echo "       find each other." >&2
+        exit 1
+    fi
+    RDZV=(--nnodes="${NNODES}" --nproc_per_node="${NUM_GPUS}"
+          --node_rank="${SLURM_NODEID:-0}"
+          --rdzv_id="${RDZV_ID:-${SLURM_JOB_ID:-0}}"
+          --rdzv_backend=c10d
+          --rdzv_endpoint="${MASTER_ADDR}:${MASTER_PORT:-29500}")
+else
+    RDZV=(--standalone --nproc_per_node="${NUM_GPUS}")
+fi
+
+CMD=("${PW_TORCHRUN[@]}" "${RDZV[@]}"
      -m physiowave.train.pretrain_main
-     --config pretrain/eeg_c1_moe
+     --config "${CONFIG}"
      --output-dir "${OUTPUT_DIR}"
      "${EXTRA[@]}"
      --set "${OVERRIDES[@]}")
-printf '%q ' "${CMD[@]}" > "${OUTPUT_DIR}/train_command.txt"
-echo >> "${OUTPUT_DIR}/train_command.txt"
-printf '%s\n' "$(cat "${OUTPUT_DIR}/train_command.txt")"
+
+# One node writes this. Four nodes racing on the same path leaves whichever
+# finished last, and the file is meant to record the run rather than a node.
+if [[ "${SLURM_NODEID:-0}" == "0" ]]; then
+    printf '%q ' "${CMD[@]}" > "${OUTPUT_DIR}/train_command.txt"
+    echo >> "${OUTPUT_DIR}/train_command.txt"
+    printf '%s\n' "$(cat "${OUTPUT_DIR}/train_command.txt")"
+fi
 
 "${CMD[@]}"
 _rc=$?

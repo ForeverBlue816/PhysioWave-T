@@ -427,3 +427,65 @@ def test_an_old_checkpoint_is_not_a_resume(tmp_path):
     assert "raw_reconstruction_heads" in str(exc.value)
     # And it loads cleanly once those keys are there.
     m.load_state_dict(m.state_dict())
+
+
+# --- 9. the data the figures are made of ------------------------------------ #
+def test_error_histogram_separates_masked_from_visible():
+    """Counts add exactly; averaged per-batch quantiles would not."""
+    from physiowave.eeg_c1.train import ERROR_BIN_EDGES, ErrorHistogram
+
+    route = ROUTES["E19_256"]
+    n_tok = route.n_channels * route.patches_per_channel
+    mask = torch.zeros(1, n_tok, dtype=torch.bool)
+    mask[0, :10] = True
+
+    zeros = torch.zeros(1, n_tok, route.patch_t)
+    pred = zeros.clone()
+    pred[0, :10] = 1.0            # masked tokens are wrong by exactly 1
+    out = {"pred_spec": pred, "target_spec": zeros,
+           "pred_raw": zeros.clone(), "target_raw": zeros,
+           "mask": mask, "valid_tokens": None}
+
+    h = ErrorHistogram()
+    h.add(out)
+    p = h.payload()
+    assert p["mean_abs_error"]["spec_masked"] == pytest.approx(1.0)
+    assert p["mean_abs_error"]["spec_visible"] == pytest.approx(0.0)
+    assert p["n"]["spec_masked"] == 10 * route.patch_t
+    assert p["n"]["spec_visible"] == (n_tok - 10) * route.patch_t
+    assert len(p["edges"]) == len(ERROR_BIN_EDGES)
+    assert sum(p["counts"]["spec_masked"]) == p["n"]["spec_masked"]
+
+    # Two batches: counts and the mean must accumulate, not overwrite.
+    h.add(out)
+    p2 = h.payload()
+    assert p2["n"]["spec_masked"] == 2 * p["n"]["spec_masked"]
+    assert p2["mean_abs_error"]["spec_masked"] == pytest.approx(1.0)
+
+
+def test_gradient_norms_are_reported_per_branch():
+    """A global norm cannot say which branch produced it."""
+    from physiowave.eeg_c1.train import module_grad_norms
+
+    route_id = "E19_256"
+    route = ROUTES[route_id]
+    m = build().train()
+    with torch.no_grad():
+        m.channel_token_gate.fill_(0.5)
+    out = m(torch.randn(2, route.n_channels, route.window_samples), route_id,
+            channel_meta=meta_for(route_id), mask_ratio=0.5)
+    loss, _ = masked_reconstruction_loss(out)
+    loss.backward()
+
+    g = module_grad_norms(m)
+    # The route and the rate are kept: E19's frontend and E128's are trained on
+    # different steps, and one number for both says nothing about either.
+    assert f"gradnorm/wavelet_frontends.{route_id}" in g
+    assert f"gradnorm/reconstruction_heads.{route.rate_key}" in g
+    assert f"gradnorm/raw_reconstruction_heads.{route.rate_key}" in g
+    assert "gradnorm/shared_transformer" in g
+    assert all(v >= 0 for v in g.values())
+    assert g["gradnorm/shared_transformer"] > 0
+    assert g[f"gradnorm/raw_reconstruction_heads.{route.rate_key}"] > 0
+    # A route that took no step in this batch must not appear with a zero.
+    assert "gradnorm/wavelet_frontends.E128_512" not in g

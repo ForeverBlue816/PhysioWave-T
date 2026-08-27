@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -673,6 +674,323 @@ def fig_channel_embedding(w: FigureWriter, model, datasets):
 
 # --------------------------------------------------------------------------- #
 
+
+# --------------------------------------------------------------------------- #
+# 10. the two objectives, side by side
+# --------------------------------------------------------------------------- #
+
+def fig_dual_objective(w: FigureWriter, epoch_rows):
+    """Both reconstruction terms over training, on their own scales.
+
+    They are not comparable in magnitude -- one is an MSE on folded wavelet
+    coefficients, the other a SmoothL1 on z-scored EEG -- so plotting them
+    against a shared axis would say more about their units than about their
+    progress. Two panels, and a third for the weighted contributions, which IS
+    the comparison that matters: it shows which term the optimizer is actually
+    following.
+    """
+    if not epoch_rows:
+        return
+    ep = [r["epoch"] for r in epoch_rows]
+
+    def series(prefix, key):
+        return [r.get(f"{prefix}/{key}", float("nan")) for r in epoch_rows]
+
+    spec_tr, spec_va = series("train", "loss_masked_spec_mse"), \
+        series("val", "loss_masked_spec_mse")
+    raw_tr, raw_va = series("train", "loss_masked_raw_smoothl1"), \
+        series("val", "loss_masked_raw_smoothl1")
+    kl_tr = series("train", "loss_fold_kl")
+    if all(math.isnan(v) for v in spec_tr):
+        return
+
+    meta = w.base_meta.get("objective", {})
+    ws = float(meta.get("spec_weight", 1.0))
+    wr = float(meta.get("raw_weight", 0.25))
+    wk = float(meta.get("fold_kl", 1e-3))
+
+    fig, axes = plt.subplots(1, 3, figsize=(9.6, 2.9))
+
+    for ax, (tr, va, title, ylab) in zip(axes[:2], (
+            (spec_tr, spec_va, "Spec reconstruction",
+             "masked MSE, folded wavelet"),
+            (raw_tr, raw_va, "Raw EEG reconstruction",
+             "masked SmoothL1, z-scored"))):
+        ax.plot(ep, tr, color=OKABE_ITO[0], label="train", marker="o", ms=2.5)
+        ax.plot(ep, va, color=OKABE_ITO[1], label="val", marker="s", ms=2.5,
+                ls="--")
+        ax.set_title(title)
+        ax.set_xlabel("epoch")
+        ax.set_ylabel(ylab)
+        ax.set_yscale("log")
+        ax.grid(alpha=0.25, lw=0.5)
+        ax.legend(frameon=False)
+
+    ax = axes[2]
+    contrib = {
+        f"spec x{ws:g}": ([ws * v for v in spec_tr], OKABE_ITO[0]),
+        f"raw x{wr:g}": ([wr * v for v in raw_tr], OKABE_ITO[1]),
+        f"foldKL x{wk:g}": ([wk * v for v in kl_tr], OKABE_ITO[2]),
+    }
+    bottom = np.zeros(len(ep))
+    for label, (vals, colour) in contrib.items():
+        v = np.nan_to_num(np.asarray(vals, dtype=float))
+        ax.fill_between(ep, bottom, bottom + v, label=label, color=colour,
+                        alpha=0.85, lw=0)
+        bottom = bottom + v
+    ax.set_title("Weighted contribution to the total")
+    ax.set_xlabel("epoch")
+    ax.set_ylabel("weight x loss")
+    ax.grid(alpha=0.25, lw=0.5)
+    ax.legend(frameon=False, loc="upper right")
+
+    fig.suptitle("The two reconstruction targets", y=1.04, fontsize=10)
+    fig.tight_layout()
+    w.save(fig, "10_dual_objective",
+           data={"epoch": ep, "spec_train": spec_tr, "spec_val": spec_va,
+                 "raw_train": raw_tr, "raw_val": raw_va, "fold_kl": kl_tr},
+           meta={"weights": {"spec": ws, "raw": wr, "fold_kl": wk},
+                 "note": "panels 1-2 are unweighted losses on their own "
+                         "scales; panel 3 is what enters the total"})
+
+
+# --------------------------------------------------------------------------- #
+# 11. masked against visible -- the control the loss cannot provide
+# --------------------------------------------------------------------------- #
+
+def fig_masked_vs_visible(w: FigureWriter, run_dir: str):
+    """Where the reconstruction error sits, on hidden tokens and on seen ones.
+
+    The loss only ever looks at masked tokens, so it cannot distinguish a model
+    that has learned structure from one that has learned to copy its input: the
+    second has a near-zero VISIBLE error and an unimproved masked one. The gap
+    between the two distributions is the diagnostic, and it is why the visible
+    half is collected during validation despite contributing nothing to
+    training.
+    """
+    path = os.path.join(run_dir, "error_histogram.json")
+    if not os.path.isfile(path):
+        return
+    with open(path) as f:
+        h = json.load(f)
+    edges = np.asarray(h["edges"], dtype=float)
+    centres = np.sqrt(np.maximum(edges[:-1], 1e-4) * edges[1:])
+
+    fig, axes = plt.subplots(1, 2, figsize=(8.2, 3.0))
+    for ax, tag, title in ((axes[0], "spec", "Folded-wavelet patches"),
+                           (axes[1], "raw", "Preprocessed EEG patches")):
+        for half, colour, ls in (("masked", OKABE_ITO[1], "-"),
+                                 ("visible", OKABE_ITO[0], "--")):
+            key = f"{tag}_{half}"
+            counts = np.asarray(h["counts"].get(key, []), dtype=float)
+            if counts.sum() == 0:
+                continue
+            dens = counts / counts.sum()
+            ax.step(centres, dens, where="mid", color=colour, ls=ls,
+                    label=f"{half}  (mean {h['mean_abs_error'][key]:.3g})")
+            ax.axvline(h["mean_abs_error"][key], color=colour, lw=0.6,
+                       alpha=0.5)
+        ax.set_xscale("log")
+        ax.set_title(title)
+        ax.set_xlabel("|prediction - target|")
+        ax.set_ylabel("fraction of tokens")
+        ax.grid(alpha=0.25, lw=0.5)
+        ax.legend(frameon=False)
+
+    ratio = {}
+    for tag in ("spec", "raw"):
+        m = h["mean_abs_error"].get(f"{tag}_masked", 0.0)
+        v = h["mean_abs_error"].get(f"{tag}_visible", 0.0)
+        ratio[tag] = (m / v) if v else float("nan")
+    fig.suptitle(
+        f"Masked vs visible reconstruction error   "
+        f"(masked/visible: spec {ratio['spec']:.2f}x, raw {ratio['raw']:.2f}x)",
+        y=1.05, fontsize=10)
+    fig.tight_layout()
+    w.save(fig, "11_masked_vs_visible_error",
+           data={"edges": edges,
+                 **{k: np.asarray(v) for k, v in h["counts"].items()}},
+           meta={"epoch": h.get("epoch"), "n_tokens": h.get("n"),
+                 "mean_abs_error": h.get("mean_abs_error"),
+                 "masked_over_visible": ratio,
+                 "note": "a ratio near 1 means masking costs the model "
+                         "nothing, which is what copying looks like"})
+
+
+# --------------------------------------------------------------------------- #
+# 12. where the gradient goes
+# --------------------------------------------------------------------------- #
+
+def fig_gradient_flow(w: FigureWriter, step_rows):
+    """Gradient norm per branch over training.
+
+    A single global norm cannot answer the question this model raises: with two
+    decoders, a frontend run twice and a channel path gated to zero at
+    initialisation, "the gradient is healthy" has to be a statement about
+    branches. A branch pinned at exactly zero for the whole run is either
+    disconnected or deliberately gated, and those look identical in the total.
+    """
+    keys = sorted({k for r in step_rows for k in r if k.startswith("gradnorm/")})
+    if not keys:
+        return
+    steps = [r["step"] for r in step_rows if any(k in r for k in keys)]
+    if len(steps) < 2:
+        return
+
+    fig, ax = plt.subplots(figsize=(7.4, 3.4))
+    for i, key in enumerate(keys):
+        xs = [r["step"] for r in step_rows if key in r]
+        ys = [r[key] for r in step_rows if key in r]
+        if not ys or all(v == 0 for v in ys):
+            ax.plot([], [], color=OKABE_ITO[i % 8], ls=":",
+                    label=f"{key.split('/', 1)[1]}  (zero throughout)")
+            continue
+        ax.plot(xs, ys, color=OKABE_ITO[i % 8], lw=1.0,
+                label=key.split("/", 1)[1])
+    ax.set_yscale("log")
+    ax.set_xlabel("optimizer step")
+    ax.set_ylabel("gradient norm")
+    ax.set_title("Gradient norm by branch")
+    ax.grid(alpha=0.25, lw=0.5)
+    ax.legend(frameon=False, ncol=2, fontsize=6, loc="upper right")
+    fig.tight_layout()
+    w.save(fig, "12_gradient_flow",
+           data={"step": steps,
+                 **{k.replace("/", "_"): [r.get(k, float("nan"))
+                                          for r in step_rows] for k in keys}},
+           meta={"branches": keys,
+                 "note": "the channel encoder is zero while tanh(gate) is "
+                         "zero -- that is the initialisation, not a fault"})
+
+
+# --------------------------------------------------------------------------- #
+# 13. what each route cost
+# --------------------------------------------------------------------------- #
+
+def fig_route_cost(w: FigureWriter, epoch_rows):
+    """Share of steps, share of windows and share of WALL CLOCK, per route.
+
+    The three differ and the third is the one nobody configures. E128_512 draws
+    12 windows to E19_256's 64 and each carries 6.7x the tokens, so a mixture
+    set by share of steps buys a very different share of the compute -- and a
+    run can be spending most of its hours on the route with the smallest share
+    of the data.
+    """
+    if not epoch_rows:
+        return
+    last = epoch_rows[-1]
+    routes = sorted({k.split("/")[-1] for k in last
+                     if k.startswith("train/route_share_of_time/")})
+    if not routes:
+        return
+
+    time_share = [last.get(f"train/route_share_of_time/{r}", 0.0) for r in routes]
+    windows = [last.get(f"train/route_windows/{r}", 0.0) for r in routes]
+    tot_w = sum(windows) or 1.0
+    window_share = [v / tot_w for v in windows]
+
+    x = np.arange(len(routes))
+    fig, ax = plt.subplots(figsize=(6.4, 3.0))
+    ax.bar(x - 0.2, window_share, 0.4, label="share of windows",
+           color=[ROUTE_COLOR.get(r, OKABE_ITO[0]) for r in routes], alpha=0.55)
+    ax.bar(x + 0.2, time_share, 0.4, label="share of wall clock",
+           color=[ROUTE_COLOR.get(r, OKABE_ITO[0]) for r in routes])
+    for xi, (ws_, ts) in enumerate(zip(window_share, time_share)):
+        if ws_ > 0:
+            ax.text(xi + 0.2, ts + 0.01, f"{ts / ws_:.1f}x", ha="center",
+                    fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels(routes)
+    ax.set_ylabel("share of the epoch")
+    ax.set_title("What each route cost, against what it contributed")
+    ax.grid(alpha=0.25, lw=0.5, axis="y")
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    w.save(fig, "13_route_cost",
+           data={"route": routes, "window_share": window_share,
+                 "time_share": time_share, "windows": windows},
+           meta={"epoch": last.get("epoch"),
+                 "note": "the multiplier above each bar is wall clock per "
+                         "window relative to that route's share of windows"})
+
+
+# --------------------------------------------------------------------------- #
+# 14. the raw decoder's output, as a waveform
+# --------------------------------------------------------------------------- #
+
+def fig_raw_waveform_reconstruction(w: FigureWriter, model, datasets,
+                                    mask_seed, device):
+    """The second head's prediction against the EEG it was asked to predict.
+
+    This is the only figure in the set showing a WAVEFORM in the units the
+    recording was made in. The spec figures show folded wavelet patches, which
+    are not EEG and must not be captioned as though they were.
+    """
+    import torch
+
+    picked = None
+    for dataset_id, ds in datasets.items():
+        if len(ds):
+            picked = (dataset_id, ds)
+            break
+    if picked is None:
+        return
+    dataset_id, ds = picked
+    route = ds.route
+    montage = ds.montage()
+    n = min(4, len(ds))
+    x = torch.stack([ds[i]["x"] for i in range(n)]).to(device)
+    meta = {k: v.to(device) for k, v in montage.items()}
+    gen = torch.Generator(device="cpu").manual_seed(mask_seed)
+
+    with torch.no_grad():
+        out = model(x, route.route_id, channel_meta=meta, mask_generator=gen)
+
+    pt = route.patch_t
+    P = route.patches_per_channel
+    pred = model.unpatchify(out["pred_raw"], route.n_channels, pt)[0].cpu()
+    target = model.unpatchify(out["target_raw"], route.n_channels, pt)[0].cpu()
+    mask = out["mask"][0].reshape(route.n_channels, P).cpu().numpy()
+
+    # A channel with masked patches, so the figure shows the task rather than
+    # a stretch the model was handed.
+    per_channel = mask.sum(axis=1)
+    ch = int(np.argmax(per_channel))
+    t = np.arange(route.window_samples) / route.sampling_rate
+
+    fig, axes = plt.subplots(2, 1, figsize=(8.6, 3.8), sharex=True,
+                             gridspec_kw={"height_ratios": [3, 1]})
+    ax = axes[0]
+    ax.plot(t, target[ch].numpy(), color="0.25", lw=0.9, label="preprocessed EEG")
+    ax.plot(t, pred[ch].numpy(), color=OKABE_ITO[1], lw=0.9, alpha=0.9,
+            label="raw decoder")
+    for p in range(P):
+        if mask[ch, p]:
+            ax.axvspan(p * pt / route.sampling_rate,
+                       (p + 1) * pt / route.sampling_rate,
+                       color=OKABE_ITO[4], alpha=0.18, lw=0)
+    ax.set_ylabel("amplitude (z-scored)")
+    ax.set_title(f"{dataset_id}  {route.route_id}  channel "
+                 f"{route.slots[ch]}   shaded = masked before the frontend")
+    ax.legend(frameon=False, ncol=2)
+    ax.grid(alpha=0.2, lw=0.5)
+
+    err = (pred[ch] - target[ch]).abs().numpy()
+    axes[1].fill_between(t, 0, err, color=OKABE_ITO[3], lw=0)
+    axes[1].set_ylabel("|error|")
+    axes[1].set_xlabel("time (s)")
+    axes[1].grid(alpha=0.2, lw=0.5)
+
+    fig.tight_layout()
+    w.save(fig, "14_raw_waveform_reconstruction",
+           data={"time": t, "target": target[ch].numpy(),
+                 "pred": pred[ch].numpy(), "mask": mask[ch]},
+           meta={"dataset_id": dataset_id, "route_id": route.route_id,
+                 "channel": route.slots[ch],
+                 "note": "z-scored preprocessed EEG, not raw EDF values, and "
+                         "not the folded wavelet representation"})
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -772,6 +1090,13 @@ def main(argv=None) -> int:
         "plotting_script_git_commit": git_commit(),
         "split": args.split, "mask_seed": mask_seed,
         "manifest": manifest_path,
+        # The weights the run was trained under, recorded beside every figure
+        # so a caption cannot quote a default the run did not use.
+        "objective": cfg.get("objective", {}) or {
+            "spec_weight": cfg.get("train", {}).get("spec_recon_weight", 1.0),
+            "raw_weight": cfg.get("train", {}).get("raw_recon_weight", 0.25),
+            "fold_kl": cfg.get("train", {}).get("fold_kl", 1e-3),
+        },
     })
 
     epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
@@ -789,9 +1114,20 @@ def main(argv=None) -> int:
         fig_pretraining_convergence(writer, epoch_rows, step_rows)
     if want("fig_route_convergence"):
         fig_route_convergence(writer, epoch_rows)
+    if want("fig_dual_objective"):
+        fig_dual_objective(writer, epoch_rows)
+    if want("fig_masked_vs_visible"):
+        fig_masked_vs_visible(writer, run_dir)
+    if want("fig_gradient_flow"):
+        fig_gradient_flow(writer, step_rows)
+    if want("fig_route_cost"):
+        fig_route_cost(writer, epoch_rows)
     if datasets:
         if want("fig_mask_reconstruction"):
             fig_mask_reconstruction(writer, model, datasets, mask_seed, device)
+        if want("fig_raw_waveform_reconstruction"):
+            fig_raw_waveform_reconstruction(writer, model, datasets,
+                                            mask_seed, device)
         if want("fig_mask_examples_by_dataset"):
             fig_mask_examples_by_dataset(writer, model, datasets, mask_seed,
                                          device)

@@ -112,6 +112,95 @@ class ValIterator:
 # Metric accumulation
 # --------------------------------------------------------------------------- #
 
+#: Bin edges for the reconstruction-error histograms, log-spaced over |error|.
+#: A histogram rather than per-batch quantiles because counts add exactly and
+#: averaged quantiles do not: the mean of per-batch medians is not the median.
+ERROR_BIN_EDGES = [0.0] + [10.0 ** (-3 + 0.125 * i) for i in range(41)]
+
+
+class ErrorHistogram:
+    """Counts of |prediction - target| per bin, split masked vs visible.
+
+    The visible half is the control. A masked-reconstruction objective can be
+    satisfied by a model that has learned to copy its input, and the way that
+    shows is a visible error near zero while the masked error stays high. There
+    is no way to see it from the loss, which only ever looks at masked tokens.
+    """
+
+    KEYS = ("spec_masked", "spec_visible", "raw_masked", "raw_visible")
+
+    def __init__(self):
+        n = len(ERROR_BIN_EDGES) - 1
+        self.counts = {k: [0] * n for k in self.KEYS}
+        self.sums = {k: 0.0 for k in self.KEYS}
+        self.n = {k: 0 for k in self.KEYS}
+
+    @torch.no_grad()
+    def add(self, out: Dict):
+        edges = torch.tensor(ERROR_BIN_EDGES, device=out["mask"].device)
+        mask = out["mask"]
+        for tag, pk, tk in (("spec", "pred_spec", "target_spec"),
+                            ("raw", "pred_raw", "target_raw")):
+            pred, target = out.get(pk), out.get(tk)
+            if pred is None or target is None:
+                continue
+            err = (pred.float() - target.float()).abs()
+            sel = mask.unsqueeze(-1).expand_as(err)
+            valid = out.get("valid_tokens")
+            if valid is not None:
+                ok = valid.unsqueeze(-1).expand_as(err)
+            else:
+                ok = torch.ones_like(sel)
+            for name, take in ((f"{tag}_masked", sel & ok),
+                               (f"{tag}_visible", (~sel) & ok)):
+                v = err[take]
+                if v.numel() == 0:
+                    continue
+                idx = torch.bucketize(v, edges, right=False).clamp_(
+                    1, len(ERROR_BIN_EDGES) - 1) - 1
+                hist = torch.bincount(idx,
+                                      minlength=len(ERROR_BIN_EDGES) - 1)
+                counts = self.counts[name]
+                for i, c in enumerate(hist.tolist()):
+                    counts[i] += int(c)
+                self.sums[name] += float(v.sum())
+                self.n[name] += int(v.numel())
+
+    def payload(self) -> Dict:
+        return {
+            "edges": ERROR_BIN_EDGES,
+            "counts": self.counts,
+            "mean_abs_error": {k: (self.sums[k] / self.n[k] if self.n[k] else 0.0)
+                               for k in self.KEYS},
+            "n": dict(self.n),
+        }
+
+
+@torch.no_grad()
+def module_grad_norms(model) -> Dict[str, float]:
+    """Gradient norm per branch, so a dead one is visible rather than inferred.
+
+    A global norm hides which part produced it. With two decoders, a frontend
+    run twice and a gated channel path that starts at zero, "the gradient is
+    fine" is not a statement anyone should have to take on the aggregate.
+    """
+    groups: Dict[str, List[torch.Tensor]] = {}
+    for name, p in model.named_parameters():
+        if p.grad is None:
+            continue
+        head = name.split(".")[0]
+        if head in ("wavelet_frontends", "patch_embed_by_rate",
+                    "reconstruction_heads", "raw_reconstruction_heads"):
+            # Keep the route or rate: E128_512's frontend and E19_256's are
+            # trained on different steps and averaging them says nothing.
+            head = ".".join(name.split(".")[:2])
+        groups.setdefault(head, []).append(p.grad.detach().float().reshape(-1))
+    out = {}
+    for k, v in groups.items():
+        out[f"gradnorm/{k}"] = float(torch.cat(v).norm())
+    return out
+
+
 class Accumulator:
     """Running means, globally and per route and per dataset."""
 
@@ -452,6 +541,8 @@ class EEGC1Trainer:
         acc = Accumulator()
         t0 = time.time()
         windows = 0
+        route_seconds: Dict[str, float] = {}
+        route_windows: Dict[str, int] = {}
         if self.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self.device)
 
@@ -459,6 +550,7 @@ class EEGC1Trainer:
             x = batch["x"].to(self.device, non_blocking=True)
             meta = {k: v.to(self.device) for k, v in batch["channel_meta"].items()}
             is_accum = (i + 1) % self.grad_accum != 0
+            step_t0 = time.time()
 
             ctx = (torch.autocast(self.device.type, dtype=self.amp_dtype)
                    if self.use_amp else _nullcontext())
@@ -472,10 +564,18 @@ class EEGC1Trainer:
 
             self.scaler.scale(loss / self.grad_accum).backward()
             grad_norm = float("nan")
+            branch_norms: Dict[str, float] = {}
+            want_log = self.is_main and (i % 50 == 0 or i + 1 == len(self.loader))
             if not is_accum:
                 self.scaler.unscale_(self.optimizer)
                 grad_norm = float(torch.nn.utils.clip_grad_norm_(
                     self.raw_model.parameters(), self.clip_grad))
+                # HERE, not after the step: zero_grad(set_to_none=True) is two
+                # lines below and every gradient is None by then. Only on the
+                # logged steps, because walking every parameter is nothing at
+                # every fiftieth step and not nothing at every one.
+                if want_log:
+                    branch_norms = module_grad_norms(self.raw_model)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
@@ -483,6 +583,15 @@ class EEGC1Trainer:
                 self.global_step += 1
 
             windows += x.shape[0]
+            # Per route, so the mixture figure can show what each one COST as
+            # well as what share it got. E128_512 draws 12 windows to
+            # E19_256's 64 and each is 6.7x the tokens; share of steps says
+            # nothing about where the hours went.
+            route_seconds[batch["route_id"]] = route_seconds.get(
+                batch["route_id"], 0.0) + (time.time() - step_t0)
+            route_windows[batch["route_id"]] = route_windows.get(
+                batch["route_id"], 0) + x.shape[0]
+
             metrics["lr"] = self.optimizer.param_groups[0]["lr"]
             if math.isfinite(grad_norm):
                 metrics["grad_norm"] = grad_norm
@@ -495,11 +604,12 @@ class EEGC1Trainer:
                     metrics[f"fold_alpha_{s}"] = a
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
 
-            if self.is_main and (i % 50 == 0 or i + 1 == len(self.loader)):
+            if want_log:
                 self._append_jsonl("metrics_step.jsonl", {
                     "epoch": self.epoch, "step": self.global_step,
                     "route_id": batch["route_id"],
-                    "dataset_id": batch["dataset_id"], **metrics})
+                    "dataset_id": batch["dataset_id"],
+                    **metrics, **branch_norms})
             self.schedule.start_step = i + 1
             if self.max_steps and self.global_step >= self.max_steps:
                 break
@@ -507,6 +617,11 @@ class EEGC1Trainer:
         out = acc.mean()
         elapsed = max(1e-9, time.time() - t0)
         out["throughput_windows_per_s"] = windows / elapsed
+        for rid, secs in route_seconds.items():
+            out[f"route_seconds/{rid}"] = secs
+            out[f"route_share_of_time/{rid}"] = secs / elapsed
+        for rid, n in route_windows.items():
+            out[f"route_windows/{rid}"] = float(n)
         out["epoch_seconds"] = elapsed
         if self.device.type == "cuda":
             out["peak_gpu_mem_mb"] = torch.cuda.max_memory_allocated(
@@ -524,6 +639,7 @@ class EEGC1Trainer:
             return {}
         self.model.eval()
         acc = Accumulator()
+        hist = ErrorHistogram()
         it = ValIterator(self.val_index, self.batch_by_route,
                          getattr(self.info, "world_size", 1),
                          getattr(self.info, "rank", 0),
@@ -543,9 +659,33 @@ class EEGC1Trainer:
                     out, spec_weight=self.spec_weight,
                     raw_weight=self.raw_weight, fold_kl=self.fold_kl,
                     raw_beta=self.raw_beta)
+            hist.add(out)
+            # The control the loss cannot provide: error on the tokens the
+            # model could SEE. A masked-reconstruction objective can be
+            # satisfied by a model that has learned to copy its input, and the
+            # way that shows is a near-zero visible error beside an unimproved
+            # masked one. Nothing in the loss looks at visible tokens.
+            with torch.no_grad():
+                sel = out["mask"].unsqueeze(-1).expand_as(out["pred_spec"])
+                vis = ~sel
+                if out.get("valid_tokens") is not None:
+                    vis = vis & out["valid_tokens"].unsqueeze(-1).expand_as(sel)
+                if bool(vis.any()):
+                    for tag, pk, tk in (("spec", "pred_spec", "target_spec"),
+                                        ("raw", "pred_raw", "target_raw")):
+                        e = (out[pk].float() - out[tk].float()).abs()[vis]
+                        metrics[f"visible_{tag}_mae"] = float(e.mean())
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
         it.close()
         means = acc.mean()
+        if self.is_main:
+            payload = hist.payload()
+            payload["epoch"] = self.epoch
+            payload["global_step"] = self.global_step
+            with open(os.path.join(self.out_dir, "error_histogram.json"),
+                      "w") as f:
+                json.dump(payload, f)
+            self._append_jsonl("error_histogram_by_epoch.jsonl", payload)
         for k in ("loss_total", "loss_masked_spec_mse",
                   "loss_masked_raw_smoothl1", "loss_masked_mse"):
             if k in means:
