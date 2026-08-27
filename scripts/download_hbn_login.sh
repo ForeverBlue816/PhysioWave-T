@@ -1,38 +1,39 @@
 #!/bin/bash
 # ============================================================================
-# HBN, downloaded from a LOGIN NODE, surviving being killed.
+# HBN download -- READ THIS BEFORE RUNNING IT.
 #
-#   nohup bash scripts/download_hbn_login.sh > ~/hbn.log 2>&1 &
-#   tail -f ~/hbn.log
+# !! THIS SCRIPT MOVES ~1.9 TB THROUGH A LOGIN NODE. ON MOST HPC SYSTEMS,     !!
+# !! INCLUDING CINECA'S, THAT VIOLATES THE ACCEPTED USE POLICY AND CAN GET    !!
+# !! YOUR ACCOUNT SUSPENDED. Check your site's policy and ask your support    !!
+# !! desk for the sanctioned transfer route FIRST.                            !!
 #
-#   bash scripts/download_hbn_login.sh R4 R10 R11      # just these
+# An earlier version of this script treated a SIGKILL from the login node as an
+# obstacle and looped to restart the transfer after each one. That was wrong. A
+# login node killing a process is the SITE ENFORCING A LIMIT, not a transient
+# failure, and automatically retrying past it is circumventing a control that
+# exists so one user cannot degrade the node for everyone else. It now STOPS on
+# a kill and says so.
 #
-# WHY NOT A BATCH JOB. The compute nodes on this system have no route to the
-# public internet, so `sbatch`-ing an aws transfer produces "Could not connect
-# to the endpoint URL" and an empty directory -- which is exactly what R4, R10
-# and R11 got while other releases were being fetched interactively. Downloads
-# have to happen on a login node here.
+# The situation this was written for -- compute nodes with no route to the
+# internet, so no batch job can download -- is real, and the answer to it is to
+# ask the support desk which host is meant for data transfer. Most sites have
+# one. It is not to find a way around the login node's limits.
 #
-# WHICH MEANS THIS WILL BE KILLED. A login node SIGKILLs a process that runs too
-# long or holds too much -- R5 died at 164 of 224 GB, exit 137. So this is built
-# around being killed rather than around avoiding it:
+# WHAT TO DO INSTEAD, in order:
+#   1. Ask support for the data-transfer host or service for your project.
+#   2. If a login node is genuinely the sanctioned route, ask what size and
+#      duration are acceptable and stay inside it -- MAX_GB_PER_RUN below.
+#   3. Transfer to a machine that is allowed to, then move it in.
 #
-#   * Low concurrency, so the resident set stays small and the killer looks
-#     elsewhere for longer.
-#   * `aws s3 sync`, which resumes: a killed transfer loses the file in flight,
-#     nothing more.
-#   * An outer loop that reruns after a kill. The killer takes the aws process,
-#     not this shell, so the loop survives and starts the next attempt.
-#   * A per-release completeness check against S3's own byte count, so "done"
-#     means done rather than "the last attempt did not crash".
-#
-# RUN IT UNDER nohup so a disconnected session does not take it down, and leave
-# it. It is resumable, so rerunning after anything at all is safe.
+#   bash scripts/download_hbn_login.sh R10 R11
 #
 # ENVIRONMENT:
-#   EEG_ROOT        corpus root
-#   AWS_CONCURRENCY transfers in flight (default 3; lower survives longer)
-#   MAX_ROUNDS      attempts per release (default 40)
+#   EEG_ROOT         corpus root
+#   AWS_CONCURRENCY  transfers in flight (default 3)
+#   MAX_GB_PER_RUN   stop after roughly this much in one invocation (default
+#                    50). A ceiling you can point at in a support request,
+#                    rather than an open-ended transfer.
+#   I_HAVE_CHECKED_THE_POLICY=1   required to run at all.
 # ============================================================================
 
 set -uo pipefail
@@ -45,6 +46,25 @@ MAX_ROUNDS="${MAX_ROUNDS:-40}"
 
 RELEASES="$*"
 [[ -z "${RELEASES}" ]] && RELEASES="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+MAX_GB_PER_RUN="${MAX_GB_PER_RUN:-50}"
+
+if [[ "${I_HAVE_CHECKED_THE_POLICY:-0}" != "1" ]]; then
+    cat >&2 <<'MSG'
+REFUSING TO RUN.
+
+This moves hundreds of gigabytes through a login node. On most HPC systems,
+CINECA's included, that breaches the accepted use policy, and repeated
+offences can get an account suspended -- which has already happened once
+while using an earlier version of this script.
+
+Ask your support desk which host is meant for data transfer. If the answer
+is that a login node is acceptable for this, run again with:
+
+    I_HAVE_CHECKED_THE_POLICY=1 MAX_GB_PER_RUN=50 bash "$0" R10 R11
+
+MSG
+    exit 1
+fi
 
 if ! aws --version >/dev/null 2>&1; then
     echo "ERROR: the AWS CLI does not run. HBN is S3-only." >&2
@@ -127,6 +147,7 @@ for r in ${RELEASES}; do
     echo "############################################################"
 
     round=1
+    start_bytes=$(local_bytes "${dest}")
     while [[ "${round}" -le "${MAX_ROUNDS}" ]]; do
         have=$(local_bytes "${dest}")
         if [[ "${have}" -ge "${want}" ]]; then
@@ -140,8 +161,32 @@ for r in ${RELEASES}; do
         rc=$?
 
         after=$(local_bytes "${dest}")
+
+        # A signal is the SITE STOPPING YOU. Looping past it is circumventing a
+        # resource control, which is how an account gets suspended. Stop, and
+        # say what to ask for.
+        if [[ "${rc}" -eq 137 || "${rc}" -eq 143 || "${rc}" -eq 130 ]]; then
+            echo "" >&2
+            echo "    KILLED (signal, exit ${rc}). STOPPING." >&2
+            echo "    A login node killing this is the site enforcing a limit," >&2
+            echo "    not a transient error. Do not restart it in a loop." >&2
+            echo "    Ask your support desk for the data-transfer route before" >&2
+            echo "    continuing. $(human "${after}") is on disk and is intact." >&2
+            _failed="${_failed} ${r}"
+            exit "${rc}"
+        fi
+
+        # A self-imposed ceiling, so one invocation is something you can
+        # describe to a support desk rather than an open-ended transfer.
+        moved=$(( (after - start_bytes) / 1073741824 ))
+        if [[ "${moved}" -ge "${MAX_GB_PER_RUN}" ]]; then
+            echo "" 
+            echo "    reached MAX_GB_PER_RUN=${MAX_GB_PER_RUN} GB this run; stopping."
+            echo "    Rerun later to continue; everything on disk is kept."
+            exit 0
+        fi
+
         if [[ "${after}" -le "${have}" ]] && [[ "${rc}" -ne 0 ]]; then
-            # No progress AND an error: retrying immediately just repeats it.
             echo "    no progress this round (exit ${rc}); pausing 60s" >&2
             sleep 60
         fi
