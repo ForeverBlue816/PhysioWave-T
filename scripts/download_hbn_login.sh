@@ -45,7 +45,8 @@ export AWS_CONCURRENCY="${AWS_CONCURRENCY:-3}"
 MAX_ROUNDS="${MAX_ROUNDS:-40}"
 
 RELEASES="$*"
-[[ -z "${RELEASES}" ]] && RELEASES="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+# Nine, not eleven: only R1-R9 are mirrored to fcp-indi.
+[[ -z "${RELEASES}" ]] && RELEASES="R1 R2 R3 R4 R5 R6 R7 R8 R9"
 MAX_GB_PER_RUN="${MAX_GB_PER_RUN:-50}"
 
 if [[ "${I_HAVE_CHECKED_THE_POLICY:-0}" != "1" ]]; then

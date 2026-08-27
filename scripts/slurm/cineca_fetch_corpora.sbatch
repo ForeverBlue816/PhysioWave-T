@@ -118,7 +118,7 @@ HBN_MIN_PER_RELEASE=200
 
 hbn_missing_releases() {
     local want="$1" out="" r n
-    [[ "${want}" == "all" ]] && want="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+    [[ "${want}" == "all" ]] && want="R1 R2 R3 R4 R5 R6 R7 R8 R9"
     for r in ${want}; do
         n=$(count_recordings "${EEG_ROOT}/HBN/raw/${r}")
         if [[ "${n}" -lt "${HBN_MIN_PER_RELEASE}" ]]; then

@@ -33,7 +33,8 @@
 # the filesystem takes the rest of the project down with it:
 #   cinecaquota ; df -h $EEG_ROOT
 #
-# R1-R11 sizes, GB:  103 120 140 230 224 91 245 157 185 160 220
+# R1-R9 sizes, GB:  103 120 140 230 224 91 245 157 185
+# (only nine releases are mirrored to fcp-indi; the table's R10/R11 are not)
 #
 # START WITH R3 (140 GB). It is enough to prove the adapter reads this corpus,
 # and every one of the five datasets before it needed a fix that only showed up
@@ -75,7 +76,7 @@ if ! aws --version >/dev/null 2>&1; then
 fi
 
 if [[ "${RELEASES}" == "all" ]]; then
-    RELEASES="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+    RELEASES="R1 R2 R3 R4 R5 R6 R7 R8 R9"
 fi
 
 echo "============================================================"

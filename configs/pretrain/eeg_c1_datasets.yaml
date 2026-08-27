@@ -84,8 +84,10 @@ hbn:
   expected_sampling_rates: [500.0]
   notes: >-
     EGI HydroCel 129 -> 128 by removing the named vertex reference, never by
-    position. Standard releases R1-R11 only; the 100 Hz mini release and any
-    "Not for Commercial Use" release are excluded from the main model.
+    position. Nine standard releases R1-R9, ~1.49 TB, which is everything
+    mirrored to the fcp-indi bucket -- the published table lists eleven but
+    R10 and R11 are not there. The 100 Hz mini release and cmi_bids_NC
+    ("Not for Commercial Use") are excluded from the main model.
 
 hgd:
   route: E128_512

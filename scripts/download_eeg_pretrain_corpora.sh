@@ -33,7 +33,9 @@
 #   PhysioNetMI  1.9 GB zip / 3.4 GB unpacked
 #   FACED        22.7 GB          M3CV  ~30 GB          HGD  25.1 GB
 #   TDBRAIN      reserve 130 GB unpacked
-#   HBN          1.875 TB for R1-R11 (103,120,140,230,224,91,245,157,185,160,220)
+#   HBN          ~1.49 TB for R1-R9 (103,120,140,230,224,91,245,157,185).
+#                Only nine releases are mirrored to fcp-indi; R10 and R11 in
+#                the published table are not there.
 #
 # AFTER DOWNLOADING, inspect before processing. Every adapter has been checked
 # against synthetic trees with these corpora's conventions, not against your
@@ -84,6 +86,16 @@ tree_bytes() {
         | xargs -0 stat "${_STAT_FLAG}" 2>/dev/null \
         | awk '{s+=$1} END {print s+0}'
 }
+
+#: The releases that actually exist in the bucket, verified by listing it on
+#: 2026-08-27: cmi_bids_R1 .. cmi_bids_R9, plus cmi_bids_NC. There is no R10 or
+#: R11 there -- the published release table lists eleven, but only nine are
+#: mirrored to fcp-indi, and asking for the other two produced a bare "cannot
+#: read the remote size" that was retried for hours.
+#:
+#: cmi_bids_NC is the "Not for Commercial Use" release and is deliberately NOT
+#: in this list: the main model is trained on the standard releases only.
+HBN_RELEASES_ALL="R1 R2 R3 R4 R5 R6 R7 R8 R9"
 
 have_working_aws() {
     command -v aws >/dev/null 2>&1 || return 1
@@ -429,8 +441,16 @@ CFG
     }
     _hbn_rc=0
     if [[ "${rel}" == "all" ]]; then
-        for i in $(seq 1 11); do fetch_one "R${i}" || _hbn_rc=$?; done
+        for _r in ${HBN_RELEASES_ALL}; do fetch_one "${_r}" || _hbn_rc=$?; done
     else
+        case " ${HBN_RELEASES_ALL} " in
+            *" ${rel} "*) ;;
+            *) echo "ERROR: ${rel} is not a release in this bucket." >&2
+               echo "       Available: ${HBN_RELEASES_ALL}" >&2
+               echo "       (cmi_bids_NC exists but is the Not-for-Commercial-" >&2
+               echo "       Use release and is excluded from the main model.)" >&2
+               exit 1 ;;
+        esac
         fetch_one "${rel}" || _hbn_rc=$?
     fi
     [[ "${_hbn_rc:-0}" -eq 0 ]] || exit "${_hbn_rc}"
@@ -456,7 +476,7 @@ verify-hbn)
         exit 1
     fi
     rels="${2:-all}"
-    [[ "${rels}" == "all" ]] && rels="R1 R2 R3 R4 R5 R6 R7 R8 R9 R10 R11"
+    [[ "${rels}" == "all" ]] && rels="${HBN_RELEASES_ALL}"
 
     printf "%-5s %12s %12s %14s %14s  %s\n" \
         release "local objs" "s3 objs" "local bytes" "s3 bytes" verdict
