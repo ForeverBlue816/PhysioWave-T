@@ -52,10 +52,34 @@ if ! aws --version >/dev/null 2>&1; then
     exit 1
 fi
 
+#: Set by s3_bytes when it fails, so the caller can say WHY rather than only
+#: that it could not read the size. 2>/dev/null here was the same mistake as the
+#: listing probe: it made "the release does not exist" and "the network was
+#: down" indistinguishable, and they need opposite responses.
+S3_ERR=""
+
 s3_bytes() {
-    aws s3 ls --recursive --summarize --no-sign-request \
-        "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_$1/" 2>/dev/null \
-        | awk '/Total Size/ {print $3}'
+    local out err rc
+    err=$(mktemp "${TMPDIR:-/tmp}/pw_s3sz.XXXXXX" 2>/dev/null) || err=/dev/null
+    out=$(aws s3 ls --recursive --summarize --no-sign-request \
+        "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/cmi_bids_$1/" 2>"${err}")
+    rc=$?
+    S3_ERR=""
+    if [[ "${rc}" -ne 0 ]]; then
+        S3_ERR="aws exit ${rc}: $(head -2 "${err}" 2>/dev/null | tr '\n' ' ')"
+    elif [[ -z "${out}" ]]; then
+        S3_ERR="the prefix listed nothing -- cmi_bids_$1 may not exist"
+    fi
+    [[ "${err}" != /dev/null ]] && rm -f "${err}"
+    printf '%s' "$(printf '%s' "${out}" | awk '/Total Size/ {print $3}')"
+}
+
+#: Which release directories the bucket actually holds. Printed when one cannot
+#: be read, because "R11 is missing" and "R11 is called something else" look the
+#: same from inside a loop over names someone wrote down.
+list_releases() {
+    aws s3 ls "s3://fcp-indi/data/Projects/HBN/BIDS_EEG/" --no-sign-request \
+        2>/dev/null | awk '{print $NF}' | tr -d '/' | grep -i '^cmi_bids' || true
 }
 
 _STAT_FLAG=""
@@ -88,6 +112,11 @@ for r in ${RELEASES}; do
     if [[ -z "${want}" || "${want}" -eq 0 ]]; then
         echo ""
         echo "### ${r}: cannot read the remote size -- skipping for now"
+        [[ -n "${S3_ERR}" ]] && echo "    ${S3_ERR}"
+        if [[ "${S3_ERR}" == *"may not exist"* ]]; then
+            echo "    Release directories the bucket actually holds:"
+            list_releases | sed 's/^/      /'
+        fi
         _failed="${_failed} ${r}"
         continue
     fi
