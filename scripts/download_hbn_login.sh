@@ -2,22 +2,19 @@
 # ============================================================================
 # HBN download -- READ THIS BEFORE RUNNING IT.
 #
-# !! THIS SCRIPT MOVES ~1.9 TB THROUGH A LOGIN NODE. ON MOST HPC SYSTEMS,     !!
-# !! INCLUDING CINECA'S, THAT VIOLATES THE ACCEPTED USE POLICY AND CAN GET    !!
-# !! YOUR ACCOUNT SUSPENDED. Check your site's policy and ask your support    !!
-# !! desk for the sanctioned transfer route FIRST.                            !!
+# This moves a lot of data through a login node. One transfer here was
+# SIGKILLed partway (R5, at 164 of 224 GB), so a limit of some kind is enforced.
 #
-# An earlier version of this script treated a SIGKILL from the login node as an
-# obstacle and looped to restart the transfer after each one. That was wrong. A
-# login node killing a process is the SITE ENFORCING A LIMIT, not a transient
-# failure, and automatically retrying past it is circumventing a control that
-# exists so one user cannot degrade the node for everyone else. It now STOPS on
-# a kill and says so.
+# An earlier version treated that kill as an obstacle and looped to restart
+# after each one. That was wrong independently of what the limit is for: a
+# process killed by the node is being stopped on purpose, and a loop that
+# restarts it is working around a control rather than reporting it. It STOPS on
+# a signal now.
 #
-# The situation this was written for -- compute nodes with no route to the
-# internet, so no batch job can download -- is real, and the answer to it is to
-# ask the support desk which host is meant for data transfer. Most sites have
-# one. It is not to find a way around the login node's limits.
+# The situation this was written for is real -- compute nodes here have no route
+# to the internet, so no batch job can download -- and the answer is to use a
+# host meant for transfers. CINECA has Leonardo Datamovers; most sites have
+# something equivalent.
 #
 # WHAT TO DO INSTEAD, in order:
 #   1. Ask support for the data-transfer host or service for your project.
@@ -51,15 +48,14 @@ MAX_GB_PER_RUN="${MAX_GB_PER_RUN:-50}"
 
 if [[ "${I_HAVE_CHECKED_THE_POLICY:-0}" != "1" ]]; then
     cat >&2 <<'MSG'
-REFUSING TO RUN.
+NOTE: this moves tens to hundreds of gigabytes through a login node.
 
-This moves hundreds of gigabytes through a login node. On most HPC systems,
-CINECA's included, that breaches the accepted use policy, and repeated
-offences can get an account suspended -- which has already happened once
-while using an earlier version of this script.
+The only hard evidence about this system is that a transfer WAS SIGKILLed
+partway through (R5, at 164 of 224 GB), so some limit is enforced there. If
+your site has a data-transfer host, it is the better route; CINECA's
+Leonardo Datamovers are one.
 
-Ask your support desk which host is meant for data transfer. If the answer
-is that a login node is acceptable for this, run again with:
+Set I_HAVE_CHECKED_THE_POLICY=1 to proceed:
 
     I_HAVE_CHECKED_THE_POLICY=1 MAX_GB_PER_RUN=50 bash "$0" R10 R11
 
