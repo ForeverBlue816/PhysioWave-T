@@ -25,23 +25,27 @@ data:
   manifest_val: null
   # How much of the mixture each dataset gets.
   #
-  #   proportional  (default, and what null means) -- in proportion to how many
-  #                 windows it actually holds. An epoch is one pass over the
-  #                 corpus: every window is seen once and nothing is revisited
-  #                 to fill a quota. PhysioNetMI holds ~39k windows against
-  #                 TUEG's 13.7M, and under the old default that eighth of the
-  #                 mixture meant re-reading each of those 39k windows on the
-  #                 order of a hundred times per run.
-  #   balanced      P(route)=1/4, then uniform within a route. Equal attention
-  #                 per route regardless of size, at the cost of that repetition.
-  #   {id: weight}  an explicit mapping, normalised.
+  #   balanced       (default, and what null means) P(route)=1/4, then uniform
+  #                  within a route. Size does not enter into it, so no corpus
+  #                  can dominate on volume alone.
+  #   proportional   in proportion to windows held. An epoch is one pass over
+  #                  the corpus; TUEG then carries about three quarters of it.
+  #   temperature:A  P(d) proportional to n**A -- the dial between the two.
+  #                  1.0 is proportional, 0.0 is equal shares. At 0.5 a corpus
+  #                  a hundred times larger gets ten times the windows.
+  #   {id: weight}   an explicit mapping, normalised.
   #
   # These govern the share of STEPS. The share of WINDOWS differs, because the
-  # micro-batch is route-specific -- 64 on E19_256, 12 on E128_512. Under
-  # `proportional` the step shares are deliberately NOT proportional: they are
-  # divided by the route's batch size so that the WINDOW shares come out equal
-  # to each dataset's share of the corpus. Both are logged every epoch.
-  weights: proportional
+  # micro-batch is route-specific -- 64 on E19_256, 12 on E128_512. Both are
+  # logged every epoch, with passes/epoch beside them.
+  #
+  # A CONSEQUENCE OF `balanced` WORTH KNOWING: it does not merely moderate the
+  # largest corpus, it squeezes HBN too. HBN is 24% of all windows but shares
+  # E128_512 with HGD and that route draws only 12 windows per step, so
+  # balanced leaves it at about 4% of the windows seen -- less than FACED,
+  # which is a thirtieth of its size. temperature:0.5 keeps TUEG off 74% while
+  # leaving HBN near 30%.
+  weights: balanced
 
 model:
   max_level: 3

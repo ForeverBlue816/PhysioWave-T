@@ -38,7 +38,8 @@ from torch.utils.data import Dataset
 
 from .routes import (PRETRAIN_DATASETS, ROUTES, Route,
                      balanced_sampling_weights,
-                     proportional_sampling_weights)
+                     proportional_sampling_weights,
+                     temperature_sampling_weights)
 
 
 # --------------------------------------------------------------------------- #
@@ -264,17 +265,34 @@ class RouteSchedule:
         # named policies. The default is proportional: an epoch is one pass over
         # the corpus and nothing is revisited to fill a quota.
         if weights is None or (isinstance(weights, str) and
-                               weights.lower() in ("proportional", "size", "auto")):
-            self.weight_policy = "proportional"
-            w = proportional_sampling_weights(counts, self.batch_by_route)
-        elif isinstance(weights, str) and weights.lower() in ("balanced", "uniform"):
+                               weights.lower() in ("balanced", "uniform")):
             self.weight_policy = "balanced"
             w = balanced_sampling_weights()
+        elif isinstance(weights, str) and \
+                weights.lower() in ("proportional", "size", "auto"):
+            self.weight_policy = "proportional"
+            w = proportional_sampling_weights(counts, self.batch_by_route)
+        elif isinstance(weights, str) and weights.lower().startswith("temperature"):
+            # "temperature:0.5" -- the dial between the two.
+            try:
+                alpha = float(weights.split(":", 1)[1])
+            except (IndexError, ValueError):
+                raise SystemExit(
+                    f"{weights!r}: temperature needs an exponent, as in "
+                    f"'temperature:0.5'. 1.0 is proportional, 0.0 is equal "
+                    f"shares regardless of size.") from None
+            if not 0.0 <= alpha <= 1.0:
+                raise SystemExit(
+                    f"temperature exponent {alpha} is outside [0, 1]. Above 1 "
+                    f"amplifies the largest corpus beyond its own share.")
+            self.weight_policy = f"temperature:{alpha:g}"
+            w = temperature_sampling_weights(counts, alpha, self.batch_by_route)
         elif isinstance(weights, str):
             raise SystemExit(
-                f"unknown sampling policy {weights!r}. Use 'proportional' "
-                f"(one pass over the corpus), 'balanced' (P(route)=1/4), or an "
-                f"explicit {{dataset: weight}} mapping.")
+                f"unknown sampling policy {weights!r}. Use 'balanced' "
+                f"(P(route)=1/4), 'proportional' (one pass over the corpus), "
+                f"'temperature:0.5' (between the two), or an explicit "
+                f"{{dataset: weight}} mapping.")
         else:
             self.weight_policy = "explicit"
             w = dict(weights)

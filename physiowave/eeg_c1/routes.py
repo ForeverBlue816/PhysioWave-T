@@ -322,10 +322,35 @@ def proportional_sampling_weights(
     return {k: v / total for k, v in raw.items()}
 
 
-def default_sampling_weights() -> Dict[str, float]:
-    """The configured mixture when no corpus is in hand to measure.
+def temperature_sampling_weights(
+        window_counts: Dict[str, int], alpha: float,
+        batch_by_route: Optional[Dict[str, int]] = None) -> Dict[str, float]:
+    """``P(d) ∝ n_d**alpha / b_d`` -- the dial between the two extremes.
 
-    Only reachable where window counts are unavailable; RouteSchedule counts the
-    manifest and goes proportional instead.
+    ``alpha=1`` is proportional sampling and ``alpha=0`` makes every dataset
+    equal regardless of size. In between, a corpus a hundred times larger gets
+    ``100**alpha`` times the windows rather than a hundred: at 0.5 that is ten.
+    This is the usual way multilingual pretraining stops its largest language
+    from being the whole run without pretending a tiny one is the same size.
+
+    The division by batch size is the same correction as in
+    ``proportional_sampling_weights`` and for the same reason: these are
+    probabilities over steps, and a step draws a route-specific number of
+    windows.
     """
+    batch_by_route = batch_by_route or {}
+    raw: Dict[str, float] = {}
+    for dataset_id, n in window_counts.items():
+        if n <= 0 or dataset_id not in PRETRAIN_DATASETS:
+            continue
+        b = float(batch_by_route.get(PRETRAIN_DATASETS[dataset_id].route_id, 1) or 1)
+        raw[dataset_id] = (float(n) ** float(alpha)) / b
+    total = sum(raw.values())
+    if total <= 0:
+        return {}
+    return {k: v / total for k, v in raw.items()}
+
+
+def default_sampling_weights() -> Dict[str, float]:
+    """The configured mixture when no corpus is in hand to measure."""
     return balanced_sampling_weights()

@@ -462,8 +462,22 @@ def test_12f_proportional_sampling_sees_every_window_once():
     assert mix["by_step"]["hbn"] > mix["by_step"]["tueg"]
     assert counts["hbn"] < counts["tueg"]
 
-    # null means proportional.
-    assert RouteSchedule(index, weights=None, seed=42).weight_policy == "proportional"
+    # null means balanced -- size alone must not decide the mixture.
+    assert RouteSchedule(index, weights=None, seed=42).weight_policy == "balanced"
+
+    # temperature is the dial between the two, and it is bounded.
+    for alpha, lo, hi in ((0.5, 0.40, 0.60), (0.75, 0.55, 0.75)):
+        t = RouteSchedule(index, weights=f"temperature:{alpha}", seed=42,
+                          num_replicas=4)
+        tw = t.realised_mixture()["by_window"]
+        assert lo < tw["tueg"] < hi, f"alpha={alpha}: tueg {tw['tueg']:.3f}"
+        # Between the extremes, in the direction that matters.
+        assert tw["tueg"] < counts["tueg"] / total
+        assert tw["physionet_mi"] > counts["physionet_mi"] / total
+    with pytest.raises(SystemExit):
+        RouteSchedule(index, weights="temperature", seed=42)
+    with pytest.raises(SystemExit):
+        RouteSchedule(index, weights="temperature:2.0", seed=42)
 
     # The old behaviour is still reachable, and still repeats small corpora.
     bal = RouteSchedule(index, weights="balanced", seed=42, num_replicas=4)
@@ -628,9 +642,9 @@ def test_15_route_sampler_mixture_and_ddp_agreement():
     index = _fake_index()
     lengths = {d: 5000 for d in PRETRAIN_DATASETS}
 
-    # `balanced` is the policy that means P(route)=1/4, and it still does.
-    single = RouteSchedule(index, weights="balanced", steps_per_epoch=4000,
-                           seed=42)
+    # `balanced` is the default and means P(route)=1/4.
+    single = RouteSchedule(index, steps_per_epoch=4000, seed=42)
+    assert single.weight_policy == "balanced"
     single.set_epoch(0)
     plan = single.plan()
     by_route = {}
@@ -640,10 +654,11 @@ def test_15_route_sampler_mixture_and_ddp_agreement():
     for rid, n in by_route.items():
         assert abs(n / len(plan) - 0.25) < 0.03, f"{rid} drew {n/len(plan):.3f}"
 
-    # The DEFAULT is proportional, and these seven datasets are all the same
-    # size -- so each takes an equal share of WINDOWS, and therefore an unequal
-    # share of steps, since a route's micro-batch ranges from 64 down to 12.
-    prop = RouteSchedule(index, steps_per_epoch=4000, seed=42)
+    # `proportional`, on seven datasets that are all the same size, gives each
+    # an equal share of WINDOWS and therefore an unequal share of steps, since
+    # a route's micro-batch ranges from 64 down to 12.
+    prop = RouteSchedule(index, weights="proportional", steps_per_epoch=4000,
+                         seed=42)
     assert prop.weight_policy == "proportional"
     windows = prop.realised_mixture()["by_window"]
     for d in PRETRAIN_DATASETS:
