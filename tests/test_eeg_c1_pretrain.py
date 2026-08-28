@@ -987,3 +987,32 @@ def test_a_sparse_recording_is_skipped_not_fatal(tmp_path):
     assert entry is not None and entry["n_windows"] > 0
     assert entry["placed_total"] == 19 and entry["placed_unk"] == 0
     assert not entry["empty_slots"]
+
+
+# --- 19 --------------------------------------------------------------------- #
+def test_19_schedule_length_is_remaining_not_total(tmp_path):
+    """len(schedule) counts DOWN, and start_step moves under a running epoch.
+
+    Both are deliberate: a resumed epoch must iterate only what is left, and
+    start_step is what makes that resumable. Anything that wants "step k of N"
+    has to read steps_per_epoch and snapshot start_step BEFORE the loop --
+    reading either inside it printed step 101 of 20.
+    """
+    from physiowave.eeg_c1.data import CorpusIndex, RouteSchedule
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=2)
+    index = CorpusIndex.from_manifest(corpus["train"])
+    sched = RouteSchedule(index, steps_per_epoch=40, seed=7)
+
+    assert len(sched) == 40 and sched.steps_per_epoch == 40
+    sched.start_step = 30
+    assert len(sched) == 10, "length must be what is LEFT of the epoch"
+    assert sched.steps_per_epoch == 40, "the epoch's size must not move"
+
+    # And the two together give a count that goes up, not down.
+    first, total = sched.start_step, sched.steps_per_epoch
+    seen = [first + i + 1 for i in range(len(sched))]
+    assert seen == list(range(31, 41))
+    assert max(seen) == total

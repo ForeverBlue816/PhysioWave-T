@@ -542,6 +542,12 @@ class EEGC1Trainer:
         acc = Accumulator()
         t0 = time.time()
         windows = 0
+        # Captured before the loop. len(self.loader) is the schedule's REMAINING
+        # steps -- it has to be, so a resumed epoch iterates only what is left --
+        # and self.schedule.start_step advances every iteration, so reading
+        # either one inside the loop counts down instead of up.
+        first_step = int(self.schedule.start_step)
+        epoch_steps = int(self.schedule.steps_per_epoch)
         route_seconds: Dict[str, float] = {}
         route_windows: Dict[str, int] = {}
         if self.device.type == "cuda":
@@ -611,6 +617,21 @@ class EEGC1Trainer:
                     "route_id": batch["route_id"],
                     "dataset_id": batch["dataset_id"],
                     **metrics, **branch_norms})
+                # Sixteen GPUs printing nothing between the banner and the end
+                # of the first epoch is indistinguishable from sixteen GPUs
+                # deadlocked, and the difference matters at this price. Same
+                # cadence as the jsonl row, so the cost is one line per fifty
+                # steps rather than a second stream to throttle.
+                done = first_step + i + 1
+                took = max(1e-9, time.time() - t0)
+                rate = (i + 1) / took
+                print(f"  epoch {self.epoch} step {done}/{epoch_steps} "
+                      f"[{batch['route_id']} {batch['dataset_id']}] "
+                      f"loss {metrics.get('loss_total', float('nan')):.5f} "
+                      f"lr {metrics['lr']:.2e} "
+                      f"{windows / took:.0f} win/s "
+                      f"eta {(epoch_steps - done) / rate / 60:.0f}m",
+                      flush=True)
             self.schedule.start_step = i + 1
             if self.max_steps and self.global_step >= self.max_steps:
                 break
