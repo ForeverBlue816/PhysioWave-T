@@ -291,6 +291,12 @@ class EEGC1Trainer:
         # answer has to come from a job that is already queued.
         self.progress_mode = resolve_progress(
             os.environ.get("PW_PROGRESS") or str(tcfg.get("progress", "auto")))
+        # Every fiftieth step is a cadence in STEPS, and how long fifty steps
+        # take is the thing nobody knows before the run. A floor in seconds
+        # makes "is it alive" answerable at a rate a person can wait through,
+        # whatever a step turns out to cost.
+        self.log_seconds = float(os.environ.get("PW_LOG_SECONDS")
+                                 or tcfg.get("log_seconds", 120))
         self.batch_by_route = {**DEFAULT_BATCH_BY_ROUTE,
                                **(tcfg.get("batch_size_by_route") or {})}
 
@@ -605,6 +611,7 @@ class EEGC1Trainer:
         # either one inside the loop counts down instead of up.
         first_step = int(self.schedule.start_step)
         epoch_steps = int(self.schedule.steps_per_epoch)
+        last_log_t = t0
         route_seconds: Dict[str, float] = {}
         route_windows: Dict[str, int] = {}
         if self.device.type == "cuda":
@@ -635,8 +642,10 @@ class EEGC1Trainer:
             # what REMAINS, so "i + 1 == len(self.loader)" is not the last step
             # of the epoch -- it is the step where the count passed the
             # countdown, exactly halfway, and the last step was never logged.
-            want_log = self.is_main and (i % 50 == 0
-                                         or first_step + i + 1 == epoch_steps)
+            want_log = self.is_main and (
+                i % 50 == 0
+                or first_step + i + 1 == epoch_steps
+                or time.time() - last_log_t >= self.log_seconds)
             if not is_accum:
                 self.scaler.unscale_(self.optimizer)
                 grad_norm = float(torch.nn.utils.clip_grad_norm_(
@@ -676,8 +685,13 @@ class EEGC1Trainer:
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
 
             if want_log:
+                last_log_t = time.time()
                 self._append_jsonl("metrics_step.jsonl", {
                     "epoch": self.epoch, "step": self.global_step,
+                    # Absolute, not elapsed: it survives a resume, and it is
+                    # what tells you whether the last row is a minute old or an
+                    # hour old without watching the file grow.
+                    "unix_time": last_log_t,
                     "route_id": batch["route_id"],
                     "dataset_id": batch["dataset_id"],
                     **metrics, **branch_norms})
@@ -691,7 +705,8 @@ class EEGC1Trainer:
                 rate = (i + 1) / took
                 eta = (epoch_steps - done) / rate
                 if self.progress_mode == "log":
-                    print(f"  epoch {self.epoch} step {done}/{epoch_steps} "
+                    print(f"  [{time.strftime('%H:%M:%S')}] "
+                          f"epoch {self.epoch} step {done}/{epoch_steps} "
                           f"[{batch['route_id']} {batch['dataset_id']}] "
                           f"loss {metrics.get('loss_total', float('nan')):.5f} "
                           f"lr {metrics['lr']:.2e} "
@@ -737,8 +752,21 @@ class EEGC1Trainer:
                          getattr(self.info, "world_size", 1),
                          getattr(self.info, "rank", 0),
                          max_batches_per_dataset=max_batches)
-        for batch in progress(it, f"val {self.epoch}", self.progress_mode,
-                              self.is_main):
+        val_t0 = last_val_log = time.time()
+        n_val_batches = len(it)
+        for vb, batch in enumerate(progress(it, f"val {self.epoch}",
+                                            self.progress_mode, self.is_main)):
+            if (self.is_main and self.progress_mode == "log"
+                    and time.time() - last_val_log >= self.log_seconds):
+                # The sweep is the other half of an epoch and used to print
+                # nothing at all, so the gap between the last training line and
+                # "epoch N:" looked exactly like a hang.
+                last_val_log = time.time()
+                rate = (vb + 1) / max(1e-9, last_val_log - val_t0)
+                print(f"  [{time.strftime('%H:%M:%S')}] "
+                      f"epoch {self.epoch} val {vb + 1}/{n_val_batches} "
+                      f"eta {fmt_eta((n_val_batches - vb - 1) / max(1e-9, rate))}",
+                      flush=True)
             x = batch["x"].to(self.device, non_blocking=True)
             meta = {k: v.to(self.device) for k, v in batch["channel_meta"].items()}
             gen = _mask_generator(self.val_mask_seed, batch["dataset_id"],
@@ -772,6 +800,8 @@ class EEGC1Trainer:
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
         it.close()
         means = acc.mean()
+        means["val_seconds"] = time.time() - val_t0
+        means["val_batches"] = float(n_val_batches)
         if self.is_main:
             payload = hist.payload()
             payload["epoch"] = self.epoch
@@ -790,10 +820,13 @@ class EEGC1Trainer:
     def fit(self) -> int:
         self._write_startup()
         start = self.epoch
+        run_t0 = time.time()
+        epochs_here = 0
         for epoch in range(start, self.epochs):
             self.epoch = epoch
             train_metrics = self.train_epoch()
             val_metrics = self.validate()
+            epochs_here += 1
             row = {"epoch": epoch, "global_step": self.global_step,
                    **{f"train/{k}": v for k, v in train_metrics.items()},
                    **{f"val/{k}": v for k, v in val_metrics.items()}}
@@ -808,10 +841,23 @@ class EEGC1Trainer:
             if self.is_main:
                 with open(os.path.join(self.out_dir, "history.json"), "w") as f:
                     json.dump(self.history, f, indent=2)
-                print(f"epoch {epoch}: train mse "
+                # The question a 50-epoch job is actually asked -- will it
+                # fit in the walltime -- is answerable from here and nowhere
+                # else, so it is answered here rather than left to arithmetic
+                # over a jsonl file.
+                spent = time.time() - run_t0
+                left = (self.epochs - epoch - 1) * spent / max(1, epochs_here)
+                # "epoch 0" and not "epoch 1 of 50": the identifier has to
+                # match metrics_epoch.jsonl, which is 0-based. The fraction is
+                # a count of epochs FINISHED, which is a different number and
+                # is spelled as one.
+                print(f"epoch {epoch} done ({epoch + 1}/{self.epochs}): train mse "
                       f"{train_metrics.get('loss_masked_mse', float('nan')):.5f}  "
                       f"val mse {val_metrics.get('loss_masked_mse', float('nan')):.5f}  "
-                      f"gate {train_metrics.get('channel_token_gate_tanh', 0):.4f}",
+                      f"gate {train_metrics.get('channel_token_gate_tanh', 0):.4f}  "
+                      f"[{fmt_eta(train_metrics.get('epoch_seconds', float('nan')))} "
+                      f"train + {fmt_eta(val_metrics.get('val_seconds', float('nan')))} "
+                      f"val, elapsed {fmt_eta(spent)}, run eta {fmt_eta(left)}]",
                       flush=True)
 
             self.schedule.start_step = 0

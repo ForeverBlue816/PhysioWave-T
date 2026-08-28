@@ -102,7 +102,7 @@ echo "  rendezvous ${MASTER_ADDR}:${MASTER_PORT} (id ${RDZV_ID})"
 echo "  nodes      $(scontrol show hostnames "${SLURM_JOB_NODELIST}" | tr '\n' ' ')"
 echo "  OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 echo "  epochs=${EPOCHS:-<script default>}  resume=${RESUME:-<none>}"
-echo "  progress=${PW_PROGRESS:-auto (log, under sbatch)}"
+echo "  progress=${PW_PROGRESS:-auto (log, under sbatch)}""  heartbeat=${PW_LOG_SECONDS:-120}s"
 pw_print_layout
 echo "  DATA_ROOT  =${DATA_ROOT}"
 echo "  OUTPUT_DIR =${OUTPUT_DIR}   (resubmit with RESUME=auto to continue)"
