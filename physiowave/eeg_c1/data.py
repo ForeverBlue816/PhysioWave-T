@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
@@ -45,6 +46,11 @@ from .routes import (PRETRAIN_DATASETS, ROUTES, Route,
 # --------------------------------------------------------------------------- #
 # HDF5 schema
 # --------------------------------------------------------------------------- #
+
+#: How many shards one dataset may hold open. Bounded because the alternative
+#: is unbounded: nothing in the access pattern closes a file, and the corpus
+#: has 94,938 of them. PW_MAX_OPEN_SHARDS overrides it.
+MAX_OPEN_SHARDS = 512
 
 #: Datasets every shard carries. `data` is [N, C, T] float32 in z-scored units;
 #: everything else is per-window provenance of the same length N, except the
@@ -142,18 +148,41 @@ class EEGWindowDataset(Dataset):
         self.route = ROUTES[self.route_id]
         # offsets[i] is the global index of shard i's first window
         self.offsets = np.cumsum([0] + [s.n_windows for s in self.shards])
-        self._handles: Dict[int, object] = {}
+        self._handles: "OrderedDict[int, object]" = OrderedDict()
+        self.max_open = max(1, int(os.environ.get("PW_MAX_OPEN_SHARDS")
+                                   or MAX_OPEN_SHARDS))
         self._montage: Optional[Dict[str, torch.Tensor]] = None
 
     def __len__(self) -> int:
         return int(self.offsets[-1])
 
     def _handle(self, shard_i: int):
+        """An open shard, least-recently-used ones closed to a bound.
+
+        The cache used to be unbounded. A rank draws ~29,000 windows an epoch
+        from a corpus of 94,938 shards, so it opened a file it would mostly
+        never touch again and held it for the rest of the run: the process's
+        file table grew without limit, every later open got slower, and 50
+        epochs would have walked into the descriptor limit.
+
+        A bound loses almost nothing. Sampling ~29,000 windows out of 15.4M
+        makes a second touch on the same shard rare, so the hit rate is low at
+        any cache size and the reads it saves are the few that were going to
+        repeat anyway.
+        """
         h = self._handles.get(shard_i)
-        if h is None:
-            import h5py
-            h = h5py.File(self.shards[shard_i].path, "r")
-            self._handles[shard_i] = h
+        if h is not None:
+            self._handles.move_to_end(shard_i)
+            return h
+        import h5py
+        h = h5py.File(self.shards[shard_i].path, "r")
+        self._handles[shard_i] = h
+        while len(self._handles) > self.max_open:
+            _, evicted = self._handles.popitem(last=False)
+            try:
+                evicted.close()
+            except Exception:                                  # noqa: BLE001
+                pass
         return h
 
     def montage(self) -> Dict[str, torch.Tensor]:

@@ -1200,3 +1200,59 @@ def test_22c_the_config_is_what_the_trainer_resolves(tmp_path):
     assert cfg["train"]["grad_accumulation_steps"] == 1
     assert cfg["train"]["batch_size_by_route"] == {
         "E19_256": 128, "E32_512": 96, "E64_256": 48, "E128_512": 24}
+
+
+# --- 23 --------------------------------------------------------------------- #
+def test_23_open_shards_are_bounded(tmp_path, monkeypatch):
+    """The cache used to grow to one handle per shard touched, and never shrink.
+
+    A rank draws tens of thousands of windows an epoch from ~95,000 shards, so
+    an unbounded cache is a file-descriptor leak with a slow-open symptom: the
+    process's file table grows all run, every later open costs more, and the
+    validation sweep -- which opens fresh handles each epoch -- gets steadily
+    slower while training appears to speed up.
+    """
+    from physiowave.eeg_c1.data import CorpusIndex, EEGWindowDataset
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=6, recordings=1,
+                                windows=2)
+    index = CorpusIndex.from_manifest(corpus["train"])
+    monkeypatch.setenv("PW_MAX_OPEN_SHARDS", "2")
+    ds = EEGWindowDataset(index, "tueg")
+    assert len(ds.shards) > 2, "need more shards than the bound to test it"
+
+    seen = []
+    for i in range(len(ds)):
+        seen.append(ds[i]["x"].shape)
+        assert len(ds._handles) <= 2, "the bound is not enforced"
+    assert len(seen) == len(ds), "eviction lost a window"
+
+    # The most recent shard stays; the oldest is the one that goes.
+    ds.close()
+    assert not ds._handles
+
+    # And every window still reads correctly after eviction has cycled.
+    ds2 = EEGWindowDataset(index, "tueg")
+    monkeypatch.delenv("PW_MAX_OPEN_SHARDS")
+    ds3 = EEGWindowDataset(index, "tueg")
+    for i in range(len(ds2)):
+        assert torch.equal(ds2[i]["x"], ds3[i]["x"])
+    ds2.close()
+    ds3.close()
+
+
+def test_23b_a_reused_shard_is_not_reopened(tmp_path):
+    """The bound must still be a cache, not a no-op."""
+    from physiowave.eeg_c1.data import CorpusIndex, EEGWindowDataset
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=4)
+    index = CorpusIndex.from_manifest(corpus["train"])
+    ds = EEGWindowDataset(index, "tueg")
+    ds[0]
+    first = ds._handles[ds.locate(0)[0]]
+    ds[0]
+    assert ds._handles[ds.locate(0)[0]] is first, "reopened a cached shard"
+    ds.close()
