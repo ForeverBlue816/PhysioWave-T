@@ -36,12 +36,12 @@ data:
   #   {id: weight}   an explicit mapping, normalised.
   #
   # These govern the share of STEPS. The share of WINDOWS differs, because the
-  # micro-batch is route-specific -- 64 on E19_256, 12 on E128_512. Both are
+  # micro-batch is route-specific -- see batch_size_by_route below. Both are
   # logged every epoch, with passes/epoch beside them.
   #
   # A CONSEQUENCE OF `balanced` WORTH KNOWING: it does not merely moderate the
   # largest corpus, it squeezes HBN too. HBN is 24% of all windows but shares
-  # E128_512 with HGD and that route draws only 12 windows per step, so
+  # E128_512 with HGD, and that route draws the fewest windows per step, so
   # balanced leaves it at about 4% of the windows seen -- less than FACED,
   # which is a thirtieth of its size. temperature:0.5 keeps TUEG off 74% while
   # leaving HBN near 30%.
@@ -98,7 +98,13 @@ model:
   qk_norm: true
   masking_strategy: frequency_guided
   importance_ratio: 0.6
-  mask_ratio: 0.5
+  # 0.75, not 0.5. A patch is one channel over half a second, and EEG is
+  # strongly correlated across channels at the same instant, so at 0.5 a
+  # masked patch usually has an unmasked neighbour on an adjacent
+  # electrode carrying most of its content. The first epoch reached a
+  # validation MSE of 0.107 on a unit-variance target, which is a task
+  # being solved rather than learned from.
+  mask_ratio: 0.75
   # C1, exactly as the channel ablation defines it.
   channel_encoding: id
   channel_injection: token
@@ -114,15 +120,28 @@ train:
   fold_kl: 1.0e-3
   clip_grad_norm: 1.0
   precision: bf16
-  grad_accumulation_steps: 4
+  # 1, not 4. 769 scheduled steps at grad_accum 4 is 192 OPTIMIZER steps
+  # per epoch and 9,600 over the run -- an order of magnitude short of
+  # what masked pretraining takes, and no learning rate fixes a step
+  # count. At 1 the same epoch is 769 optimizer steps and the run is
+  # 38,450. The effective batch halves (4096 -> 2048 windows on
+  # E19_256) even with the per-GPU batch doubled below, which is the
+  # trade: fewer windows per update, four times as many updates.
+  grad_accumulation_steps: 1
   steps_per_epoch: null          # null -> one pass over the corpus in expectation
   val_mask_seed: 1234            # fixes the validation mask across epochs
   vis_every_epochs: 5
-  # Token counts differ 6.7x across routes, so one batch size would either waste
-  # E19_256 or exhaust memory on E128_512. Gradient accumulation keeps the
-  # optimizer step comparable whichever route a step drew.
+  # Token counts differ 6.7x across routes, so one batch size would either
+  # waste E19_256 or exhaust memory on E128_512. A step's effective batch
+  # therefore depends on the route it drew; the mixture table logs the window
+  # share each dataset actually got, which is the number that matters.
+  # Doubled. An epoch therefore reads twice the windows and takes roughly
+  # twice as long; with RESUME=auto that is a walltime to resubmit against,
+  # not a limit. If E128_512 runs out of memory it is the one to halve first --
+  # 1024 tokens a window against E19_256's 152 -- and BATCH_SIZE_BY_ROUTE
+  # overrides any of these at submission without editing this file.
   batch_size_by_route:
-    E19_256: 64
-    E32_512: 48
-    E64_256: 24
-    E128_512: 12
+    E19_256: 128
+    E32_512: 96
+    E64_256: 48
+    E128_512: 24

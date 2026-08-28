@@ -1136,3 +1136,67 @@ def test_21b_a_resume_keeps_its_own_history(tmp_path):
     assert len([l for l in open(run / "metrics_epoch.jsonl")]) > first, \
         "a resume retired the history it was supposed to continue"
     assert not (run / "superseded").exists()
+
+
+# --- 22 --------------------------------------------------------------------- #
+LAUNCHER = os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")
+
+
+def _launcher_overrides(env=None):
+    """The --set list the launcher would build, without running anything."""
+    script = subprocess.run(
+        ["bash", "-c",
+         f'set -uo pipefail\n'
+         f'pw_require_python_deps() {{ return 0; }}\n'
+         f'export -f pw_require_python_deps\n'
+         f'sed -n "/^OVERRIDES=(/,/^\\[\\[ -n \\"\\${{SEED}}\\"/p" {LAUNCHER}'],
+        capture_output=True, text=True)
+    body = script.stdout
+    assert "OVERRIDES=(" in body, script.stderr
+    full = ('set -uo pipefail\n'
+            'MANIFEST_TRAIN=t; MANIFEST_VAL=v\n'
+            'EPOCHS="${EPOCHS:-}"; GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-}"\n'
+            'LR="${LR:-}"; WEIGHT_DECAY="${WEIGHT_DECAY:-}"\n'
+            'MASK_RATIO="${MASK_RATIO:-}"; SEED="${SEED:-}"\n'
+            'VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"\n'
+            + body +
+            '\nprintf "%s\\n" "${OVERRIDES[@]}"\n')
+    r = subprocess.run(["bash", "-c", full], capture_output=True, text=True,
+                       env={**os.environ, **(env or {})})
+    assert r.returncode == 0, r.stderr
+    return r.stdout.split()
+
+
+def test_22_the_launcher_does_not_shadow_the_config(tmp_path):
+    """A default in the launcher is a second copy of a number, and it wins.
+
+    Every hyperparameter used to be passed through --set unconditionally from a
+    default that duplicated the config's, so editing the config changed
+    nothing: the file said mask_ratio 0.75 and the run used 0.5.
+    """
+    bare = _launcher_overrides()
+    for key in ("train.epochs", "train.grad_accumulation_steps", "train.lr",
+                "train.weight_decay", "model.mask_ratio", "seed"):
+        assert not any(o.startswith(key + "=") for o in bare), \
+            f"{key} is overridden even when nothing asked for it"
+
+    asked = _launcher_overrides({"MASK_RATIO": "0.6", "EPOCHS": "3"})
+    assert "model.mask_ratio=0.6" in asked
+    assert "train.epochs=3" in asked
+    assert not any(o.startswith("train.lr=") for o in asked)
+
+
+def test_22b_mask_ratio_zero_still_overrides():
+    """0 is a value. A `${VAR:+...}` presence test would drop it."""
+    assert "model.mask_ratio=0" in _launcher_overrides({"MASK_RATIO": "0"})
+
+
+def test_22c_the_config_is_what_the_trainer_resolves(tmp_path):
+    """The values this file now owns must reach the model and the loop."""
+    import yaml
+    with open(os.path.join(ROOT, "configs", "pretrain", "eeg_c1_moe.yaml")) as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["model"]["mask_ratio"] == 0.75
+    assert cfg["train"]["grad_accumulation_steps"] == 1
+    assert cfg["train"]["batch_size_by_route"] == {
+        "E19_256": 128, "E32_512": 96, "E64_256": 48, "E128_512": 24}

@@ -22,11 +22,15 @@
 #   NUM_GPUS              GPUs per node                              (4)
 #   NNODES                nodes                            ($SLURM_NNODES or 1)
 #   CONFIG                which objective          (pretrain/eeg_c1_moe = full)
-#   EPOCHS                                                          (50)
+#   EPOCHS                                                    (the config's)
 #   MAX_STEPS             stop after this many optimizer steps      (unset)
-#   BATCH_SIZE_BY_ROUTE   "E19_256=64,E32_512=48,E64_256=24,E128_512=12"
-#   GRAD_ACCUMULATION                                               (4)
-#   LR / WEIGHT_DECAY / MASK_RATIO / SEED
+#   BATCH_SIZE_BY_ROUTE   "E19_256=128,E32_512=96,E64_256=48,E128_512=24"
+#   GRAD_ACCUMULATION                                         (the config's)
+#   LR / WEIGHT_DECAY / MASK_RATIO / SEED                     (the config's)
+#
+# UNSET MEANS THE CONFIG DECIDES. None of these has a default here; a default
+# here would be a second copy of a number that already has a home, and the copy
+# would win.
 #   DATA_ROOT             holds merged/manifest_{train,val}.jsonl
 #   OUTPUT_DIR            checkpoints and figures
 #   RESUME                'auto' to continue OUTPUT_DIR/latest.pth
@@ -34,6 +38,8 @@
 #
 # These are VALUES passed straight through, not `${VAR:+--flag}` presence
 # tests: MASK_RATIO=0 is a non-empty string and that idiom would read it as on.
+# The presence test that decides whether to override at all is `-n`, for the
+# same reason.
 # ============================================================================
 
 set -uo pipefail
@@ -49,13 +55,18 @@ NNODES="${NNODES:-${SLURM_NNODES:-1}}"
 # Which objective. pretrain/eeg_c1_moe is the full one; the two ablations
 # differ from it in exactly the raw_weight and mask_before_frontend lines.
 CONFIG="${CONFIG:-pretrain/eeg_c1_moe}"
-EPOCHS="${EPOCHS:-50}"
-GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-4}"
-LR="${LR:-3e-4}"
-WEIGHT_DECAY="${WEIGHT_DECAY:-0.05}"
-MASK_RATIO="${MASK_RATIO:-0.5}"
-SEED="${SEED:-42}"
-VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-5}"
+# NO DEFAULTS FOR THE HYPERPARAMETERS. Each of these used to carry a copy of
+# the config's value and pass it through --set unconditionally, so the config
+# was overridden by an identical number and editing the config did nothing --
+# the file said mask_ratio 0.75 and the run banner said 0.5. Unset means "the
+# config decides"; set means override, which is what an override is for.
+EPOCHS="${EPOCHS:-}"
+GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-}"
+LR="${LR:-}"
+WEIGHT_DECAY="${WEIGHT_DECAY:-}"
+MASK_RATIO="${MASK_RATIO:-}"
+SEED="${SEED:-}"
+VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"
 DATA_ROOT="${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 BATCH_SIZE_BY_ROUTE="${BATCH_SIZE_BY_ROUTE:-}"
@@ -83,14 +94,16 @@ done
 OVERRIDES=(
   "data.manifest_train=${MANIFEST_TRAIN}"
   "data.manifest_val=${MANIFEST_VAL}"
-  "train.epochs=${EPOCHS}"
-  "train.grad_accumulation_steps=${GRAD_ACCUMULATION}"
-  "train.lr=${LR}"
-  "train.weight_decay=${WEIGHT_DECAY}"
-  "train.vis_every_epochs=${VIS_EVERY_EPOCHS}"
-  "model.mask_ratio=${MASK_RATIO}"
-  "seed=${SEED}"
 )
+# -n, not :+ -- MASK_RATIO=0 is a legitimate value and a presence test that
+# reads it as unset would silently drop it.
+[[ -n "${EPOCHS}" ]]           && OVERRIDES+=("train.epochs=${EPOCHS}")
+[[ -n "${GRAD_ACCUMULATION}" ]] && OVERRIDES+=("train.grad_accumulation_steps=${GRAD_ACCUMULATION}")
+[[ -n "${LR}" ]]               && OVERRIDES+=("train.lr=${LR}")
+[[ -n "${WEIGHT_DECAY}" ]]     && OVERRIDES+=("train.weight_decay=${WEIGHT_DECAY}")
+[[ -n "${VIS_EVERY_EPOCHS}" ]] && OVERRIDES+=("train.vis_every_epochs=${VIS_EVERY_EPOCHS}")
+[[ -n "${MASK_RATIO}" ]]       && OVERRIDES+=("model.mask_ratio=${MASK_RATIO}")
+[[ -n "${SEED}" ]]             && OVERRIDES+=("seed=${SEED}")
 
 # "E19_256=64,E32_512=48" -> one dotted override per route.
 if [[ -n "${BATCH_SIZE_BY_ROUTE}" ]]; then
@@ -111,8 +124,10 @@ echo "============================================================"
 echo "  EEG C1 multi-route pretraining"
 echo "  config=${CONFIG}"
 echo "  nodes=${NNODES} x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
-echo "  epochs=${EPOCHS}  grad_accum=${GRAD_ACCUMULATION}"
-echo "  lr=${LR}  wd=${WEIGHT_DECAY}  mask_ratio=${MASK_RATIO}  seed=${SEED}"
+echo "  epochs=${EPOCHS:-<config>}  grad_accum=${GRAD_ACCUMULATION:-<config>}"
+echo "  lr=${LR:-<config>}  wd=${WEIGHT_DECAY:-<config>}  mask_ratio=${MASK_RATIO:-<config>}  seed=${SEED:-<config>}"
+echo "  (<config> means ${CONFIG}.yaml decides; the trainer's own banner"
+echo "   below prints the values it actually resolved)"
 echo "  train manifest ${MANIFEST_TRAIN}"
 echo "  val   manifest ${MANIFEST_VAL}"
 echo "  out            ${OUTPUT_DIR}"
