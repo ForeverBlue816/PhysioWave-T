@@ -767,6 +767,27 @@ class _RedoShard(Exception):
     """Raised inside the resume scan to mean 'this one is to be redone'."""
 
 
+def _shard_data_is_readable(f, n_win: int) -> bool:
+    """Whether a shard's chunks inflate -- not whether its header parses.
+
+    ``f["data"].shape`` is answered from the object header, which HDF5 lays
+    down before any chunk, so a resume that reads only the shape accepts a file
+    that a killed task left half-written. It then accepts it on every later
+    resume too, and the corpus carries the shard until a training epoch reads
+    the window it cannot inflate. Forcing the first and last chunk turns that
+    into "not done yet", which is what it always was: truncation takes the
+    tail, so the last window is the one that tells you.
+    """
+    if n_win <= 0:
+        return True
+    try:
+        f["data"][0]
+        f["data"][n_win - 1]
+    except Exception:                                          # noqa: BLE001
+        return False
+    return True
+
+
 def _process_one_path(payload):
     """One file, start to finish, in a worker process.
 
@@ -1514,6 +1535,8 @@ def main(argv=None) -> int:
                                 raise _RedoShard()
                             valid = np.asarray(f["valid_channel_mask"][...], bool)
                             n_win = int(f["data"].shape[0])
+                            if not _shard_data_is_readable(f, n_win):
+                                raise _RedoShard()
                             ident = tueg_identity(path, args.root)
                             entries.append({
                                 "path": done, "dataset_id": dataset_id,
@@ -1586,6 +1609,8 @@ def main(argv=None) -> int:
                               f.attrs.get("preprocessing_provenance", "{}"))
                           valid = np.asarray(f["valid_channel_mask"][...], bool)
                           n_win = int(f["data"].shape[0])
+                          if not _shard_data_is_readable(f, n_win):
+                              raise _RedoShard()
                           entries.append({
                               "path": done, "dataset_id": dataset_id,
                               "route_id": route.route_id,

@@ -349,10 +349,43 @@ def write_shard(path: str, windows: np.ndarray, route: Route,
     counts, the trainer opens the handful of files a step touches, and nothing
     ever has to hold the corpus in memory.
     """
-    import h5py
-
     os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
     n = int(windows.shape[0])
+    # Write to a private name and rename on success. A shard is gzip-chunked,
+    # and HDF5 lays the header down before the chunks, so a task killed
+    # part-way through (a walltime, an OOM, a node failure) used to leave a
+    # file at the FINAL path whose shape and attributes read back perfectly and
+    # whose data raised "inflate() failed" on the first training epoch that
+    # touched it -- months later, on sixteen ranks at once. os.replace is
+    # atomic within a filesystem, so the final path now only ever names a file
+    # that was written all the way through.
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        _write_shard_file(tmp, windows, route, dataset_id, channel_names,
+                          channel_ids, valid, subject_ids, recording_ids,
+                          window_starts, source_rate, provenance, n)
+    except BaseException:
+        # A signal cannot be caught here, which is the case this design is
+        # actually for; this only keeps a failed run from littering scratch.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.replace(tmp, path)
+    return {"path": path, "dataset_id": dataset_id, "route_id": route.route_id,
+            "n_windows": n, "subjects": sorted({str(s) for s in subject_ids})}
+
+
+def _write_shard_file(path: str, windows: np.ndarray, route: Route,
+                      dataset_id: str, channel_names: Sequence[str],
+                      channel_ids: Sequence[int], valid: np.ndarray,
+                      subject_ids: Sequence[str], recording_ids: Sequence[str],
+                      window_starts: Sequence[float], source_rate: float,
+                      provenance: Dict, n: int) -> None:
+    """The bytes themselves. Separate so write_shard owns only the publish."""
+    import h5py
+
     with h5py.File(path, "w") as f:
         f.create_dataset("data", data=windows.astype(np.float32),
                          compression="gzip", compression_opts=4,
@@ -377,5 +410,3 @@ def write_shard(path: str, windows: np.ndarray, route: Route,
         f.attrs["source_sampling_rate"] = float(source_rate)
         f.attrs["target_sampling_rate"] = float(route.sampling_rate)
         f.attrs["preprocessing_provenance"] = json.dumps(provenance)
-    return {"path": path, "dataset_id": dataset_id, "route_id": route.route_id,
-            "n_windows": n, "subjects": sorted({str(s) for s in subject_ids})}

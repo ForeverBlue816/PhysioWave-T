@@ -38,19 +38,46 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from physiowave.eeg_c1.routes import PRETRAIN_DATASETS      # noqa: E402
 
 
+#: How much of a shard to actually read. ``meta`` is the shape and attributes
+#: alone; ``ends`` also inflates the first and last window; ``full`` inflates
+#: every one.
+CHECK_LEVELS = ("meta", "ends", "full")
+
+#: Windows per read in the ``full`` pass. A shard is chunked one window per
+#: chunk, so this only bounds memory -- every chunk is inflated either way.
+_READ_BLOCK = 64
+
+
 def _check_one(row):
     """Open one shard and confirm it is readable and the right length.
+
+    THE SHAPE IS NOT THE DATA. ``f["data"].shape`` comes out of the object
+    header, which HDF5 writes before any chunk. A task killed part-way through
+    a write therefore leaves a file that answers this question correctly and
+    raises ``OSError: Can't synchronously read data (inflate() failed)`` the
+    first time training touches one of its windows. That is precisely what a
+    ``meta`` check passed and a sixteen-rank job then died on, so ``full``
+    -- which inflates every chunk, and is the only level that can prove a
+    shard is readable -- is the default.
 
     A module-level function so it can cross a process boundary. h5py is not
     reliably thread-safe, so this is a process pool rather than a thread pool.
     """
     import h5py
-    path, expected = row
+    path, expected, level = row
     try:
         with h5py.File(path, "r") as f:
-            got = int(f["data"].shape[0])
-        if got != expected:
-            return path, f"manifest says {expected} windows, file has {got}"
+            data = f["data"]
+            got = int(data.shape[0])
+            if got != expected:
+                return path, f"manifest says {expected} windows, file has {got}"
+            if level == "ends" and got:
+                # Truncation takes the tail, so the last chunk is the one that
+                # tells you about it; the first is nearly free alongside.
+                data[0], data[got - 1]
+            elif level == "full":
+                for k in range(0, got, _READ_BLOCK):
+                    data[k:k + _READ_BLOCK]
     except Exception as exc:                                   # noqa: BLE001
         return path, str(exc)
     return None
@@ -88,10 +115,23 @@ def main(argv=None) -> int:
     p.add_argument("--allow-missing", action="store_true",
                    help="merge what is there instead of naming what is not")
     p.add_argument("--check-shards", action="store_true",
-                   help="open every shard to confirm it is readable and the "
+                   help="read every shard to confirm it is readable and the "
                         "length its manifest row claims. On TUEG that is 67,000 "
                         "files, so give it --jobs; worth doing once before "
                         "committing to a long training run.")
+    p.add_argument("--check-level", choices=CHECK_LEVELS, default="full",
+                   help="how much of each shard --check-shards reads. "
+                        "'full' (default) inflates every window and is the only "
+                        "level that proves a shard is readable; 'ends' inflates "
+                        "the first and last, which catches a truncated write; "
+                        "'meta' reads the shape alone and cannot tell a good "
+                        "shard from a half-written one.")
+    p.add_argument("--drop-unreadable", action="store_true",
+                   help="with --check-shards, leave the bad shards out of the "
+                        "merged manifests and list them in "
+                        "unreadable_shards.jsonl, instead of refusing to write. "
+                        "The windows they held are lost either way; this makes "
+                        "the loss explicit and lets training start.")
     p.add_argument("--jobs", type=int, default=1,
                    help="workers for --check-shards. The merge itself reads a "
                         "handful of text files and needs none of these.")
@@ -170,12 +210,12 @@ def main(argv=None) -> int:
         import concurrent.futures as cf
         import time
 
-        todo = [(r["path"], int(r["n_windows"]))
+        todo = [(r["path"], int(r["n_windows"]), args.check_level)
                 for split in ("train", "val") for r in merged[split]]
         bad = []
         started = time.time()
-        print(f"checking {len(todo):,} shard(s) on {args.jobs} worker(s)...",
-              flush=True)
+        print(f"checking {len(todo):,} shard(s) on {args.jobs} worker(s) "
+              f"at level '{args.check_level}'...", flush=True)
         if args.jobs > 1:
             with cf.ProcessPoolExecutor(max_workers=args.jobs) as pool:
                 for i, res in enumerate(
@@ -194,12 +234,49 @@ def main(argv=None) -> int:
                 if res is not None:
                     bad.append(res)
         print(f"  checked in {time.time()-started:.0f}s", flush=True)
-        if bad:
-            print(f"ERROR: {len(bad)} shard(s) unreadable or inconsistent:",
-                  file=sys.stderr)
+        if bad and not args.drop_unreadable:
+            print(f"ERROR: {len(bad)} of {len(todo)} shard(s) unreadable or "
+                  f"inconsistent:", file=sys.stderr)
             for path, why in bad[:8]:
                 print(f"  {path}: {why}", file=sys.stderr)
+            if len(bad) > 8:
+                print(f"  ... and {len(bad) - 8} more", file=sys.stderr)
+            print(f"\n  'inflate() failed' means the header survived a write "
+                  f"the data did not --\n"
+                  f"  a preprocessing task killed part-way through. Re-run it "
+                  f"for those\n"
+                  f"  recordings, or re-merge with --drop-unreadable to leave "
+                  f"them out and\n"
+                  f"  start training without them.", file=sys.stderr)
             return 1
+        if bad:
+            os.makedirs(out_dir, exist_ok=True)
+            report = os.path.join(out_dir, "unreadable_shards.jsonl")
+            with open(report, "w") as f:
+                for path, why in bad:
+                    f.write(json.dumps({"path": path, "error": why}) + "\n")
+            dropped = {path for path, _ in bad}
+            lost = sum(int(r["n_windows"])
+                       for split in ("train", "val") for r in merged[split]
+                       if r["path"] in dropped)
+            for split in ("train", "val"):
+                merged[split] = [r for r in merged[split]
+                                 if r["path"] not in dropped]
+            # The table and the summary are built from the rows, so rebuild
+            # them from what survived rather than reporting counts the written
+            # manifests no longer back.
+            for d in present:
+                c, seen = per_dataset[d], {"train": set(), "val": set()}
+                for split in ("train", "val"):
+                    rows = [r for r in merged[split] if r["dataset_id"] == d]
+                    c[f"{split}_shards"] = len(rows)
+                    c[f"{split}_windows"] = sum(r["n_windows"] for r in rows)
+                    for r in rows:
+                        seen[split].update(r.get("subjects", ()))
+                subjects[d] = seen
+                c["subjects"] = len(seen["train"] | seen["val"])
+            print(f"dropped {len(bad)} unreadable shard(s), {lost:,} window(s); "
+                  f"listed in {report}", flush=True)
 
     # An empty merge is never a successful one. Writing a pair of empty
     # manifests and reporting a table of zeros is how a training run gets

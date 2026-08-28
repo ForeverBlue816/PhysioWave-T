@@ -180,7 +180,23 @@ class EEGWindowDataset(Dataset):
     def __getitem__(self, i: int) -> Dict[str, object]:
         shard_i, local = self.locate(int(i))
         h = self._handle(shard_i)
-        x = torch.from_numpy(np.asarray(h["data"][local], dtype=np.float32))
+        try:
+            x = torch.from_numpy(np.asarray(h["data"][local], dtype=np.float32))
+        except OSError as exc:
+            # h5py reports a bad gzip chunk as "inflate() failed" and says
+            # nothing about which of the corpus's ~95,000 files it was, which
+            # leaves a 16-rank job with an unactionable traceback. A shard whose
+            # header is intact but whose chunks are not is what a preprocessing
+            # task killed mid-write leaves behind.
+            raise OSError(
+                f"{self.shards[shard_i].path}: window {local} of "
+                f"{self.shards[shard_i].n_windows} is unreadable ({exc}).\n"
+                f"  The shard's header survived but its data did not -- almost "
+                f"always a preprocessing task killed part-way through the write."
+                f"\n  Find every such shard, and drop them, with:\n"
+                f"    python scripts/build_eeg_c1_manifest.py "
+                f"--corpus-root $DATA_ROOT --check-shards --jobs 16"
+            ) from exc
         return {
             "x": x,
             "route_id": self.route_id,
