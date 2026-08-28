@@ -1016,3 +1016,27 @@ def test_19_schedule_length_is_remaining_not_total(tmp_path):
     seen = [first + i + 1 for i in range(len(sched))]
     assert seen == list(range(31, 41))
     assert max(seen) == total
+
+
+def test_19b_the_logged_steps_are_the_intended_ones(tmp_path):
+    """Every fiftieth step and the LAST one -- not the midpoint.
+
+    `i + 1 == len(schedule)` reads as "the last step" and is not: the length
+    counts down as start_step advances, so the two met in the middle and the
+    epoch's final step never logged.
+    """
+    epoch_steps, first_step = 769, 0
+    wrong = [i for i in range(epoch_steps)
+             if i % 50 == 0 or i + 1 == epoch_steps - i]
+    right = [i for i in range(epoch_steps)
+             if i % 50 == 0 or first_step + i + 1 == epoch_steps]
+
+    assert 384 in wrong and 384 not in right, "the midpoint was the 'last' step"
+    assert epoch_steps - 1 in right, "the epoch's last step must log"
+    assert epoch_steps - 1 not in wrong
+
+    # A resumed epoch logs its own last step, not the one it would have had
+    # from the top.
+    resumed = [i for i in range(epoch_steps - 600)
+               if i % 50 == 0 or 600 + i + 1 == epoch_steps]
+    assert (epoch_steps - 600) - 1 in resumed

@@ -572,7 +572,12 @@ class EEGC1Trainer:
             self.scaler.scale(loss / self.grad_accum).backward()
             grad_norm = float("nan")
             branch_norms: Dict[str, float] = {}
-            want_log = self.is_main and (i % 50 == 0 or i + 1 == len(self.loader))
+            # first_step + i + 1, not len(self.loader): the schedule's length is
+            # what REMAINS, so "i + 1 == len(self.loader)" is not the last step
+            # of the epoch -- it is the step where the count passed the
+            # countdown, exactly halfway, and the last step was never logged.
+            want_log = self.is_main and (i % 50 == 0
+                                         or first_step + i + 1 == epoch_steps)
             if not is_accum:
                 self.scaler.unscale_(self.optimizer)
                 grad_norm = float(torch.nn.utils.clip_grad_norm_(
