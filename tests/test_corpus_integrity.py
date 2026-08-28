@@ -87,6 +87,17 @@ def test_ends_level_catches_a_bad_tail(corpus_with_one_bad_shard):
     assert victim in r.stderr
 
 
+def test_the_report_is_written_even_when_nothing_is_dropped(
+        corpus_with_one_bad_shard):
+    """Which files failed is the finding, not a side effect of dropping them."""
+    root, victim, _ = corpus_with_one_bad_shard
+    r = _merge(root, "--check-shards", "--check-level", "full", "--jobs", "2")
+    assert r.returncode == 1
+    report = os.path.join(root, "merged", "unreadable_shards.jsonl")
+    assert os.path.isfile(report), "a refused merge recorded nothing"
+    assert [json.loads(l)["path"] for l in open(report)] == [victim]
+
+
 def test_drop_unreadable_writes_manifests_without_it(corpus_with_one_bad_shard):
     root, victim, _ = corpus_with_one_bad_shard
     r = _merge(root, "--check-shards", "--check-level", "full",

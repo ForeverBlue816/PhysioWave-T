@@ -89,8 +89,14 @@ echo ""
 if [[ ${rc} -eq 0 ]]; then
     echo "corpus verified; manifests in ${DATA_ROOT}/merged"
 else
-    echo "unreadable shards found. To list them all:"
-    echo "  sbatch --export=ALL,DROP=1 scripts/slurm/cineca_verify_corpus.sbatch"
+    echo "unreadable shards found. Which ones:"
     echo "  cat ${DATA_ROOT}/merged/unreadable_shards.jsonl"
+    echo "  cat ${SLURM_JOB_NAME}_${SLURM_JOB_ID}.err     # the first eight"
+    echo ""
+    echo "A handful means a preprocessing task was killed part-way through."
+    echo "Delete those shards and re-run the preprocessing array with --resume,"
+    echo "which now rebuilds any shard whose data does not inflate; or, if the"
+    echo "windows are not worth another pass, drop them and merge without them:"
+    echo "  sbatch --export=ALL,DROP=1 scripts/slurm/cineca_verify_corpus.sbatch"
 fi
 exit ${rc}

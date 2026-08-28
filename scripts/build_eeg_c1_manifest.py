@@ -234,6 +234,18 @@ def main(argv=None) -> int:
                 if res is not None:
                     bad.append(res)
         print(f"  checked in {time.time()-started:.0f}s", flush=True)
+        if bad:
+            # Written whether or not the bad shards are being dropped. Which
+            # files failed is the finding; dropping them is a separate decision,
+            # and making the record conditional on that decision meant the one
+            # run that reported "2 bad" left nothing behind that said which two.
+            os.makedirs(out_dir, exist_ok=True)
+            report = os.path.join(out_dir, "unreadable_shards.jsonl")
+            with open(report, "w") as f:
+                for path, why in bad:
+                    f.write(json.dumps({"path": path, "error": why}) + "\n")
+            print(f"  listed {len(bad)} unreadable shard(s) in {report}",
+                  flush=True)
         if bad and not args.drop_unreadable:
             print(f"ERROR: {len(bad)} of {len(todo)} shard(s) unreadable or "
                   f"inconsistent:", file=sys.stderr)
@@ -241,8 +253,9 @@ def main(argv=None) -> int:
                 print(f"  {path}: {why}", file=sys.stderr)
             if len(bad) > 8:
                 print(f"  ... and {len(bad) - 8} more", file=sys.stderr)
-            print(f"\n  'inflate() failed' means the header survived a write "
-                  f"the data did not --\n"
+            print(f"\n  Every one of them is listed in {report}.\n\n"
+                  f"  'inflate() failed' means the header survived a write the "
+                  f"data did not --\n"
                   f"  a preprocessing task killed part-way through. Re-run it "
                   f"for those\n"
                   f"  recordings, or re-merge with --drop-unreadable to leave "
@@ -250,11 +263,6 @@ def main(argv=None) -> int:
                   f"  start training without them.", file=sys.stderr)
             return 1
         if bad:
-            os.makedirs(out_dir, exist_ok=True)
-            report = os.path.join(out_dir, "unreadable_shards.jsonl")
-            with open(report, "w") as f:
-                for path, why in bad:
-                    f.write(json.dumps({"path": path, "error": why}) + "\n")
             dropped = {path for path, _ in bad}
             lost = sum(int(r["n_windows"])
                        for split in ("train", "val") for r in merged[split]
@@ -275,8 +283,8 @@ def main(argv=None) -> int:
                         seen[split].update(r.get("subjects", ()))
                 subjects[d] = seen
                 c["subjects"] = len(seen["train"] | seen["val"])
-            print(f"dropped {len(bad)} unreadable shard(s), {lost:,} window(s); "
-                  f"listed in {report}", flush=True)
+            print(f"dropped {len(bad)} unreadable shard(s), {lost:,} window(s)",
+                  flush=True)
 
     # An empty merge is never a successful one. Writing a pair of empty
     # manifests and reporting a table of zeros is how a training run gets
