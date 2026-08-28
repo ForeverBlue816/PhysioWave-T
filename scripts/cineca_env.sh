@@ -59,6 +59,11 @@ PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
 # worth saying out loud when it happens.
 _pw_venv_inherited="${PW_VENV:-}"
 PW_VENV_DEFAULT="${VENV:-${HOME}/pw}"
+# Bound HERE, before either branch, because the training branch reads it inside
+# its own module-failure warning. Under `set -u` that made the error handler
+# abort with "PW_VENV: unbound variable" and hide the failure it was written to
+# explain.
+PW_VENV="${PW_VENV:-${PW_VENV_DEFAULT}}"
 
 # --------------------------------------------------------------------------- #
 # 1. Modules
@@ -76,10 +81,27 @@ PW_CINECA_AI="${PW_CINECA_AI:-cineca-ai/4.3.0}"
 # Is a module with this name (any version) already in the environment?
 # $LOADEDMODULES is the colon-separated list the module system maintains.
 pw_module_is_loaded() {
+    # Matches by FAMILY: `cineca-ai/4.3.0` is satisfied by any cineca-ai,
+    # because re-loading a different version of the same thing is the version
+    # conflict this check exists to avoid.
     local want="${1%%/*}" entry
     local IFS=':'
     for entry in ${LOADEDMODULES:-}; do
         [[ "${entry%%/*}" == "${want}" ]] && return 0
+    done
+    return 1
+}
+
+pw_module_is_loaded_exact() {
+    # Matches the FULL name. `profile/deeplrn` and `profile/base` are the same
+    # family and not interchangeable: CINECA loads profile/base by default, so
+    # the family check above says "profile is loaded" and skips deeplrn -- and
+    # then cineca-ai is not on the module path at all. That is what made
+    # `cineca-ai/4.3.0 did not load` appear on a system where it exists.
+    local entry
+    local IFS=':'
+    for entry in ${LOADEDMODULES:-}; do
+        [[ "${entry}" == "$1" ]] && return 0
     done
     return 1
 }
@@ -115,7 +137,8 @@ elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     elif pw_module_is_loaded "${PW_CINECA_AI}"; then
         :
     else
-        pw_module_is_loaded profile || module load profile/deeplrn
+        # EXACT: profile/base is loaded by default and is not deeplrn.
+        pw_module_is_loaded_exact profile/deeplrn || module load profile/deeplrn
         if ! module load "${PW_CINECA_AI}" 2>&1; then
             # module prints its own error and returns non-zero, and the script
             # used to carry straight on. ${PW_VENV} is built with
@@ -169,9 +192,36 @@ elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
     else
         echo "ERROR: virtualenv not found at ${PW_VENV}." >&2
         echo "       Create it on the login node with the cineca-ai module loaded:" >&2
-        echo "         module load profile/deeplrn ${PW_CINECA_AI}" >&2
+        echo "         module load profile/deeplrn" >&2
+        echo "         module load ${PW_CINECA_AI}" >&2
         echo "         python -m venv ${PW_VENV} --system-site-packages" >&2
         return 1 2>/dev/null || exit 1
+    fi
+
+    # The module and the venv can both look fine and still not produce a torch:
+    # the venv is --system-site-packages on top of cineca-ai, so a module that
+    # failed to load leaves an ImportError waiting inside torchrun, after the
+    # allocation, on every rank at once. Two seconds here against a job that
+    # dies twenty minutes in. PW_SKIP_TORCH_CHECK=1 bypasses it.
+    if [[ "${PW_SKIP_TORCH_CHECK:-0}" != "1" ]]; then
+        if ! python -c "import torch" >/dev/null 2>&1; then
+            echo "" >&2
+            echo "ERROR: torch does not import from ${PW_VENV}." >&2
+            echo "  python: $(command -v python)" >&2
+            echo "  loaded: ${LOADEDMODULES:-<none>}" >&2
+            echo "" >&2
+            echo "  The venv is --system-site-packages on top of ${PW_CINECA_AI}," >&2
+            echo "  so torch comes from the module. Load it in this order:" >&2
+            echo "      module load profile/deeplrn" >&2
+            echo "      module load ${PW_CINECA_AI}" >&2
+            echo "      source ${PW_VENV}/bin/activate" >&2
+            echo "" >&2
+            echo "  profile/deeplrn is not optional and is not implied by the" >&2
+            echo "  profile/base loaded by default: without it cineca-ai is not" >&2
+            echo "  on the module path at all." >&2
+            echo "" >&2
+            return 1 2>/dev/null || exit 1
+        fi
     fi
 else
     PW_VENV="${PW_VENV:-${VIRTUAL_ENV:-<none>}}"
