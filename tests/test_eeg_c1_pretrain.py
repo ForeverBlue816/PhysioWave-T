@@ -1062,3 +1062,77 @@ def test_20_val_iterator_length_matches_what_it_yields(tmp_path):
     capped = ValIterator(index, batch_by_route, 1, 0, max_batches_per_dataset=1)
     assert len(capped) == sum(1 for _ in capped)
     capped.close()
+
+
+# --- 21 --------------------------------------------------------------------- #
+def test_21_a_fresh_run_does_not_inherit_a_crashed_one_s_metrics(tmp_path):
+    """Four jobs died in one directory; the fifth's curves must be its own."""
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=2)
+    run = tmp_path / "run"
+    run.mkdir()
+    # What a crashed attempt leaves behind.
+    (run / "metrics_step.jsonl").write_text(
+        json.dumps({"epoch": 0, "step": 1, "loss_total": 9.9}) + "\n")
+    (run / "metrics_epoch.jsonl").write_text(
+        json.dumps({"epoch": 0, "train/loss_masked_mse": 9.9}) + "\n")
+
+    cmd = [sys.executable, "-m", "physiowave.train.pretrain_main",
+           "--config", "pretrain/eeg_c1_moe", "--output-dir", str(run),
+           "--set", f"data.manifest_train={corpus['train']}",
+           f"data.manifest_val={corpus['val']}",
+           "model.embed_dim=32", "model.depth=1", "model.num_heads=4",
+           "model.channel_embed_dim=8", "train.epochs=1",
+           "train.warmup_epochs=0", "train.precision=fp32",
+           "train.grad_accumulation_steps=1", "train.steps_per_epoch=2",
+           "train.batch_size_by_route.E19_256=1",
+           "train.batch_size_by_route.E32_512=1",
+           "train.batch_size_by_route.E64_256=1",
+           "train.batch_size_by_route.E128_512=1"]
+    r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-3000:]
+
+    steps = [json.loads(l) for l in open(run / "metrics_step.jsonl")]
+    assert all(row.get("loss_total") != 9.9 for row in steps), \
+        "the crashed attempt's rows are still in the new run's curve"
+    epochs = [json.loads(l) for l in open(run / "metrics_epoch.jsonl")]
+    assert len(epochs) == 1
+
+    # Moved, not deleted -- the crashed attempts are how you find out why.
+    kept = run / "superseded" / "0" / "metrics_step.jsonl"
+    assert kept.is_file()
+    assert json.loads(kept.read_text())["loss_total"] == 9.9
+
+
+def test_21b_a_resume_keeps_its_own_history(tmp_path):
+    """The earlier rows are this run's, not a stranger's."""
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=2)
+    run = tmp_path / "run"
+    base = [sys.executable, "-m", "physiowave.train.pretrain_main",
+            "--config", "pretrain/eeg_c1_moe", "--output-dir", str(run),
+            "--set", f"data.manifest_train={corpus['train']}",
+            f"data.manifest_val={corpus['val']}",
+            "model.embed_dim=32", "model.depth=1", "model.num_heads=4",
+            "model.channel_embed_dim=8", "train.warmup_epochs=0",
+            "train.precision=fp32", "train.grad_accumulation_steps=1",
+            "train.steps_per_epoch=2",
+            "train.batch_size_by_route.E19_256=1",
+            "train.batch_size_by_route.E32_512=1",
+            "train.batch_size_by_route.E64_256=1",
+            "train.batch_size_by_route.E128_512=1"]
+    r = subprocess.run(base + ["train.epochs=1"], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-3000:]
+    first = len([l for l in open(run / "metrics_epoch.jsonl")])
+
+    r = subprocess.run(base + ["train.epochs=2", "--resume", "auto"], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-3000:]
+    assert len([l for l in open(run / "metrics_epoch.jsonl")]) > first, \
+        "a resume retired the history it was supposed to continue"
+    assert not (run / "superseded").exists()

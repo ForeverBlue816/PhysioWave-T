@@ -471,6 +471,39 @@ class EEGC1Trainer:
               f"epochs {self.epochs}  grad_accum {self.grad_accum}")
         print("=" * 66, flush=True)
 
+    #: Written by appending, so a run that starts fresh in a directory a
+    #: previous attempt used would interleave its curves with that attempt's.
+    METRICS_FILES = ("metrics_step.jsonl", "metrics_epoch.jsonl", "history.json")
+
+    def retire_previous_metrics(self) -> Optional[str]:
+        """Move an earlier attempt's metrics aside. Only on a fresh start.
+
+        Four jobs died in this directory before one got past the first epoch,
+        each leaving its rows behind, and the file that was supposed to answer
+        "how far along is it" answered with a total across all five. A resume
+        must NOT do this -- there the earlier rows are this run's own history.
+
+        Moved rather than deleted: the crashed attempts are how you find out
+        why they crashed.
+        """
+        if not self.is_main:
+            return None
+        present = [n for n in self.METRICS_FILES
+                   if os.path.isfile(os.path.join(self.out_dir, n))]
+        if not present:
+            return None
+        n = 0
+        while os.path.exists(os.path.join(self.out_dir, "superseded", str(n))):
+            n += 1
+        dest = os.path.join(self.out_dir, "superseded", str(n))
+        os.makedirs(dest, exist_ok=True)
+        for name in present:
+            os.replace(os.path.join(self.out_dir, name),
+                       os.path.join(dest, name))
+        print(f"  moved {len(present)} file(s) from an earlier attempt in this "
+              f"directory to {dest}", flush=True)
+        return dest
+
     def _append_jsonl(self, name: str, row: Dict):
         if not self.is_main:
             return

@@ -114,13 +114,19 @@ def run(cfg: Dict, out_dir: str, args) -> int:
         trainer = EEGC1Trainer(cfg, out_dir, info,
                                max_steps=getattr(args, "max_steps", None))
         resume = getattr(args, "resume", None)
+        resumed = False
         if resume:
             path = (os.path.join(out_dir, "latest.pth") if resume == "auto"
                     else resume)
             if os.path.isfile(path):
                 trainer.load(path)
+                resumed = True
             elif resume != "auto":
                 raise SystemExit(f"--resume {path} does not exist")
+        # RESUME=auto with no checkpoint yet is a fresh start, not a resume, so
+        # this keys off whether one was actually loaded.
+        if not resumed:
+            trainer.retire_previous_metrics()
         rc = trainer.fit()
         trainer.loader.close()
         return rc
