@@ -50,6 +50,7 @@ from .data import (DEFAULT_BATCH_BY_ROUTE, CorpusIndex, EEGWindowDataset,
                    RouteBatchLoader, RouteSchedule, collate_windows)
 from .model import MultiRouteEEGPretrainer, masked_reconstruction_loss
 from .routes import PRETRAIN_DATASETS, ROUTES
+from ..train.utils import make_grad_scaler
 
 
 # --------------------------------------------------------------------------- #
@@ -335,8 +336,8 @@ class EEGC1Trainer:
                         and tcfg.get("precision", "bf16") != "fp32")
         self.amp_dtype = (torch.bfloat16 if tcfg.get("precision", "bf16") == "bf16"
                           else torch.float16)
-        self.scaler = torch.amp.GradScaler(
-            "cuda", enabled=(self.use_amp and self.amp_dtype is torch.float16))
+        self.scaler = make_grad_scaler(
+            self.device.type, self.use_amp and self.amp_dtype is torch.float16)
 
         self.epoch = 0
         self.global_step = 0

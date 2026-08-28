@@ -129,6 +129,22 @@ def autocast_ctx(device: torch.device, dtype: torch.dtype):
     return contextlib.nullcontext()
 
 
+def make_grad_scaler(device_type: str, enabled: bool):
+    """A GradScaler that works on every torch we run on.
+
+    The device-generic ``torch.amp.GradScaler`` only exists from torch 2.4.
+    Leonardo's ``cineca-ai/4.3.0`` ships 2.2, where the scaler lives at
+    ``torch.cuda.amp.GradScaler`` and takes no device argument -- so calling
+    the new spelling there raises ``AttributeError`` before the first batch.
+    The scaler is only ever enabled for fp16 on CUDA, which is the one device
+    the old class supports, so the fallback loses nothing.
+    """
+    enabled = bool(enabled) and device_type == "cuda"
+    if hasattr(torch.amp, "GradScaler"):
+        return torch.amp.GradScaler(device_type, enabled=enabled)
+    return torch.cuda.amp.GradScaler(enabled=enabled)
+
+
 # --------------------------------------------------------------------------- #
 # Meters and logging
 # --------------------------------------------------------------------------- #

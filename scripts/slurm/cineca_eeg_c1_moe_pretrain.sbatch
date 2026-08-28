@@ -93,6 +93,10 @@ export OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 echo "============================================================"
 echo "  EEG C1 multi-route pretraining  (job ${SLURM_JOB_ID})"
 echo "  config     ${CONFIG}"
+# Print the torch the job will actually import. The development machine
+# runs a much newer torch than cineca-ai ships, and an API that exists
+# in one and not the other only shows up as a traceback on rank 0.
+echo "  torch      $(python -c 'import torch;print(torch.__version__)' 2>&1 | tail -1)"
 echo "  ${NNODES} node(s) x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
 echo "  rendezvous ${MASTER_ADDR}:${MASTER_PORT} (id ${RDZV_ID})"
 echo "  nodes      $(scontrol show hostnames "${SLURM_JOB_NODELIST}" | tr '\n' ' ')"

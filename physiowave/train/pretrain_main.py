@@ -42,6 +42,7 @@ from .utils import (
     build_scheduler,
     check_finite,
     cleanup_distributed,
+    make_grad_scaler,
     peak_memory_mb,
     reset_peak_memory,
     resolve_precision,
@@ -233,7 +234,7 @@ def main(argv=None) -> int:
                     find_unused_parameters=True)
 
     precision, amp_dtype = resolve_precision(cfg["train"].get("precision", "bf16"), info.device)
-    scaler = torch.amp.GradScaler("cuda", enabled=(precision == "fp16" and info.device.type == "cuda"))
+    scaler = make_grad_scaler(info.device.type, precision == "fp16")
     optimizer = build_optimizer(model, float(cfg["train"]["lr"]), float(cfg["train"]["weight_decay"]))
     epochs = int(cfg["train"]["epochs"])
     steps_per_epoch = max(len(train_loader) // int(cfg["train"].get("grad_accumulation_steps", 1)), 1)

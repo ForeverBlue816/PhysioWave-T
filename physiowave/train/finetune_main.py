@@ -63,6 +63,7 @@ from .utils import (
     build_optimizer,
     build_scheduler,
     cleanup_distributed,
+    make_grad_scaler,
     pick_device,
     resolve_precision,
     set_seed,
@@ -467,9 +468,7 @@ def main(argv=None) -> int:
         test_loader, _ = loader_for(LabelledWindows(test_path), False)
 
     precision, amp_dtype = resolve_precision(args.precision, device)
-    scaler = torch.amp.GradScaler("cuda", enabled=(precision == "fp16" and device.type == "cuda")) \
-        if hasattr(torch.amp, "GradScaler") else torch.cuda.amp.GradScaler(
-            enabled=(precision == "fp16" and device.type == "cuda"))
+    scaler = make_grad_scaler(device.type, precision == "fp16")
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
     optimizer = build_optimizer(core, args.lr, args.weight_decay)
     steps = max(len(train_loader), 1)
