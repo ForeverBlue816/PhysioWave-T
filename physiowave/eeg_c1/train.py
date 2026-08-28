@@ -50,7 +50,8 @@ from .data import (DEFAULT_BATCH_BY_ROUTE, CorpusIndex, EEGWindowDataset,
                    RouteBatchLoader, RouteSchedule, collate_windows)
 from .model import MultiRouteEEGPretrainer, masked_reconstruction_loss
 from .routes import PRETRAIN_DATASETS, ROUTES
-from ..train.utils import make_grad_scaler
+from ..train.utils import (fmt_eta, make_grad_scaler, progress,
+                           resolve_progress, set_postfix)
 
 
 # --------------------------------------------------------------------------- #
@@ -84,6 +85,22 @@ class ValIterator:
         self.num_replicas = max(1, num_replicas)
         self.rank = rank
         self.max_batches = max_batches_per_dataset
+
+    def __len__(self) -> int:
+        """Exact, so a progress bar over validation can show a total.
+
+        Mirrors __iter__'s bounds rather than estimating them: the stride keeps
+        every rank's slice full, so the inner short-batch break never fires and
+        the count is the number of starts.
+        """
+        total = 0
+        for ds in self.datasets.values():
+            stride = self.batch_by_route[ds.route_id] * self.num_replicas
+            emitted = len(range(0, max(0, len(ds) - stride + 1), stride))
+            if self.max_batches:
+                emitted = min(emitted, self.max_batches)
+            total += emitted
+        return total
 
     def __iter__(self):
         for dataset_id, ds in self.datasets.items():
@@ -267,6 +284,13 @@ class EEGC1Trainer:
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
         self.vis_every = int(tcfg.get("vis_every_epochs", 5))
+        # 'auto' is a bar on a terminal and periodic lines under sbatch, where a
+        # bar that redraws with carriage returns becomes one enormous line in
+        # the .out. PW_PROGRESS overrides it without editing a config, which is
+        # what you want when the question is "is this thing alive" and the
+        # answer has to come from a job that is already queued.
+        self.progress_mode = resolve_progress(
+            os.environ.get("PW_PROGRESS") or str(tcfg.get("progress", "auto")))
         self.batch_by_route = {**DEFAULT_BATCH_BY_ROUTE,
                                **(tcfg.get("batch_size_by_route") or {})}
 
@@ -553,7 +577,9 @@ class EEGC1Trainer:
         if self.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self.device)
 
-        for i, batch in enumerate(self.loader):
+        bar = progress(self.loader, f"train {self.epoch}", self.progress_mode,
+                       self.is_main)
+        for i, batch in enumerate(bar):
             x = batch["x"].to(self.device, non_blocking=True)
             meta = {k: v.to(self.device) for k, v in batch["channel_meta"].items()}
             is_accum = (i + 1) % self.grad_accum != 0
@@ -630,13 +656,20 @@ class EEGC1Trainer:
                 done = first_step + i + 1
                 took = max(1e-9, time.time() - t0)
                 rate = (i + 1) / took
-                print(f"  epoch {self.epoch} step {done}/{epoch_steps} "
-                      f"[{batch['route_id']} {batch['dataset_id']}] "
-                      f"loss {metrics.get('loss_total', float('nan')):.5f} "
-                      f"lr {metrics['lr']:.2e} "
-                      f"{windows / took:.0f} win/s "
-                      f"eta {(epoch_steps - done) / rate / 60:.0f}m",
-                      flush=True)
+                eta = (epoch_steps - done) / rate
+                if self.progress_mode == "log":
+                    print(f"  epoch {self.epoch} step {done}/{epoch_steps} "
+                          f"[{batch['route_id']} {batch['dataset_id']}] "
+                          f"loss {metrics.get('loss_total', float('nan')):.5f} "
+                          f"lr {metrics['lr']:.2e} "
+                          f"{windows / took:.0f} win/s "
+                          f"eta {fmt_eta(eta)}", flush=True)
+            # Outside want_log: a bar that only moved every fiftieth step would
+            # be a worse version of the log line it replaces.
+            set_postfix(bar,
+                        loss=f"{metrics.get('loss_total', float('nan')):.4f}",
+                        route=batch["route_id"],
+                        win_s=f"{windows / max(1e-9, time.time() - t0):.0f}")
             self.schedule.start_step = i + 1
             if self.max_steps and self.global_step >= self.max_steps:
                 break
@@ -671,7 +704,8 @@ class EEGC1Trainer:
                          getattr(self.info, "world_size", 1),
                          getattr(self.info, "rank", 0),
                          max_batches_per_dataset=max_batches)
-        for batch in it:
+        for batch in progress(it, f"val {self.epoch}", self.progress_mode,
+                              self.is_main):
             x = batch["x"].to(self.device, non_blocking=True)
             meta = {k: v.to(self.device) for k, v in batch["channel_meta"].items()}
             gen = _mask_generator(self.val_mask_seed, batch["dataset_id"],

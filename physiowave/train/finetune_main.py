@@ -63,7 +63,12 @@ from .utils import (
     build_optimizer,
     build_scheduler,
     cleanup_distributed,
+    fmt_eta,
     make_grad_scaler,
+    PROGRESS_MODES,
+    progress,
+    resolve_progress,
+    set_postfix,
     pick_device,
     resolve_precision,
     set_seed,
@@ -73,54 +78,6 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc")
-
-
-PROGRESS_MODES = ("auto", "bar", "log", "none")
-
-
-def resolve_progress(mode: str) -> str:
-    """Turn ``auto`` into the mode that suits the stream we are writing to.
-
-    torchrun leaves the workers' stdout and stderr alone unless ``--redirects``
-    is passed (it defaults to ``0``), so a worker's ``isatty()`` really does
-    report whether a human is watching: True under an interactive shell, False
-    under sbatch, ``> log``, or ``tee``. That is the right thing to branch on,
-    because a tqdm bar redraws with carriage returns and a log file records the
-    whole run as one enormous line.
-
-    Redirected runs get ``log`` rather than silence: the complaint a bar answers
-    is "how far along is this", and a periodic line carrying the percentage and
-    an ETA answers it in a form that survives being written to a file.
-    """
-    if mode != "auto":
-        return mode
-    return "bar" if sys.stderr.isatty() else "log"
-
-
-def progress(iterable, desc: str, mode: str, is_main: bool):
-    """Wrap a loader in a tqdm bar on rank 0, or leave it alone."""
-    if not is_main or mode != "bar":
-        return iterable
-    try:
-        from tqdm.auto import tqdm
-    except ImportError:
-        return iterable
-    return tqdm(iterable, desc=desc, ncols=110, leave=False, mininterval=0.5)
-
-
-def set_postfix(bar, **kw) -> None:
-    if hasattr(bar, "set_postfix"):
-        bar.set_postfix(**kw, refresh=False)
-
-
-def fmt_eta(seconds: float) -> str:
-    """``h:mm:ss`` for anything an epoch loop is likely to produce."""
-    if not (seconds == seconds) or seconds < 0 or seconds == float("inf"):
-        return "?"
-    seconds = int(seconds)
-    h, rem = divmod(seconds, 3600)
-    m, sec = divmod(rem, 60)
-    return f"{h:d}:{m:02d}:{sec:02d}" if h else f"{m:d}:{sec:02d}"
 
 
 class LabelledWindows(Dataset):

@@ -1040,3 +1040,25 @@ def test_19b_the_logged_steps_are_the_intended_ones(tmp_path):
     resumed = [i for i in range(epoch_steps - 600)
                if i % 50 == 0 or 600 + i + 1 == epoch_steps]
     assert (epoch_steps - 600) - 1 in resumed
+
+
+# --- 20 --------------------------------------------------------------------- #
+def test_20_val_iterator_length_matches_what_it_yields(tmp_path):
+    """A progress bar's total has to be the number of batches, not an estimate."""
+    from physiowave.eeg_c1.data import CorpusIndex
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+    from physiowave.eeg_c1.train import ValIterator
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=4, recordings=1,
+                                windows=6)
+    index = CorpusIndex.from_manifest(corpus["val"])
+    batch_by_route = {"E19_256": 2, "E32_512": 2, "E64_256": 2, "E128_512": 2}
+
+    for replicas, rank in ((1, 0), (2, 0), (2, 1), (3, 2)):
+        it = ValIterator(index, batch_by_route, replicas, rank)
+        assert len(it) == sum(1 for _ in it), f"{replicas} replicas, rank {rank}"
+        it.close()
+
+    capped = ValIterator(index, batch_by_route, 1, 0, max_batches_per_dataset=1)
+    assert len(capped) == sum(1 for _ in capped)
+    capped.close()
