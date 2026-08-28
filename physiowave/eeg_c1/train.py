@@ -280,6 +280,8 @@ class EEGC1Trainer:
         self.fold_kl = float(_obj("fold_kl", "fold_kl", 1e-3))
         self.mask_before_frontend = bool(
             _obj("mask_before_frontend", "mask_before_frontend", True))
+        self.normalize_spec_target = bool(
+            _obj("normalize_spec_target", "normalize_spec_target", True))
         self.mask_ratio = float(mcfg.get("mask_ratio", 0.5))
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
@@ -329,6 +331,7 @@ class EEGC1Trainer:
             wave_init_mode=mcfg.get("wave_init_mode", "pad"),
             use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
             mask_before_frontend=self.mask_before_frontend,
+            normalize_spec_target=self.normalize_spec_target,
             fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
             fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
             masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
@@ -448,6 +451,8 @@ class EEGC1Trainer:
         print(f"  objective: spec {self.spec_weight:g} x MSE"
               f"  + raw {self.raw_weight:g} x SmoothL1(beta={self.raw_beta:g})"
               f"  + fold_kl {self.fold_kl:g} x KL")
+        print(f"  spec target: {'normalised per patch' if self.normalize_spec_target else 'RAW -- the loss will track the frontend scale'}",
+              flush=True)
         print(f"  masking: {'signal before the frontend' if self.mask_before_frontend else 'tokens only, after the frontend'}"
               f"   targets: detached")
         if "channel_encoder" in report:

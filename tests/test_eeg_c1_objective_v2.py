@@ -314,10 +314,26 @@ def test_target_spec_is_the_clean_frontend_not_the_corrupted_one():
         clean_patches = m.patchify(out["clean_spec"], route.patch_t)
         online_patches = m.patchify(out["online_spec"], route.patch_t)
 
-    assert torch.allclose(out["target_spec"], clean_patches, atol=1e-6)
-    assert not torch.allclose(out["target_spec"], online_patches, atol=1e-4)
+    # Normalised, so the comparison is against the normalised clean patches --
+    # what must never happen is the ONLINE ones, normalised or not.
+    assert torch.allclose(out["target_spec"],
+                          m.normalize_patches(clean_patches), atol=1e-5)
+    assert not torch.allclose(out["target_spec"],
+                              m.normalize_patches(online_patches), atol=1e-4)
     # And the corruption actually reached the frontend.
     assert float(out["clean_online_spec_delta"]) > 0
+
+    # The same guard with normalisation off, so this test still covers the
+    # substitution it was written for on both settings.
+    raw = build(mask_before_frontend=True, normalize_spec_target=False)
+    with torch.no_grad():
+        out = raw(x, route_id, channel_meta=meta, mask_override=mask)
+    assert torch.allclose(out["target_spec"],
+                          raw.patchify(out["clean_spec"], route.patch_t),
+                          atol=1e-6)
+    assert not torch.allclose(out["target_spec"],
+                              raw.patchify(out["online_spec"], route.patch_t),
+                              atol=1e-4)
 
 
 def test_target_raw_is_the_uncorrupted_signal():
@@ -489,3 +505,76 @@ def test_gradient_norms_are_reported_per_branch():
     assert g[f"gradnorm/raw_reconstruction_heads.{route.rate_key}"] > 0
     # A route that took no step in this batch must not appear with a zero.
     assert "gradnorm/wavelet_frontends.E128_512" not in g
+
+
+# --------------------------------------------------------------------------- #
+# The target moves, and the loss must not follow it
+# --------------------------------------------------------------------------- #
+
+def test_spec_target_is_normalised_per_patch():
+    from physiowave.eeg_c1.model import MultiRouteEEGPretrainer as M
+
+    p = torch.randn(3, 7, 16) * 5.0 + 2.0
+    n = M.normalize_patches(p)
+    assert torch.allclose(n.mean(-1), torch.zeros(3, 7), atol=1e-5)
+    assert torch.allclose(n.var(-1, unbiased=False), torch.ones(3, 7), atol=1e-3)
+    # Per patch, not per tensor: two patches at wildly different scales both
+    # come out unit.
+    q = p.clone()
+    q[0, 0] *= 1000.0
+    assert torch.allclose(M.normalize_patches(q)[0, 0], n[0, 0], atol=1e-3)
+
+
+def test_a_constant_patch_does_not_divide_by_zero():
+    from physiowave.eeg_c1.model import MultiRouteEEGPretrainer as M
+    flat = torch.full((2, 3, 8), 4.0)
+    out = M.normalize_patches(flat)
+    assert torch.isfinite(out).all()
+    assert torch.allclose(out, torch.zeros_like(out), atol=1e-2)
+
+
+def test_the_target_no_longer_grows_with_the_frontend():
+    """The failure this exists to stop.
+
+    Seven epochs in, the target's standard deviation had grown 67% while the
+    correlation between prediction and target had not moved. The MSE nearly
+    tripled and reported a model getting worse that was tracking exactly as
+    well as before.
+    """
+    route_id = "E19_256"
+    r = ROUTES[route_id]
+    meta = meta_for(route_id)
+    x = torch.randn(2, r.n_channels, r.window_samples)
+    mask = one_token_mask(route_id, 2, 4, 2)
+
+    spread = {}
+    for normalise in (True, False):
+        m = build(normalize_spec_target=normalise)
+        stds = []
+        for gain in (1.0, 4.0):
+            with torch.no_grad():
+                # Growing the fold's synthesis weights IS the drift: the same
+                # frontend produces both the target and the online view, so a
+                # larger frontend means a larger target.
+                mm = build(normalize_spec_target=normalise)
+                for prm in mm.wavelet_frontends[route_id].fold.parameters():
+                    prm.mul_(gain)
+                out = mm(x, route_id, channel_meta=meta, mask_override=mask)
+                stds.append(float(out["target_spec"].std()))
+        spread[normalise] = stds
+
+    on, off = spread[True], spread[False]
+    assert off[1] / off[0] > 1.5, (
+        f"the drift was not reproduced: target std {off} for a 4x frontend")
+    assert abs(on[1] / on[0] - 1.0) < 0.05, (
+        f"a normalised target still grew with the frontend: {on}")
+
+
+def test_normalisation_is_recorded_in_the_forward_output():
+    r = ROUTES["E19_256"]
+    meta = meta_for("E19_256")
+    for flag in (True, False):
+        m = build(normalize_spec_target=flag)
+        out = m(torch.randn(1, r.n_channels, r.window_samples), "E19_256",
+                channel_meta=meta, mask_ratio=0.5)
+        assert out["normalize_spec_target"] is flag

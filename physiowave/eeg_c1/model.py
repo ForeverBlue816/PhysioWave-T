@@ -200,6 +200,7 @@ class MultiRouteEEGPretrainer(nn.Module):
                  # tokens after it. False reproduces the older ordering, which
                  # exists for the ablation and not as a recommendation.
                  mask_before_frontend: bool = True,
+                 normalize_spec_target: bool = True,
                  dropout: float = 0.1,
                  norm: str = "rmsnorm",
                  ffn: str = "swiglu",
@@ -277,6 +278,7 @@ class MultiRouteEEGPretrainer(nn.Module):
         })
         self._rate_patch_t = dict(rate_to_patch_t)
         self.mask_before_frontend = bool(mask_before_frontend)
+        self.normalize_spec_target = bool(normalize_spec_target)
 
         # -- shared -------------------------------------------------------- #
         self.channel_encoder = None
@@ -458,6 +460,30 @@ class MultiRouteEEGPretrainer(nn.Module):
         return spec.reshape(B, C, P, patch_t).reshape(B, C * P, patch_t)
 
     @staticmethod
+    def normalize_patches(patches, eps: float = 1e-6):
+        """Zero mean, unit variance WITHIN each patch.
+
+        THE TARGET MOVES. It is the folded wavelet output of the frontend being
+        trained -- detached, which stops the gradient and does not stop the
+        drift. Over seven epochs the target's standard deviation grew 67% while
+        the prediction's correlation with it did not move (0.689 -> 0.692), so
+        the MSE nearly tripled while the model was tracking exactly as well as
+        before. A loss that reports a model getting worse when it is not cannot
+        select a checkpoint, cannot stop early, and cannot be compared between
+        runs.
+
+        Normalising each patch makes the loss invariant to the frontend's scale
+        and to any per-patch offset, so what it measures is the SHAPE the model
+        predicted. This is what masked autoencoding does to pixels for the same
+        reason. Only the spectrogram target needs it -- the raw target is the
+        preprocessed signal, which never passes through the frontend and cannot
+        drift.
+        """
+        mean = patches.mean(dim=-1, keepdim=True)
+        var = patches.var(dim=-1, keepdim=True, unbiased=False)
+        return (patches - mean) / (var + eps).sqrt()
+
+    @staticmethod
     def unpatchify(patches, n_channels, patch_t):
         """``[B, C*P, patch_t] -> [B, C, T]``. The exact inverse of patchify."""
         B, L, D = patches.shape
@@ -611,6 +637,8 @@ class MultiRouteEEGPretrainer(nn.Module):
         # so a target left attached could be moved toward the prediction rather
         # than the other way round.
         target_spec = self.patchify(clean_spec, patch_t).detach()   # [B, C*P, pt]
+        if self.normalize_spec_target:
+            target_spec = self.normalize_patches(target_spec)
         target_raw = self.patchify(clean_x, patch_t).detach()       # [B, C*P, pt]
 
         code = self._channel_code(channel_meta)
@@ -681,6 +709,7 @@ class MultiRouteEEGPretrainer(nn.Module):
             "fold_reg": fold_reg,
             "fold_alpha": fold_alpha,
             "mask_before_frontend": self.mask_before_frontend,
+            "normalize_spec_target": self.normalize_spec_target,
             "route_id": route_id,
             # -- compatibility aliases -------------------------------------- #
             # scripts/visualize_eeg_pretraining.py and the older tests read

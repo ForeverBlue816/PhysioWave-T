@@ -78,6 +78,23 @@ objective:
   raw_beta: 0.5              # SmoothL1 knee, in z-scored units
   fold_kl: 1.0e-3
   mask_before_frontend: true
+  # THE TARGET MOVES. It is the frontend's own output, detached -- which stops
+  # the gradient and does not stop the drift. Measured over seven epochs: the
+  # target's standard deviation grew 67% while the prediction's correlation
+  # with it did not move (0.689 -> 0.692), so the MSE nearly tripled while the
+  # model tracked exactly as well as before. A loss that reports a model
+  # getting worse when it is not cannot select a checkpoint, cannot stop early,
+  # and cannot be compared between runs.
+  #
+  # Normalising each target patch to zero mean and unit variance makes the loss
+  # invariant to the frontend's scale, so what it measures is the SHAPE the
+  # model predicted. Masked autoencoding normalises pixels for the same reason.
+  # Only the spectrogram target needs it: the raw target is the preprocessed
+  # signal, which never passes through the frontend and cannot drift.
+  #
+  # false reproduces the runs before 2026-08-28 and is kept for that comparison
+  # alone; it is not a training option.
+  normalize_spec_target: true
 
 model:
   max_level: 3
