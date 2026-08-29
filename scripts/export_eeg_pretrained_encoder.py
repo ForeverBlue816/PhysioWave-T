@@ -50,8 +50,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from channel_embedding import vocab_payload                   # noqa: E402
 from physiowave.eeg_c1.routes import ROUTES                    # noqa: E402
 
-KEEP_PREFIXES = ("channel_encoder.", "channel_to_token.", "shared_transformer.",
-                 "pos_embed.", "mask_token")
+#: `channel_token_gate` is a bare scalar, not a submodule, so it does not start
+#: with "channel_to_token." and an allowlist of module prefixes dropped it. It
+#: is the gate on the whole channel-identity contribution -- delta =
+#: tanh(gate) * proj(code) -- and it initialises to zero, so an export without
+#: it hands fine-tuning an encoder whose C1 mechanism contributes exactly
+#: nothing, silently, in the experiment that exists to measure that mechanism.
+#: test_export_carries_every_parameter_the_encoder_uses now derives this list
+#: from what the forward pass actually reaches rather than from a reading of it.
+KEEP_PREFIXES = ("channel_encoder.", "channel_to_token.", "channel_token_gate",
+                 "shared_transformer.", "pos_embed.", "mask_token")
 #: Documentation of what the allowlist above already excludes. Both decoders
 #: are pretraining-only: the spec head predicts folded wavelet patches and the
 #: raw head predicts preprocessed EEG, and fine-tuning needs neither.

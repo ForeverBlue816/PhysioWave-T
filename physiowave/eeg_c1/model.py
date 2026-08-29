@@ -549,17 +549,45 @@ class MultiRouteEEGPretrainer(nn.Module):
 
     # -- forward ------------------------------------------------------------ #
     def encode(self, x, route_id, channel_meta=None):
-        """``[B, C, T] -> [B, C*P, D]`` with no masking. What downstream uses."""
+        """``[B, C, T] -> [B, C*P, D]`` with no masking. What downstream uses.
+
+        THE WINDOW NEED NOT BE THE PRETRAINING WINDOW. P300 epochs are 2 s at
+        256 Hz against E64_256's 4 s, and nothing on this path has a length
+        baked in: the frontend is convolutional, the patcher is a Conv2d, the
+        position encoding is generated from (freq_size, time_size) at every
+        call, and the attention is RoPE. So the patch count comes from the
+        tokens rather than from the route, which is what it always described.
+        The CHANNEL count does not follow the same rule -- the wavelet filters
+        are per-electrode -- and a montage with fewer channels goes in the
+        route's slots by name, with the rest padded and masked.
+        """
         route = self.route(route_id)
+        # BEFORE the frontend: ScaleFold blocks the signal into patch_len
+        # columns and a width that is not a whole number of them dies inside a
+        # synthesis convolution with "Padding size 2 is not supported for 4D
+        # input tensor", which says nothing about the window. The patcher would
+        # truncate rather than refuse, dropping the tail of every window
+        # silently. Both are the same requirement and it belongs here.
+        if x.shape[-1] % route.patch_t:
+            raise ValueError(
+                f"{route_id}: a {x.shape[-1]}-sample window is not a whole "
+                f"number of {route.patch_t}-sample patches "
+                f"({x.shape[-1] / route.patch_t:.2f} of them). Crop or pad the "
+                f"window to a multiple of {route.patch_t}.")
         x = self._zero_padded_channels(x, channel_meta)
         spec = self.wavelet_frontends[route_id](x)
         tokens = self.patch_embed_by_rate[route.rate_key](spec.unsqueeze(1))
+        n_patches, rem = divmod(tokens.shape[1], route.n_channels)
+        if rem or n_patches < 1:
+            raise ValueError(
+                f"{tokens.shape[1]} tokens is not a whole number of patches per "
+                f"channel on {route_id} ({route.n_channels} channels)")
         code = self._channel_code(channel_meta)
         if code is not None:
             tokens = self._inject_channel_tokens(
-                tokens, code, route.n_channels, route.patches_per_channel)
+                tokens, code, route.n_channels, n_patches)
         tokens = self.pos_embed(tokens, freq_size=route.n_channels,
-                                time_size=route.patches_per_channel)
+                                time_size=n_patches)
         return self.shared_transformer(tokens)
 
     def _build_token_view(self, spec, rate, code, n_channels, n_patches):

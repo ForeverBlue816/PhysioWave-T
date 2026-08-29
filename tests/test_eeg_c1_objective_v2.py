@@ -611,3 +611,77 @@ def test_the_config_asks_for_none():
         cfg = yaml.safe_load(f)
     assert cfg["model"]["dropout"] == 0.0
     assert cfg["model"]["mask_ratio"] == 0.70
+
+
+# --------------------------------------------------------------------------- #
+# What fine-tuning is handed
+# --------------------------------------------------------------------------- #
+
+def test_export_carries_every_parameter_the_encoder_uses(tmp_path):
+    """Derived from the forward pass, not from reading the allowlist.
+
+    channel_token_gate is a bare scalar, so it does not start with
+    "channel_to_token." and a list of module prefixes dropped it. It gates the
+    entire channel-identity contribution and initialises to zero, so the export
+    handed fine-tuning an encoder whose C1 mechanism contributed exactly
+    nothing -- in the experiment that exists to measure that mechanism.
+    """
+    import subprocess
+
+    route_id = "E32_512"
+    r = ROUTES[route_id]
+    m = build()
+    x = torch.randn(2, r.n_channels, r.window_samples)
+    m.encode(x, route_id, channel_meta=meta_for(route_id)).sum().backward()
+
+    # Every parameter the encoder path actually reaches.
+    needed = {n for n, p in m.named_parameters() if p.grad is not None}
+    # Minus the other routes' frontends and the other rate's patcher, which
+    # this route does not use and the export deliberately leaves behind.
+    needed = {n for n in needed
+              if not (n.startswith("wavelet_frontends.")
+                      and not n.startswith(f"wavelet_frontends.{route_id}."))
+              and not (n.startswith("patch_embed_by_rate.")
+                       and not n.startswith(f"patch_embed_by_rate.{r.rate_key}."))}
+    assert "channel_token_gate" in needed, "the test's premise moved"
+
+    ck = tmp_path / "ck.pth"
+    torch.save({"model": m.state_dict(), "config": {"model": {}},
+                "epoch": 0, "global_step": 0}, ck)
+    out = tmp_path / "enc.pth"
+    res = subprocess.run(
+        [sys.executable, "scripts/export_eeg_pretrained_encoder.py",
+         "--checkpoint", str(ck), "--route", route_id, "--output", str(out)],
+        cwd=ROOT, capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr[-2000:]
+    got = set(torch.load(out, map_location="cpu", weights_only=False)["model"])
+
+    renamed = set()
+    for n in needed:
+        n = n.replace(f"wavelet_frontends.{route_id}.", "wavelet_frontend.")
+        n = n.replace(f"patch_embed_by_rate.{r.rate_key}.", "patch_embed.")
+        renamed.add(n)
+    missing = sorted(renamed - got)
+    assert not missing, f"the encoder needs these and the export drops them: {missing}"
+
+
+def test_encode_accepts_a_downstream_window_length():
+    """P300 epochs are 2 s against E64_256's 4 s, and nothing here is fixed
+    to a length: conv frontend, conv patcher, generated position encoding, RoPE."""
+    route_id = "E64_256"
+    r = ROUTES[route_id]
+    m = build()
+    meta = meta_for(route_id)
+    # The frontend preserves width exactly, so the patch count is T / patch_t.
+    for samples in (r.window_samples, r.window_samples // 2, r.patch_t * 5):
+        out = m.encode(torch.randn(2, r.n_channels, samples), route_id,
+                       channel_meta=meta)
+        assert out.shape == (2, r.n_channels * (samples // r.patch_t),
+                             m.embed_dim), f"{samples} samples gave {tuple(out.shape)}"
+
+    # A width that is not a whole number of patches dies inside ScaleFold's
+    # synthesis convolution with a message about 4D padding. Refused here
+    # instead, where the window is still in hand.
+    with pytest.raises(ValueError, match="not a whole number"):
+        m.encode(torch.randn(1, r.n_channels, r.window_samples + r.patch_t // 2),
+                 route_id, channel_meta=meta)
