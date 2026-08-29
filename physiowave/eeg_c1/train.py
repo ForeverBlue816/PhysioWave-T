@@ -548,6 +548,43 @@ class EEGC1Trainer:
         torch.save(self.state_dict(), path + ".tmp")
         os.replace(path + ".tmp", path)
 
+    def _check_vocab(self, ck, path):
+        """An embedding row means whichever electrode held that id when it was
+        learned. A checkpoint from a different vocabulary is relabelled."""
+        recorded = ck.get("channel_vocab_sha256")
+        current = vocab_payload()["channel_vocab_sha256"]
+        if recorded and recorded != current:
+            raise SystemExit(
+                f"{path} was trained under channel vocabulary "
+                f"{recorded[:16]} and this one is {current[:16]}. Every "
+                f"embedding row would mean a different electrode. Check out the "
+                f"commit that produced the checkpoint, or retrain.")
+
+    def init_from(self, path: str):
+        """The WEIGHTS, and nothing else. Not a resume.
+
+        Resuming continues one run: it restores the optimizer, the scheduler's
+        position, the step count and the sampler, because those are the run.
+        Initialising STARTS a run from another's representation -- and the
+        difference matters most exactly when you want it, because a new mixture
+        changes steps_per_epoch, and a scheduler resumed across that change is
+        counting in the old epoch's units. Restoring one from a 384-step epoch
+        into a 954-step one leaves the cosine 20% short of annealed at the end
+        of the run, at a learning rate an order of magnitude above where it
+        should finish.
+
+        So this takes the model and leaves the optimizer, the schedule, the
+        epoch counter and the best-so-far bar fresh.
+        """
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        self._check_vocab(ck, path)
+        self.raw_model.load_state_dict(ck["model"])
+        print(f"initialised from {path} "
+              f"(weights only; it was at epoch {ck.get('epoch', '?')}, "
+              f"step {ck.get('global_step', '?')}, best "
+              f"{ck.get('best_val_loss_masked_mse', float('nan')):.5f})",
+              flush=True)
+
     def load(self, path: str):
         ck = torch.load(path, map_location="cpu", weights_only=False)
         # STRICT, deliberately. A checkpoint from the single-decoder objective
@@ -593,14 +630,7 @@ class EEGC1Trainer:
                                 else rng["torch"])
         if "numpy" in rng:
             np.random.set_state(rng["numpy"])
-        recorded = ck.get("channel_vocab_sha256")
-        current = vocab_payload()["channel_vocab_sha256"]
-        if recorded and recorded != current:
-            raise SystemExit(
-                f"checkpoint was trained under channel vocabulary "
-                f"{recorded[:16]} and this one is {current[:16]}. Every "
-                f"embedding row would mean a different electrode. Check out the "
-                f"commit that produced the checkpoint, or retrain.")
+        self._check_vocab(ck, path)
         print(f"resumed from {path}: epoch {self.epoch}, step {self.global_step}")
 
     # -- one epoch --------------------------------------------------------- #

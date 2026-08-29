@@ -113,7 +113,17 @@ def run(cfg: Dict, out_dir: str, args) -> int:
     try:
         trainer = EEGC1Trainer(cfg, out_dir, info,
                                max_steps=getattr(args, "max_steps", None))
+        init_from = getattr(args, "init_from", None)
         resume = getattr(args, "resume", None)
+        if init_from and resume:
+            raise SystemExit(
+                "--init-from and --resume are different operations and cannot "
+                "both apply. --resume continues one run; --init-from starts a "
+                "new one from another's weights.")
+        if init_from:
+            if not os.path.isfile(init_from):
+                raise SystemExit(f"--init-from {init_from} does not exist")
+            trainer.init_from(init_from)
         resumed = False
         if resume:
             path = (os.path.join(out_dir, "latest.pth") if resume == "auto"

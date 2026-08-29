@@ -32,6 +32,7 @@
 #   DATA_ROOT             holds merged/manifest_{train,val}.jsonl
 #   OUTPUT_DIR            checkpoints and figures
 #   RESUME                'auto' to continue OUTPUT_DIR/latest.pth
+#   INIT_FROM             another checkpoint's WEIGHTS, fresh schedule
 #
 # UNSET MEANS THE CONFIG DECIDES for the hyperparameters. None of them has a
 # default here; a default here would be a second copy of a number that already
@@ -86,6 +87,12 @@ OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 BATCH_SIZE_BY_ROUTE="${BATCH_SIZE_BY_ROUTE:-}"
 MAX_STEPS="${MAX_STEPS:-}"
 RESUME="${RESUME:-}"
+# Weights only, fresh optimizer and schedule -- not a resume. Use it when
+# WEIGHTS or the epoch budget changes, because steps_per_epoch changes
+# with the mixture and a resumed scheduler counts in the old epoch's
+# units: 384-step epochs restored into 954-step ones leave the cosine
+# a fifth short of annealed.
+INIT_FROM="${INIT_FROM:-}"
 
 MANIFEST_TRAIN="${MANIFEST_TRAIN:-${DATA_ROOT}/merged/manifest_train.jsonl}"
 MANIFEST_VAL="${MANIFEST_VAL:-${DATA_ROOT}/merged/manifest_val.jsonl}"
@@ -132,6 +139,7 @@ fi
 EXTRA=()
 [[ -n "${MAX_STEPS}" ]] && EXTRA+=(--max-steps "${MAX_STEPS}")
 [[ -n "${RESUME}" ]]    && EXTRA+=(--resume "${RESUME}")
+[[ -n "${INIT_FROM}" ]] && EXTRA+=(--init-from "${INIT_FROM}")
 
 pw_check_run_path OUTPUT_DIR "${OUTPUT_DIR}" || exit 1
 # `set -e` is deliberately not on here, so an unchecked mkdir failure
@@ -155,6 +163,7 @@ echo "  val   manifest ${MANIFEST_VAL}"
 echo "  out            ${OUTPUT_DIR}"
 [[ -n "${BATCH_SIZE_BY_ROUTE}" ]] && echo "  batch/route    ${BATCH_SIZE_BY_ROUTE}"
 [[ -n "${RESUME}" ]] && echo "  resume         ${RESUME}"
+[[ -n "${INIT_FROM}" ]] && echo "  init from      ${INIT_FROM}  (weights only)"
 echo "============================================================"
 
 # The full command, recorded next to the checkpoints, so a run can be reproduced

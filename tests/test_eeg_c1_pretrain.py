@@ -1401,3 +1401,82 @@ def test_26c_the_launcher_passes_weights_through():
     asked = _launcher_overrides({"WEIGHTS": "temperature:0.5"})
     assert "data.weights=temperature:0.5" in asked
     assert not any(o.startswith("data.weights=") for o in _launcher_overrides())
+
+
+# --- 27 --------------------------------------------------------------------- #
+def _c1_cmd(run, corpus, *extra):
+    return [sys.executable, "-m", "physiowave.train.pretrain_main",
+            "--config", "pretrain/eeg_c1_moe", "--output-dir", str(run),
+            *extra,
+            "--set", f"data.manifest_train={corpus['train']}",
+            f"data.manifest_val={corpus['val']}",
+            "model.embed_dim=32", "model.depth=1", "model.num_heads=4",
+            "model.channel_embed_dim=8", "train.warmup_epochs=0",
+            "train.precision=fp32", "train.grad_accumulation_steps=1",
+            "train.steps_per_epoch=3",
+            "train.batch_size_by_route.E19_256=1",
+            "train.batch_size_by_route.E32_512=1",
+            "train.batch_size_by_route.E64_256=1",
+            "train.batch_size_by_route.E128_512=1"]
+
+
+def test_27_init_from_takes_the_weights_and_nothing_else(tmp_path):
+    """A resumed scheduler counts in the OLD epoch's units.
+
+    steps_per_epoch is derived from the mixture, so changing the mixture
+    changes it -- 384 under balanced, 954 under temperature:0.5. Restoring a
+    scheduler across that leaves the cosine a fifth short of annealed at the
+    end of the run. --init-from starts a new run from another's weights, with
+    the optimizer, the schedule and the epoch counter fresh.
+    """
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=3, recordings=1,
+                                windows=3)
+    a, b = tmp_path / "a", tmp_path / "b"
+    r = subprocess.run(_c1_cmd(a, corpus) + ["train.epochs=1"], cwd=ROOT,
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+
+    r = subprocess.run(
+        _c1_cmd(b, corpus, "--init-from", str(a / "best.pth")) + ["train.epochs=2"],
+        cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert "initialised from" in r.stdout
+    assert "weights only" in r.stdout
+
+    # The epoch counter restarted, so the run is its own.
+    epochs = [json.loads(l)["epoch"]
+              for l in open(b / "metrics_epoch.jsonl")]
+    assert epochs == [0, 1], f"the epoch counter continued: {epochs}"
+
+    # The weights did come across: the new run starts where the old ended,
+    # not from a fresh init.
+    import torch
+    old = torch.load(a / "best.pth", map_location="cpu", weights_only=False)
+    new = torch.load(b / "latest.pth", map_location="cpu", weights_only=False)
+    assert new["global_step"] < old["global_step"] + 10
+    fresh = subprocess.run(_c1_cmd(tmp_path / "z", corpus) + ["train.epochs=1"],
+                           cwd=ROOT, capture_output=True, text=True)
+    assert fresh.returncode == 0, fresh.stderr[-2000:]
+
+
+def test_27b_init_from_and_resume_are_not_both_applicable(tmp_path):
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=2)
+    a = tmp_path / "a"
+    subprocess.run(_c1_cmd(a, corpus) + ["train.epochs=1"], cwd=ROOT,
+                   capture_output=True, text=True)
+    r = subprocess.run(
+        _c1_cmd(tmp_path / "b", corpus, "--init-from", str(a / "best.pth"),
+                "--resume", "auto") + ["train.epochs=1"],
+        cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode != 0
+    assert "different operations" in (r.stdout + r.stderr)
+
+
+def test_27c_the_launcher_passes_init_from():
+    with open(os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")) as f:
+        body = f.read()
+    assert '[[ -n "${INIT_FROM}" ]] && EXTRA+=(--init-from "${INIT_FROM}")' in body

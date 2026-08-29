@@ -60,6 +60,12 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="dotted overrides, e.g. --set model.wast.level=4 train.epochs=2")
     p.add_argument("--output-dir", default=None)
     p.add_argument("--resume", default=None, help="checkpoint to resume from ('auto' = latest)")
+    p.add_argument("--init-from", default=None,
+                   help="start a NEW run from another checkpoint's weights: no "
+                        "optimizer, no scheduler position, no step count. What "
+                        "you want when the mixture or the epoch length changes, "
+                        "because a resumed scheduler counts in the old epoch's "
+                        "units. eeg_c1 only.")
     p.add_argument("--max-steps", type=int, default=None, help="cap steps (smoke tests)")
     p.add_argument("--dry-run", action="store_true", help="validate config/data and exit")
     p.add_argument("--smoke-test", action="store_true",
