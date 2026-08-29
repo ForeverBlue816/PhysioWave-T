@@ -578,3 +578,36 @@ def test_normalisation_is_recorded_in_the_forward_output():
         out = m(torch.randn(1, r.n_channels, r.window_samples), "E19_256",
                 channel_meta=meta, mask_ratio=0.5)
         assert out["normalize_spec_target"] is flag
+
+
+# --------------------------------------------------------------------------- #
+# No dropout means no dropout
+# --------------------------------------------------------------------------- #
+
+def test_dropout_zero_reaches_every_module_including_the_frontend():
+    """`dropout: 0` used to leave the wavelet frontend's FFN dropping 10%.
+
+    Masked reconstruction already corrupts its input; a second, uncontrolled
+    corruption adds noise to a regression target. If the config says none, it
+    has to mean none everywhere the gradient flows.
+    """
+    import torch.nn as nn
+
+    m = build(dropout=0.0)
+    live = [(n, mod.p) for n, mod in m.named_modules()
+            if isinstance(mod, nn.Dropout) and mod.p > 0]
+    assert not live, f"dropout still active at: {live}"
+
+    # And the setting is honoured, not ignored in the other direction.
+    m = build(dropout=0.3)
+    fe = m.wavelet_frontends["E19_256"]
+    ps = {mod.p for _, mod in fe.named_modules() if isinstance(mod, nn.Dropout)}
+    assert ps == {0.3}, f"the frontend ignored the configured dropout: {ps}"
+
+
+def test_the_config_asks_for_none():
+    import yaml
+    with open(os.path.join(ROOT, "configs", "pretrain", "eeg_c1_moe.yaml")) as f:
+        cfg = yaml.safe_load(f)
+    assert cfg["model"]["dropout"] == 0.0
+    assert cfg["model"]["mask_ratio"] == 0.70

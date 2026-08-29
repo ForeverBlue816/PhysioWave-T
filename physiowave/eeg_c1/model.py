@@ -142,7 +142,8 @@ class WaveletFrontend(nn.Module):
     def __init__(self, route: Route, max_level: int = 3,
                  wave_kernel_size: int = 16, wavelet_names=None,
                  use_separate_channel: bool = True, wave_init_mode: str = "pad",
-                 fold_synthesis: int = 3, fold_gamma: float = 0.1):
+                 fold_synthesis: int = 3, fold_gamma: float = 0.1,
+                 ffn_drop: float = 0.1):
         super().__init__()
         self.route_id = route.route_id
         self.decomp = SoftGateWaveletDecomp(
@@ -152,7 +153,7 @@ class WaveletFrontend(nn.Module):
             wavelet_names=wavelet_names,
             use_separate_channel=use_separate_channel,
             init_mode=wave_init_mode,
-            ffn_ratio=4.0, ffn_kernel_size=3, ffn_drop=0.1,
+            ffn_ratio=4.0, ffn_kernel_size=3, ffn_drop=ffn_drop,
         )
         self.fold = ScaleFold(
             mode="dynamic",
@@ -249,7 +250,10 @@ class MultiRouteEEGPretrainer(nn.Module):
                 wavelet_names=wavelet_names,
                 use_separate_channel=use_separate_channel,
                 wave_init_mode=wave_init_mode, fold_synthesis=fold_synthesis,
-                fold_gamma=fold_gamma)
+                fold_gamma=fold_gamma,
+                # The frontend's cross-scale FFN used to drop 10% whatever the
+                # config said, so `dropout: 0` did not mean no dropout.
+                ffn_drop=dropout)
             for rid, route in self.routes.items()
         })
 

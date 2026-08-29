@@ -1193,15 +1193,29 @@ def test_22b_mask_ratio_zero_still_overrides():
     assert "model.mask_ratio=0" in _launcher_overrides({"MASK_RATIO": "0"})
 
 
-def test_22c_the_config_is_what_the_trainer_resolves(tmp_path):
-    """The values this file now owns must reach the model and the loop."""
+def test_22c_the_config_owns_the_hyperparameters(tmp_path):
+    """These keys live in the config and nowhere else.
+
+    Values are not pinned here. A tunable that is asserted in two files is a
+    tunable you cannot change without a test failure telling you nothing, and
+    the launcher shadowing them -- not their values -- is what this is for.
+    """
     import yaml
     with open(os.path.join(ROOT, "configs", "pretrain", "eeg_c1_moe.yaml")) as f:
         cfg = yaml.safe_load(f)
-    assert cfg["model"]["mask_ratio"] == 0.75
-    assert cfg["train"]["grad_accumulation_steps"] == 1
-    assert cfg["train"]["batch_size_by_route"] == {
-        "E19_256": 128, "E32_512": 96, "E64_256": 48, "E128_512": 24}
+    for section, key in (("model", "mask_ratio"), ("model", "dropout"),
+                         ("model", "embed_dim"), ("model", "depth"),
+                         ("train", "grad_accumulation_steps"),
+                         ("train", "batch_size_by_route"), ("train", "lr"),
+                         ("train", "epochs"), ("data", "weights")):
+        assert key in cfg[section], f"{section}.{key} left the config"
+
+    bare = _launcher_overrides()
+    for dotted in ("model.mask_ratio", "model.dropout", "model.embed_dim",
+                   "train.grad_accumulation_steps", "train.lr", "train.epochs",
+                   "data.weights", "train.steps_per_epoch"):
+        assert not any(o.startswith(dotted + "=") for o in bare), \
+            f"the launcher overrides {dotted} when nothing asked it to"
 
 
 # --- 23 --------------------------------------------------------------------- #

@@ -109,19 +109,31 @@ model:
   depth: 6
   num_heads: 6
   mlp_ratio: 4.0
-  dropout: 0.1
+  # NO DROPOUT. Masked reconstruction already corrupts its input -- three
+  # quarters of the patches are zeroed before the frontend sees them -- and a
+  # second, uncontrolled corruption on top of it adds noise to a regression
+  # target rather than regularising a classifier. Masked autoencoding uses
+  # none for the same reason. This number also reaches the wavelet frontend's
+  # cross-scale FFN, which ignored it until 2026-08-29 and dropped 10%
+  # regardless of what was written here.
+  dropout: 0.0
   norm: rmsnorm
   ffn: swiglu
   qk_norm: true
   masking_strategy: frequency_guided
   importance_ratio: 0.6
-  # 0.75, not 0.5. A patch is one channel over half a second, and EEG is
-  # strongly correlated across channels at the same instant, so at 0.5 a
-  # masked patch usually has an unmasked neighbour on an adjacent
-  # electrode carrying most of its content. The first epoch reached a
-  # validation MSE of 0.107 on a unit-variance target, which is a task
-  # being solved rather than learned from.
-  mask_ratio: 0.75
+  # 0.70. A patch is one channel over half a second, and EEG is strongly
+  # correlated across channels at the same instant, so at 0.5 a masked patch
+  # usually has an unmasked neighbour on an adjacent electrode carrying most
+  # of its content; the ratio has to be high enough that reconstruction is
+  # inference rather than interpolation.
+  #
+  # WHAT IS NOT MEASURED: 0.70 against 0.75. The run at 0.5 and the runs at
+  # 0.75 differ in the target as well -- the 0.5 run predicted an
+  # unnormalised, drifting target -- so nothing here separates the ratio from
+  # that change. The argument for a high ratio is structural; the exact value
+  # is a judgement.
+  mask_ratio: 0.70
   # C1, exactly as the channel ablation defines it.
   channel_encoding: id
   channel_injection: token
