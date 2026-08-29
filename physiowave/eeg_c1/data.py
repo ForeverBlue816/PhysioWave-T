@@ -344,10 +344,20 @@ class RouteSchedule:
 
         w = {k: v for k, v in w.items() if k in available and v > 0}
         if not w:
+            hint = ""
+            if isinstance(weights, dict) and set(weights) & {
+                    "temperature", "balanced", "proportional"}:
+                # `--set data.weights="temperature: 0.5"` is YAML for a mapping;
+                # only the spelling WITHOUT the space stays a string and reaches
+                # the policy branch above.
+                hint = ("\n\n  This looks like a policy written with a space: "
+                        "'temperature: 0.5' is\n  YAML for a mapping, and "
+                        "'temperature:0.5' is the string the policy\n  branch "
+                        "reads. Write it without the space.")
             raise SystemExit(
                 "no configured dataset is present in the manifest. Configured: "
                 f"{sorted(weights) if weights else sorted(counts)}; present: "
-                f"{sorted(available)}")
+                f"{sorted(available)}{hint}")
         total = sum(w.values())
         self.weights = {k: v / total for k, v in w.items()}
         self.dataset_ids = sorted(self.weights)

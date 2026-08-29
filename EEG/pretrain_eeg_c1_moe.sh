@@ -27,6 +27,7 @@
 #   BATCH_SIZE_BY_ROUTE   "E19_256=128,E32_512=96,E64_256=48,E128_512=24"
 #   GRAD_ACCUMULATION                                         (the config's)
 #   LR / WEIGHT_DECAY / MASK_RATIO / SEED                     (the config's)
+#   WEIGHTS               balanced | proportional | temperature:0.5
 #   VIS_EVERY_EPOCHS      snapshot cadence for the figures        (the config's)
 #   DATA_ROOT             holds merged/manifest_{train,val}.jsonl
 #   OUTPUT_DIR            checkpoints and figures
@@ -76,6 +77,10 @@ WEIGHT_DECAY="${WEIGHT_DECAY:-}"
 MASK_RATIO="${MASK_RATIO:-}"
 SEED="${SEED:-}"
 VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"
+# balanced | proportional | temperature:A -- WITHOUT a space after the
+# colon, which YAML would read as a mapping rather than the string the
+# policy branch matches on.
+WEIGHTS="${WEIGHTS:-}"
 DATA_ROOT="${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 BATCH_SIZE_BY_ROUTE="${BATCH_SIZE_BY_ROUTE:-}"
@@ -113,6 +118,7 @@ OVERRIDES=(
 [[ -n "${VIS_EVERY_EPOCHS}" ]] && OVERRIDES+=("train.vis_every_epochs=${VIS_EVERY_EPOCHS}")
 [[ -n "${MASK_RATIO}" ]]       && OVERRIDES+=("model.mask_ratio=${MASK_RATIO}")
 [[ -n "${SEED}" ]]             && OVERRIDES+=("seed=${SEED}")
+[[ -n "${WEIGHTS}" ]]          && OVERRIDES+=("data.weights=${WEIGHTS}")
 
 # "E19_256=64,E32_512=48" -> one dotted override per route.
 if [[ -n "${BATCH_SIZE_BY_ROUTE}" ]]; then
@@ -141,6 +147,7 @@ echo "  config=${CONFIG}"
 echo "  nodes=${NNODES} x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
 echo "  epochs=${EPOCHS:-<config>}  grad_accum=${GRAD_ACCUMULATION:-<config>}"
 echo "  lr=${LR:-<config>}  wd=${WEIGHT_DECAY:-<config>}  mask_ratio=${MASK_RATIO:-<config>}  seed=${SEED:-<config>}"
+echo "  weights=${WEIGHTS:-<config>}"
 echo "  (<config> means ${CONFIG}.yaml decides; the trainer's own banner"
 echo "   below prints the values it actually resolved)"
 echo "  train manifest ${MANIFEST_TRAIN}"

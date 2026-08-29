@@ -1149,7 +1149,7 @@ def _launcher_overrides(env=None):
          f'set -uo pipefail\n'
          f'pw_require_python_deps() {{ return 0; }}\n'
          f'export -f pw_require_python_deps\n'
-         f'sed -n "/^OVERRIDES=(/,/^\\[\\[ -n \\"\\${{SEED}}\\"/p" {LAUNCHER}'],
+         f'sed -n "/^OVERRIDES=(/,/^\\[\\[ -n \\"\\${{WEIGHTS}}\\"/p" {LAUNCHER}'],
         capture_output=True, text=True)
     body = script.stdout
     assert "OVERRIDES=(" in body, script.stderr
@@ -1158,6 +1158,7 @@ def _launcher_overrides(env=None):
             'EPOCHS="${EPOCHS:-}"; GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-}"\n'
             'LR="${LR:-}"; WEIGHT_DECAY="${WEIGHT_DECAY:-}"\n'
             'MASK_RATIO="${MASK_RATIO:-}"; SEED="${SEED:-}"\n'
+            'WEIGHTS="${WEIGHTS:-}"\n'
             'VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"\n'
             + body +
             '\nprintf "%s\\n" "${OVERRIDES[@]}"\n')
@@ -1358,3 +1359,45 @@ def test_25c_a_failed_mkdir_stops_the_launcher():
         body = f.read()
     i = body.index('mkdir -p "${OUTPUT_DIR}"')
     assert "exit 1" in body[i:i + 200], "mkdir failure is not fatal"
+
+
+# --- 26 --------------------------------------------------------------------- #
+def test_26_temperature_survives_the_override_parser():
+    """`temperature:0.5` must reach the policy branch as a string.
+
+    Overrides are parsed as YAML scalars, and `temperature: 0.5` -- with the
+    space -- is YAML for a mapping. Only the spelling without it stays a string.
+    """
+    from physiowave.config import apply_overrides
+
+    cfg = apply_overrides({"data": {"weights": "balanced"}},
+                          ["data.weights=temperature:0.5"])
+    assert cfg["data"]["weights"] == "temperature:0.5"
+
+    spaced = apply_overrides({"data": {"weights": "balanced"}},
+                             ["data.weights=temperature: 0.5"])
+    assert spaced["data"]["weights"] == {"temperature": 0.5}, (
+        "if YAML ever stops reading this as a mapping the hint below is moot")
+
+
+def test_26b_a_policy_written_as_a_mapping_says_so(tmp_path):
+    from physiowave.eeg_c1.data import CorpusIndex, RouteSchedule
+    from physiowave.eeg_c1.entry import build_smoke_corpus
+
+    corpus = build_smoke_corpus(str(tmp_path / "c"), subjects=2, recordings=1,
+                                windows=2)
+    index = CorpusIndex.from_manifest(corpus["train"])
+
+    with pytest.raises(SystemExit) as exc:
+        RouteSchedule(index, weights={"temperature": 0.5})
+    assert "without the space" in str(exc.value)
+
+    # And the string spelling works.
+    s = RouteSchedule(index, weights="temperature:0.5")
+    assert s.weight_policy == "temperature:0.5"
+
+
+def test_26c_the_launcher_passes_weights_through():
+    asked = _launcher_overrides({"WEIGHTS": "temperature:0.5"})
+    assert "data.weights=temperature:0.5" in asked
+    assert not any(o.startswith("data.weights=") for o in _launcher_overrides())
