@@ -1149,7 +1149,7 @@ def _launcher_overrides(env=None):
          f'set -uo pipefail\n'
          f'pw_require_python_deps() {{ return 0; }}\n'
          f'export -f pw_require_python_deps\n'
-         f'sed -n "/^OVERRIDES=(/,/^\\[\\[ -n \\"\\${{WEIGHTS}}\\"/p" {LAUNCHER}'],
+         f'sed -n "/^OVERRIDES=(/,/^fi$/p" {LAUNCHER}'],
         capture_output=True, text=True)
     body = script.stdout
     assert "OVERRIDES=(" in body, script.stderr
@@ -1158,7 +1158,8 @@ def _launcher_overrides(env=None):
             'EPOCHS="${EPOCHS:-}"; GRAD_ACCUMULATION="${GRAD_ACCUMULATION:-}"\n'
             'LR="${LR:-}"; WEIGHT_DECAY="${WEIGHT_DECAY:-}"\n'
             'MASK_RATIO="${MASK_RATIO:-}"; SEED="${SEED:-}"\n'
-            'WEIGHTS="${WEIGHTS:-}"\n'
+            'WEIGHTS="${WEIGHTS:-}"; STEPS_PER_EPOCH="${STEPS_PER_EPOCH:-}"\n'
+            'SET="${SET:-}"\n'
             'VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"\n'
             + body +
             '\nprintf "%s\\n" "${OVERRIDES[@]}"\n')
@@ -1480,3 +1481,13 @@ def test_27c_the_launcher_passes_init_from():
     with open(os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")) as f:
         body = f.read()
     assert '[[ -n "${INIT_FROM}" ]] && EXTRA+=(--init-from "${INIT_FROM}")' in body
+
+
+def test_26d_the_launcher_passes_arbitrary_overrides():
+    """An architecture experiment is a submission, not an edit and a revert."""
+    got = _launcher_overrides({"SET": "model.embed_dim=512 model.depth=8",
+                               "STEPS_PER_EPOCH": "1536"})
+    assert "model.embed_dim=512" in got
+    assert "model.depth=8" in got
+    assert "train.steps_per_epoch=1536" in got
+    assert not any(o.startswith("model.") for o in _launcher_overrides())

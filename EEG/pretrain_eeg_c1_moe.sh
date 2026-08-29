@@ -33,6 +33,8 @@
 #   OUTPUT_DIR            checkpoints and figures
 #   RESUME                'auto' to continue OUTPUT_DIR/latest.pth
 #   INIT_FROM             another checkpoint's WEIGHTS, fresh schedule
+#   STEPS_PER_EPOCH       override the mixture-derived epoch length
+#   SET                   "model.embed_dim=512 model.depth=8" -- anything
 #
 # UNSET MEANS THE CONFIG DECIDES for the hyperparameters. None of them has a
 # default here; a default here would be a second copy of a number that already
@@ -93,6 +95,14 @@ RESUME="${RESUME:-}"
 # units: 384-step epochs restored into 954-step ones leave the cosine
 # a fifth short of annealed.
 INIT_FROM="${INIT_FROM:-}"
+# steps_per_epoch is DERIVED from the mixture when the config leaves it
+# null -- 384 under balanced. Setting it is how you buy more optimizer
+# steps per epoch without changing what the mixture is.
+STEPS_PER_EPOCH="${STEPS_PER_EPOCH:-}"
+# Anything else, space separated: SET="model.embed_dim=512 model.depth=8".
+# For the architecture, which has no business having an environment
+# variable each, and which changing means no checkpoint transfers.
+SET="${SET:-}"
 
 MANIFEST_TRAIN="${MANIFEST_TRAIN:-${DATA_ROOT}/merged/manifest_train.jsonl}"
 MANIFEST_VAL="${MANIFEST_VAL:-${DATA_ROOT}/merged/manifest_val.jsonl}"
@@ -126,6 +136,14 @@ OVERRIDES=(
 [[ -n "${MASK_RATIO}" ]]       && OVERRIDES+=("model.mask_ratio=${MASK_RATIO}")
 [[ -n "${SEED}" ]]             && OVERRIDES+=("seed=${SEED}")
 [[ -n "${WEIGHTS}" ]]          && OVERRIDES+=("data.weights=${WEIGHTS}")
+[[ -n "${STEPS_PER_EPOCH}" ]]  && OVERRIDES+=("train.steps_per_epoch=${STEPS_PER_EPOCH}")
+if [[ -n "${SET}" ]]; then
+    read -r -a _extra_set <<< "${SET}"
+    for _kv in "${_extra_set[@]}"; do
+        [[ "${_kv}" == *=* ]] || { echo "ERROR: SET entry '${_kv}' is not key=value" >&2; exit 1; }
+        OVERRIDES+=("${_kv}")
+    done
+fi
 
 # "E19_256=64,E32_512=48" -> one dotted override per route.
 if [[ -n "${BATCH_SIZE_BY_ROUTE}" ]]; then
@@ -155,7 +173,8 @@ echo "  config=${CONFIG}"
 echo "  nodes=${NNODES} x ${NUM_GPUS} gpu = $((NNODES * NUM_GPUS)) rank(s)"
 echo "  epochs=${EPOCHS:-<config>}  grad_accum=${GRAD_ACCUMULATION:-<config>}"
 echo "  lr=${LR:-<config>}  wd=${WEIGHT_DECAY:-<config>}  mask_ratio=${MASK_RATIO:-<config>}  seed=${SEED:-<config>}"
-echo "  weights=${WEIGHTS:-<config>}"
+echo "  weights=${WEIGHTS:-<config>}  steps/epoch=${STEPS_PER_EPOCH:-<derived>}"
+[[ -n "${SET}" ]] && echo "  set            ${SET}"
 echo "  (<config> means ${CONFIG}.yaml decides; the trainer's own banner"
 echo "   below prints the values it actually resolved)"
 echo "  train manifest ${MANIFEST_TRAIN}"
