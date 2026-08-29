@@ -43,12 +43,23 @@
 # --------------------------------------------------------------------------- #
 # 0. Where are we?
 #
-# $FAST only exists on Leonardo.  Off-cluster the module/venv steps are skipped
-# and every path falls back to a repository-relative default, so the same launch
-# scripts work on a laptop without a second code path.
+# Off-cluster the module/venv steps are skipped and every path falls back to a
+# repository-relative default, so the same launch scripts work on a laptop
+# without a second code path.
+#
+# THE ANSWER MUST NOT DEPEND ON ONE VARIABLE. This used to read $FAST alone. A
+# batch job submitted from a shell where $FAST was not set therefore decided it
+# was a laptop, skipped the module load and the venv, and ran on whatever
+# `python` the submitting shell had on PATH -- which under `--export=ALL` is
+# inherited. Four earlier jobs "worked" only because the submitting shell
+# happened to have $HOME/pw active; the first one submitted from a shell
+# without it got cineca-ai's own interpreter, which has torch and no pywt, and
+# died on all sixteen ranks. The modulefile tree is a fact about the machine
+# rather than about the shell, so it is the one that decides.
 # --------------------------------------------------------------------------- #
 PW_ON_CINECA=0
 [[ -n "${FAST:-}${PW_FAST:-}" ]] && PW_ON_CINECA=1
+[[ -d /leonardo/prod/opt/modulefiles ]] && PW_ON_CINECA=1
 export PW_ON_CINECA
 
 PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
@@ -292,6 +303,43 @@ PW_TORCHRUN=("${PYTHON:-python}" -m torch.distributed.run)
 
 # Fail before the allocation is spent, not inside a worker: every module the
 # training entry points import at top level, checked in the venv's interpreter.
+# A training launcher runs on the training venv or it does not run. Everything
+# that decides which interpreter is active is inherited from the submitting
+# shell, so this is checked rather than assumed.
+pw_require_training_venv() {
+    local want have
+    # Off-cluster there is no ${HOME}/pw and none is wanted: the laptop path
+    # runs on whatever interpreter is active, which is the whole reason the
+    # launch scripts have no second code path.
+    [[ "${PW_ON_CINECA:-0}" -eq 1 ]] || return 0
+    want="${PW_VENV_DEFAULT:-${HOME}/pw}"
+    have="$("${PYTHON:-python}" -c 'import sys;print(sys.prefix)' 2>/dev/null)"
+    [[ "${have}" == "${want}" ]] && return 0
+
+    echo "ERROR: training needs ${want} and this is ${have:-<no python>}." >&2
+    echo "" >&2
+    pw_print_env_state
+    echo "" >&2
+    echo "  Every one of these is inherited by \`sbatch --export=ALL\` from the" >&2
+    echo "  shell you submitted from. Submit from a clean shell, or fix the" >&2
+    echo "  variable the state above names:" >&2
+    echo "      unset PW_VENV PW_VARS_ONLY VIRTUAL_ENV" >&2
+    echo "      sbatch ..." >&2
+    return 1
+}
+
+pw_print_env_state() {
+    echo "  python           $(command -v python 2>/dev/null || echo '<none>')" >&2
+    echo "  sys.prefix       $("${PYTHON:-python}" -c 'import sys;print(sys.prefix)' 2>/dev/null || echo '<no python>')" >&2
+    echo "  PW_ON_CINECA     ${PW_ON_CINECA:-<unset>}   (0 skips the module and the venv)" >&2
+    echo "  PW_VARS_ONLY     ${PW_VARS_ONLY:-<unset>}   (1 skips them too)" >&2
+    echo "  FAST             ${FAST:-<unset>}" >&2
+    echo "  PW_VENV          ${PW_VENV:-<unset>}" >&2
+    echo "  VIRTUAL_ENV      ${VIRTUAL_ENV:-<unset>}" >&2
+    echo "  SLURM_JOB_ID     ${SLURM_JOB_ID:-<unset>}" >&2
+    echo "  cineca-ai loaded $(pw_module_is_loaded_exact "${PW_CINECA_AI:-cineca-ai}" && echo yes || echo NO)" >&2
+}
+
 pw_require_python_deps() {
     local missing dists prefix
     # Two lines: the import names that are absent, then the distributions that
@@ -314,11 +362,14 @@ PYEOF
     echo "ERROR: missing Python packages in ${prefix}: ${missing}" >&2
     if [[ "${prefix}" != "${PW_VENV_DEFAULT:-}" ]]; then
         # Far more often the wrong interpreter than a genuinely incomplete one.
+        # Print the state rather than guess at which of the four ways it
+        # happened: the guess used to name PW_VENV, and the last time this
+        # fired it was PW_ON_CINECA.
         echo "" >&2
         echo "  That is not ${PW_VENV_DEFAULT:-\$HOME/pw}, the venv training uses." >&2
-        echo "  If you prepared data in this shell, PW_VENV may still be pinned to" >&2
-        echo "  the preparation venv (it is exported, and srun inherits it):" >&2
-        echo "      unset PW_VENV && source scripts/cineca_env.sh" >&2
+        pw_print_env_state
+        echo "" >&2
+        echo "  All of these are inherited by \`sbatch --export=ALL\`." >&2
         echo "" >&2
         echo "  If the interpreter is right after all, install into it:" >&2
     fi

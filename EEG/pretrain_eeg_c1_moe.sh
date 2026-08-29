@@ -48,6 +48,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
 
+# In this order: the right interpreter, then what is installed in it.
+# Reversed, a missing package is reported against an interpreter that was
+# never meant to have it, and the message sends you to pip.
+pw_require_training_venv || exit 1
 pw_require_python_deps || exit 1
 
 NUM_GPUS="${NUM_GPUS:-4}"          # GPUs per node

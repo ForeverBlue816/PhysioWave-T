@@ -1256,3 +1256,57 @@ def test_23b_a_reused_shard_is_not_reopened(tmp_path):
     ds[0]
     assert ds._handles[ds.locate(0)[0]] is first, "reopened a cached shard"
     ds.close()
+
+
+# --- 24 --------------------------------------------------------------------- #
+ENV_SH = os.path.join(ROOT, "scripts", "cineca_env.sh")
+
+
+def _env_sh(snippet, env=None):
+    r = subprocess.run(
+        ["bash", "-c", f'set -uo pipefail\nsource "{ENV_SH}" >/dev/null 2>&1\n{snippet}'],
+        capture_output=True, text=True, cwd=ROOT,
+        env={**os.environ, **(env or {})})
+    return r
+
+
+def test_24_a_training_launcher_refuses_the_wrong_interpreter():
+    """Four jobs ran on the right python by accident, and the fifth did not.
+
+    Everything that decides which interpreter is active -- PW_ON_CINECA,
+    PW_VARS_ONLY, PW_VENV, VIRTUAL_ENV, PATH -- is inherited by
+    `sbatch --export=ALL` from the submitting shell. A launcher that assumes
+    instead of checking reports the consequence (a missing package) rather than
+    the cause.
+    """
+    off = _env_sh('pw_require_training_venv; echo "rc=$?"')
+    assert "rc=0" in off.stdout, "off-cluster must not require $HOME/pw"
+
+    on = _env_sh('PW_ON_CINECA=1 pw_require_training_venv; echo "rc=$?"')
+    assert "rc=1" in on.stdout, "on-cluster must reject a foreign interpreter"
+    for key in ("PW_ON_CINECA", "PW_VARS_ONLY", "PW_VENV", "VIRTUAL_ENV",
+                "sys.prefix"):
+        assert key in on.stderr, f"the diagnostic does not report {key}"
+
+
+def test_24b_the_cluster_is_not_detected_from_one_variable():
+    """$FAST alone decided it, so a job without it silently became a laptop."""
+    with open(ENV_SH) as f:
+        body = f.read()
+    i = body.index("PW_ON_CINECA=0")
+    block = body[i:i + 400]
+    assert "/leonardo/prod/opt/modulefiles" in block, (
+        "cluster detection still rests on the environment alone")
+
+
+def test_24c_the_launcher_checks_the_interpreter_before_the_packages():
+    """Reversed, a missing package is blamed on the wrong interpreter's owner."""
+    with open(os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")) as f:
+        body = f.read()
+    assert body.index("pw_require_training_venv") < body.index("pw_require_python_deps")
+
+
+def test_24d_env_sh_has_no_python_docstrings():
+    """`\"\"\"...\"\"\"` parses in bash and runs as a command not found."""
+    with open(ENV_SH) as f:
+        assert '"""' not in f.read()
