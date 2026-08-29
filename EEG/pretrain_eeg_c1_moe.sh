@@ -27,14 +27,19 @@
 #   BATCH_SIZE_BY_ROUTE   "E19_256=128,E32_512=96,E64_256=48,E128_512=24"
 #   GRAD_ACCUMULATION                                         (the config's)
 #   LR / WEIGHT_DECAY / MASK_RATIO / SEED                     (the config's)
-#
-# UNSET MEANS THE CONFIG DECIDES. None of these has a default here; a default
-# here would be a second copy of a number that already has a home, and the copy
-# would win.
+#   VIS_EVERY_EPOCHS      snapshot cadence for the figures        (the config's)
 #   DATA_ROOT             holds merged/manifest_{train,val}.jsonl
 #   OUTPUT_DIR            checkpoints and figures
 #   RESUME                'auto' to continue OUTPUT_DIR/latest.pth
-#   VIS_EVERY_EPOCHS      snapshot cadence for the fixed-sample figures (5)
+#
+# UNSET MEANS THE CONFIG DECIDES for the hyperparameters. None of them has a
+# default here; a default here would be a second copy of a number that already
+# has a home, and the copy would win.
+#
+# DATA_ROOT AND OUTPUT_DIR ARE PATHS AND ARE CHECKED. Both are usually built
+# from ${PW_DATA_EEG} and ${PW_CKPT_ROOT}, which scripts/cineca_env.sh sets and
+# your login profile does not. Submitting from a shell that never sourced it
+# turns $PW_CKPT_ROOT/run into /run, which --export=ALL carries into the job.
 #
 # These are VALUES passed straight through, not `${VAR:+--flag}` presence
 # tests: MASK_RATIO=0 is a non-empty string and that idiom would read it as on.
@@ -122,7 +127,13 @@ EXTRA=()
 [[ -n "${MAX_STEPS}" ]] && EXTRA+=(--max-steps "${MAX_STEPS}")
 [[ -n "${RESUME}" ]]    && EXTRA+=(--resume "${RESUME}")
 
-mkdir -p "${OUTPUT_DIR}"
+pw_check_run_path OUTPUT_DIR "${OUTPUT_DIR}" || exit 1
+# `set -e` is deliberately not on here, so an unchecked mkdir failure
+# carries straight on to srun and dies inside Python on every rank.
+mkdir -p "${OUTPUT_DIR}" || {
+    echo "ERROR: cannot create ${OUTPUT_DIR}" >&2
+    exit 1
+}
 
 echo "============================================================"
 echo "  EEG C1 multi-route pretraining"

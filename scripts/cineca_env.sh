@@ -303,6 +303,48 @@ PW_TORCHRUN=("${PYTHON:-python}" -m torch.distributed.run)
 
 # Fail before the allocation is spent, not inside a worker: every module the
 # training entry points import at top level, checked in the venv's interpreter.
+# A path built from a variable that was empty. `$PW_CKPT_ROOT/run` becomes
+# `/run` when PW_CKPT_ROOT is unset, and `sbatch --export=ALL` carries the empty
+# value from the submitting shell straight into the job -- where the only
+# symptom is rank 0 dying on a permission error after the allocation is granted
+# and the other fifteen ranks reporting that they lost the rendezvous store.
+#
+# A directory whose parent is `/` is never a run directory on this system, and
+# neither is one under a parent that does not exist. Both are the same mistake
+# and both are cheap to see here.
+pw_check_run_path() {
+    local name="$1" path="$2" parent
+    if [[ -z "${path}" ]]; then
+        echo "ERROR: ${name} is empty." >&2
+        return 1
+    fi
+    if [[ "${path}" != /* ]]; then
+        echo "ERROR: ${name}=${path} is not an absolute path." >&2
+        return 1
+    fi
+    parent="$(dirname "${path}")"
+    if [[ "${parent}" == "/" ]]; then
+        echo "ERROR: ${name}=${path} sits directly under /." >&2
+        echo "" >&2
+        echo "  That is what an unset variable expands to: \$PW_CKPT_ROOT/run" >&2
+        echo "  becomes /run when PW_CKPT_ROOT is empty, and --export=ALL" >&2
+        echo "  carries the empty value from your shell into the job." >&2
+        echo "" >&2
+        echo "  PW_CKPT_ROOT and PW_DATA_EEG come from scripts/cineca_env.sh," >&2
+        echo "  not from your login profile. Before submitting:" >&2
+        echo "      source scripts/cineca_env.sh" >&2
+        echo "      echo \"\$PW_CKPT_ROOT\"      # must not be empty" >&2
+        return 1
+    fi
+    if [[ ! -d "${parent}" ]]; then
+        echo "ERROR: ${name}=${path} -- its parent ${parent} does not exist." >&2
+        echo "       Nothing will create it, and rank 0 would die on it after" >&2
+        echo "       the allocation is granted." >&2
+        return 1
+    fi
+    return 0
+}
+
 # A training launcher runs on the training venv or it does not run. Everything
 # that decides which interpreter is active is inherited from the submitting
 # shell, so this is checked rather than assumed.

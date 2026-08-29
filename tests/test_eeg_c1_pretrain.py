@@ -1310,3 +1310,51 @@ def test_24d_env_sh_has_no_python_docstrings():
     """`\"\"\"...\"\"\"` parses in bash and runs as a command not found."""
     with open(ENV_SH) as f:
         assert '"""' not in f.read()
+
+
+# --- 25 --------------------------------------------------------------------- #
+def test_25_a_run_path_under_the_filesystem_root_is_refused():
+    """`$PW_CKPT_ROOT/run` with PW_CKPT_ROOT empty is `/run`.
+
+    --export=ALL carries the empty value from the submitting shell into the
+    job, where the only symptom was rank 0 dying on a permission error after
+    the allocation was granted and fifteen ranks reporting a lost rendezvous.
+    """
+    bad = _env_sh('pw_check_run_path OUTPUT_DIR "/pretrain_eeg_c1_moe_n1"; echo "rc=$?"')
+    assert "rc=1" in bad.stdout
+    assert "sits directly under /" in bad.stderr
+    assert "cineca_env.sh" in bad.stderr, "the message must name the cause"
+
+    empty = _env_sh('pw_check_run_path OUTPUT_DIR ""; echo "rc=$?"')
+    assert "rc=1" in empty.stdout
+
+    relative = _env_sh('pw_check_run_path OUTPUT_DIR "runs/x"; echo "rc=$?"')
+    assert "rc=1" in relative.stdout
+
+    missing = _env_sh('pw_check_run_path OUTPUT_DIR "/nope/nowhere/x"; echo "rc=$?"')
+    assert "rc=1" in missing.stdout
+    assert "does not exist" in missing.stderr
+
+    ok = _env_sh(f'pw_check_run_path OUTPUT_DIR "{ROOT}/outputs/x"; echo "rc=$?"')
+    assert "rc=0" in ok.stdout, ok.stderr
+
+
+def test_25b_both_launchers_check_before_they_allocate_or_mkdir():
+    sbatch = os.path.join(ROOT, "scripts", "slurm",
+                          "cineca_eeg_c1_moe_pretrain.sbatch")
+    with open(sbatch) as f:
+        body = f.read()
+    assert body.index('pw_check_run_path OUTPUT_DIR') < body.index("srun ")
+    assert 'pw_check_run_path DATA_ROOT' in body
+
+    with open(os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")) as f:
+        body = f.read()
+    assert body.index('pw_check_run_path OUTPUT_DIR') < body.index('mkdir -p "${OUTPUT_DIR}"')
+
+
+def test_25c_a_failed_mkdir_stops_the_launcher():
+    """set -e is deliberately off, so an unchecked mkdir carries on to srun."""
+    with open(os.path.join(ROOT, "EEG", "pretrain_eeg_c1_moe.sh")) as f:
+        body = f.read()
+    i = body.index('mkdir -p "${OUTPUT_DIR}"')
+    assert "exit 1" in body[i:i + 200], "mkdir failure is not fatal"

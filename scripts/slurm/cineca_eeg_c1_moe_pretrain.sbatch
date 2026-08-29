@@ -90,6 +90,13 @@ export NCCL_DEBUG="${NCCL_DEBUG:-WARN}"
 export DATA_ROOT="${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus}"
 export OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe}"
 
+# Both arrive from the submitting shell through --export=ALL, and both are
+# built from variables that scripts/cineca_env.sh sets rather than the login
+# profile. Checked here, before srun, because the alternative is finding out
+# from rank 0's permission error and fifteen rendezvous timeouts.
+pw_check_run_path OUTPUT_DIR "${OUTPUT_DIR}" || exit 1
+pw_check_run_path DATA_ROOT "${DATA_ROOT}" || exit 1
+
 echo "============================================================"
 echo "  EEG C1 multi-route pretraining  (job ${SLURM_JOB_ID})"
 echo "  config     ${CONFIG}"
