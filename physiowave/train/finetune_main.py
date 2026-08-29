@@ -94,6 +94,14 @@ class LabelledWindows(Dataset):
         with h5py.File(path, "r") as f:
             self.data = np.asarray(f["data"][:], dtype=np.float32)
             self.labels = np.asarray(f["label"][:], dtype=np.int64)
+            # The montage is a property of the FILE. Every converter writes it,
+            # and a copy typed into a config is a copy that can be wrong -- the
+            # first hand-transcribed one had two electrodes the montage does
+            # not contain.
+            self.channel_names = ([c.decode() if isinstance(c, bytes) else str(c)
+                                   for c in f["channel_names"][:]]
+                                  if "channel_names" in f else None)
+            self.sampling_rate = float(f.attrs.get("sampling_rate", 0.0)) or None
         if len(self.data) != len(self.labels):
             raise ValueError(f"{path}: {len(self.data)} windows but {len(self.labels)} labels")
 
@@ -373,6 +381,32 @@ def main(argv=None) -> int:
         if (counts == 0).any():
             logger.warning("classes %s have no training windows",
                            np.flatnonzero(counts == 0).tolist())
+
+    if model_cfg.get("name") == "eeg_c1":
+        # The montage, the window and the rate come from the FILE unless the
+        # config names them. They are facts about the data, and a second copy
+        # in a config is one that can disagree with it silently.
+        c1 = dict(model_cfg.get("eeg_c1", {}) or {})
+        c1.setdefault("in_channels", C)
+        c1.setdefault("window_samples", T)
+        if train_set.channel_names and "channel_names" not in c1:
+            c1["channel_names"] = train_set.channel_names
+        if train_set.sampling_rate and "sampling_rate" not in c1:
+            c1["sampling_rate"] = train_set.sampling_rate
+        missing = [k for k in ("sampling_rate", "patch_samples") if k not in c1]
+        if missing:
+            raise SystemExit(
+                f"model.eeg_c1 needs {missing} and neither the config nor "
+                f"{train_path} supplies them. A patch length is a modelling "
+                f"choice; a sampling rate should be an attribute of the file.")
+        model_cfg["eeg_c1"] = c1
+        cfg["model"] = model_cfg
+        if info.is_main:
+            logger.info("EEG C1 downstream: %d channels at %s Hz, %d-sample "
+                        "windows, %d-sample patches, route %s",
+                        c1["in_channels"], c1["sampling_rate"],
+                        c1["window_samples"], c1["patch_samples"],
+                        c1.get("route_id") or "<its own frontend>")
 
     model = build_model(cfg).to(device)
     if args.pretrained:

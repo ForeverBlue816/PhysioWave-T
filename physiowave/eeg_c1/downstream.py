@@ -1,0 +1,387 @@
+"""
+Fine-tuning a C1 pretrained encoder on a task with its own montage.
+
+WHAT TRANSFERS IS DECIDED BY THE ARCHITECTURE, NOT CHOSEN
+---------------------------------------------------------
+
+The pretrainer's parts are bound to different things, and that binding is what
+says which of them a downstream task can reuse:
+
+    wavelet frontend    per ELECTRODE COUNT -- the filters are per-channel, so
+                        a frontend built for 64 electrodes is not a frontend
+                        for 2. NOT transferable.
+    patch embedding     per PATCH LENGTH -- 128 samples at 256 Hz, 50 at 100.
+                        NOT transferable across sampling rates.
+    channel encoder     per CHANNEL NAME, against a vocabulary shared by every
+                        corpus. Transferable, and the point of C1.
+    channel projection  }
+    channel gate        } the same, and the gate is what scales the whole
+                        contribution -- an encoder loaded without it has the
+                        C1 mechanism switched off.
+    position encoding   generated per call from (channels, patches). No
+                        parameters, so nothing to transfer.
+    transformer         bound to nothing. THE thing pretraining produced.
+
+So a task whose montage and rate match a pretraining route (P300 is 58
+channels at 256 Hz, which is E64_256's slots and rate) reuses everything,
+and a task that does not (Sleep-EDF is two bipolar derivations at 100 Hz)
+builds a fresh frontend and patcher and reuses the rest. Both are the same
+class; the difference is which keys the checkpoint supplies.
+
+THE COMPARISON THAT MEANS SOMETHING is this model with pretrained weights
+against this model without them -- same architecture, same recipe, same split.
+``pretrained=None`` is that control and is one flag away, because a downstream
+number with nothing to compare it to says only that the architecture works.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Dict, List, Optional, Sequence
+
+import torch
+import torch.nn as nn
+
+from channel_embedding import (CHANNEL_VOCAB, ChannelEncoder, PAD_ID,
+                               channel_ids_for, vocab_payload)
+from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
+
+from .model import WaveletFrontend
+from .routes import ROUTES, Route
+
+
+#: The pretraining config's list, and not the module default. coif3 is 18 taps
+#: and does not fit kernel_size 16; bior4.4 is biorthogonal and is not
+#: power-complementary, so neither initialises a filter bank. A fresh
+#: downstream frontend that started from a different family than the encoder it
+#: is bolted to would also be one more difference than the experiment needs.
+DEFAULT_WAVELETS = ("sym4", "sym5", "db6", "sym8", "db8")
+
+#: Keys an exported encoder may supply, and the submodule each belongs to.
+#: `channel_token_gate` is a bare parameter rather than a submodule, which is
+#: how an allowlist of module prefixes came to drop it.
+TRANSFERABLE = ("channel_encoder.", "channel_to_token.", "channel_token_gate",
+                "shared_transformer.")
+#: Only when the montage and rate match the route the checkpoint was exported
+#: for. Refused otherwise, loudly, rather than reshaped.
+ROUTE_BOUND = ("wavelet_frontend.", "patch_embed.")
+
+
+def _slots_for(route: Route, channel_names: Sequence[str]) -> torch.Tensor:
+    """``[route.n_channels]`` index into the incoming montage, -1 where absent.
+
+    Matched by NAME through the same normalisation the vocabulary uses, so
+    "FP1", "Fp1" and "EEG Fp1-REF" are one electrode. A downstream channel that
+    is not one of the route's slots is refused rather than dropped: silently
+    discarding a measured electrode is how a montage mismatch becomes a quiet
+    accuracy loss.
+    """
+    from channel_embedding import normalize_channel_name
+
+    want = {normalize_channel_name(s): i for i, s in enumerate(route.slots)}
+    idx = torch.full((route.n_channels,), -1, dtype=torch.long)
+    unplaced = []
+    for j, name in enumerate(channel_names):
+        slot = want.get(normalize_channel_name(name))
+        if slot is None:
+            unplaced.append(name)
+            continue
+        idx[slot] = j
+    if unplaced:
+        raise ValueError(
+            f"{len(unplaced)} channel(s) are not slots of {route.route_id}: "
+            f"{unplaced[:8]}. Build the model without route_id to give this "
+            f"montage its own frontend instead.")
+    return idx
+
+
+def downstream_route(in_channels: int, sampling_rate: float,
+                     window_samples: int, patch_samples: int,
+                     channel_names: Sequence[str] = ()) -> Route:
+    """A Route for a montage that is not one of the four pretraining routes.
+
+    Route is a description, not a registry entry: the model reads n_channels,
+    patch_t and rate_key off it and nothing looks the id up. Sleep-EDF is
+    2 x 3000 at 100 Hz with a 50-sample patch; P300 is 58 x 512 at 256 Hz with
+    128. Neither is a route and both are describable.
+    """
+    if window_samples % patch_samples:
+        raise ValueError(
+            f"a {window_samples}-sample window is not a whole number of "
+            f"{patch_samples}-sample patches "
+            f"({window_samples / patch_samples:.2f} of them)")
+    return Route(route_id="downstream", n_channels=int(in_channels),
+                 sampling_rate=int(sampling_rate),
+                 window_seconds=window_samples / float(sampling_rate),
+                 patch_seconds=patch_samples / float(sampling_rate),
+                 slots=tuple(channel_names))
+
+
+class EEGC1Downstream(nn.Module):
+    """``[B, C, T] -> {"logits": [B, K]}`` on a pretrained shared transformer."""
+
+    def __init__(self, in_channels: int, window_samples: int,
+                 sampling_rate: float, patch_samples: int, num_classes: int,
+                 channel_names: Optional[Sequence[str]] = None,
+                 route_id: Optional[str] = None,
+                 embed_dim: int = 384, depth: int = 6, num_heads: int = 6,
+                 mlp_ratio: float = 4.0, dropout: float = 0.0,
+                 norm: str = "rmsnorm", ffn: str = "swiglu",
+                 qk_norm: bool = True, rope_dim: int = 2,
+                 max_level: int = 3, wave_kernel_size: int = 16,
+                 wavelet_names=DEFAULT_WAVELETS, wave_init_mode: str = "pad",
+                 use_separate_channel: bool = True, fold_synthesis: int = 3,
+                 fold_gamma: float = 0.1,
+                 channel_encoding: str = "id", channel_embed_dim: int = 64,
+                 channel_token_gate_init: float = 0.0,
+                 channel_vocab_size: Optional[int] = None,
+                 pool: str = "mean", head_dropout: float = 0.0,
+                 freeze_encoder: bool = False):
+        super().__init__()
+        # ON A ROUTE, IF IT FITS. P300 is 58 electrodes at 256 Hz and every one
+        # of them is one of E64_256's 64 slots, so putting them in those slots
+        # and masking the six that are absent makes the pretrained FRONTEND and
+        # PATCHER transferable too, not just the transformer. That is a much
+        # stronger transfer than a fresh 58-channel frontend, and it is what
+        # valid_channel_mask exists for -- pretraining itself runs with padded
+        # slots on every corpus that does not fill its route.
+        if route_id is not None:
+            self.route = ROUTES[route_id]
+            if self.route.patch_t != patch_samples:
+                raise ValueError(
+                    f"{route_id} patches {self.route.patch_t} samples and this "
+                    f"asks for {patch_samples}; a route is its patch length")
+            if int(self.route.sampling_rate) != int(sampling_rate):
+                raise ValueError(
+                    f"{route_id} is {self.route.sampling_rate} Hz and this data "
+                    f"is {sampling_rate} Hz")
+            if not channel_names:
+                raise ValueError(f"route_id={route_id} needs channel_names to "
+                                 f"place the montage in its slots")
+            self.register_buffer("slot_index",
+                                 _slots_for(self.route, channel_names),
+                                 persistent=False)
+            self.in_channels = int(in_channels)
+        else:
+            self.route = downstream_route(in_channels, sampling_rate,
+                                          window_samples, patch_samples,
+                                          channel_names or ())
+            self.in_channels = int(in_channels)
+            # Registered either way, so `self.slot_index is None` is the test
+            # for "this montage is not on a route" and not for "the attribute
+            # happens not to exist".
+            self.register_buffer("slot_index", None, persistent=False)
+        self.num_classes = int(num_classes)
+        self.embed_dim = int(embed_dim)
+        self.pool = pool
+        if pool not in ("mean", "max", "cls_free_mean"):
+            raise ValueError(f"pool must be mean or max, got {pool!r}")
+
+        self.wavelet_frontend = WaveletFrontend(
+            self.route, max_level=max_level, wave_kernel_size=wave_kernel_size,
+            wavelet_names=wavelet_names,
+            use_separate_channel=use_separate_channel,
+            wave_init_mode=wave_init_mode, fold_synthesis=fold_synthesis,
+            fold_gamma=fold_gamma, ffn_drop=dropout)
+        self.patch_embed = PatchEmbed(input_channels=1,
+                                      patch_size=(1, self.route.patch_t),
+                                      embed_dim=embed_dim)
+
+        self.channel_encoder = None
+        if channel_encoding != "none":
+            self.channel_encoder = ChannelEncoder(
+                channel_encoding, channel_embed_dim,
+                vocab_size=channel_vocab_size or len(CHANNEL_VOCAB))
+            self.channel_to_token = nn.Linear(channel_embed_dim, embed_dim)
+            self.channel_token_gate = nn.Parameter(
+                torch.tensor(float(channel_token_gate_init)))
+        self.pos_embed = PositionEmbedding(embed_dim=embed_dim, pos_type="2d")
+        self.shared_transformer = TransformerEncoder(
+            embed_dim=embed_dim, depth=depth, num_heads=num_heads,
+            mlp_ratio=mlp_ratio, dropout=dropout, rope_dim=rope_dim,
+            norm=norm, ffn=ffn, qk_norm=qk_norm)
+
+        self.head_norm = nn.LayerNorm(embed_dim)
+        self.head_drop = nn.Dropout(head_dropout)
+        self.head = nn.Linear(embed_dim, self.num_classes)
+
+        self._frozen = bool(freeze_encoder)
+        if self._frozen:
+            for name, p in self.named_parameters():
+                if not name.startswith(("head", "head_norm", "head_drop")):
+                    p.requires_grad_(False)
+
+    # -- channel metadata ---------------------------------------------------- #
+    def _meta_tensors(self, meta, device) -> Optional[Dict[str, torch.Tensor]]:
+        """``ChannelMeta`` or the C1 dict, resolved to ids against THIS vocab.
+
+        Names, not ids, are what a downstream file and a pretraining corpus can
+        agree on: an id means whichever electrode held that row when it was
+        learned, so resolving names here -- under the vocabulary the weights
+        were checked against on load -- is what keeps Fp1 meaning Fp1.
+        """
+        if self.channel_encoder is None:
+            return None
+        if meta is None:
+            raise ValueError(
+                "channel_encoding='id' needs channel metadata and got None. "
+                "The downstream HDF5 carries channel_names; pass them.")
+        if isinstance(meta, dict) and "channel_ids" in meta:
+            ids = torch.as_tensor(meta["channel_ids"]).long()
+            valid = meta.get("valid_channel_mask")
+        else:
+            names = list(getattr(meta, "channel_names", []) or [])
+            if not names:
+                raise ValueError("channel metadata carries no channel_names")
+            ids_list, _ = channel_ids_for(names)
+            ids = torch.as_tensor(ids_list, dtype=torch.long)
+            valid = getattr(meta, "channel_mask", None)
+        if valid is None:
+            valid = ids != PAD_ID
+        valid = torch.as_tensor(valid).bool().reshape(-1)
+        if ids.numel() != self.in_channels:
+            raise ValueError(
+                f"{ids.numel()} channel ids for {self.in_channels} channels")
+        return {"channel_ids": ids.to(device),
+                "valid_channel_mask": valid.to(device)}
+
+    def _to_slots(self, x: torch.Tensor) -> torch.Tensor:
+        """Place a montage in the route's slots; absent slots stay zero.
+
+        Zero, not an interpolation: pretraining ran with padded slots zeroed
+        and the frontend's channel-mixing FFN learned against that, so a
+        different filler is a different input distribution.
+        """
+        if self.slot_index is None:
+            return x
+        B, _, T = x.shape
+        out = x.new_zeros(B, self.route.n_channels, T)
+        have = self.slot_index >= 0
+        out[:, have] = x[:, self.slot_index[have]]
+        return out
+
+    def _slot_meta(self, cm):
+        """The channel ids and mask AS THE ROUTE SEES THEM, after placement."""
+        if self.slot_index is None or cm is None:
+            return cm
+        from channel_embedding import PAD_ID, channel_ids_for
+        ids, _ = channel_ids_for(self.route.slots)
+        ids = torch.as_tensor(ids, dtype=torch.long, device=cm["channel_ids"].device)
+        have = self.slot_index >= 0
+        valid = have.to(cm["valid_channel_mask"].device).clone()
+        valid[have] &= cm["valid_channel_mask"][self.slot_index[have]]
+        ids = torch.where(valid, ids, torch.full_like(ids, PAD_ID))
+        return {"channel_ids": ids, "valid_channel_mask": valid}
+
+    # -- forward ------------------------------------------------------------- #
+    def encode(self, x: torch.Tensor, meta=None) -> torch.Tensor:
+        r = self.route
+        if x.shape[-1] % r.patch_t:
+            raise ValueError(
+                f"a {x.shape[-1]}-sample window is not a whole number of "
+                f"{r.patch_t}-sample patches")
+        if x.shape[-2] != self.in_channels:
+            raise ValueError(
+                f"{x.shape[-2]} channels, the model was built for "
+                f"{self.in_channels}")
+        cm = self._meta_tensors(meta, x.device)
+        if cm is not None and not bool(cm["valid_channel_mask"].all()):
+            x = x * cm["valid_channel_mask"].to(x.dtype).view(1, -1, 1)
+        x = self._to_slots(x)
+        cm = self._slot_meta(cm)
+        spec = self.wavelet_frontend(x)
+        tokens = self.patch_embed(spec.unsqueeze(1))
+        n_patches = tokens.shape[1] // r.n_channels
+        if cm is not None:
+            code = self.channel_encoder(cm)
+            if code.dim() == 2:
+                code = code.unsqueeze(0)
+            delta = torch.tanh(self.channel_token_gate) * self.channel_to_token(code)
+            B, L, D = tokens.shape
+            tokens = (tokens.reshape(B, r.n_channels, n_patches, D)
+                      + delta.unsqueeze(-2)).reshape(B, L, D)
+        tokens = self.pos_embed(tokens, freq_size=r.n_channels,
+                                time_size=n_patches)
+        return self.shared_transformer(tokens)
+
+    def forward(self, x: torch.Tensor, meta=None) -> Dict[str, torch.Tensor]:
+        tokens = self.encode(x, meta)
+        pooled = tokens.max(dim=1).values if self.pool == "max" else tokens.mean(dim=1)
+        return {"logits": self.head(self.head_drop(self.head_norm(pooled))),
+                "features": pooled}
+
+    # -- loading ------------------------------------------------------------- #
+    def load_pretrained(self, path: str, route_id: Optional[str] = None,
+                        strict_shapes: bool = True) -> Dict[str, List[str]]:
+        """Load what an exported encoder can supply, and report exactly what.
+
+        Silence here is the failure mode. A checkpoint whose shapes disagree
+        loads nothing under a permissive loader and trains from scratch while
+        the log says "pretrained", so every key is accounted for: taken,
+        skipped because this montage does not share it, or refused.
+        """
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        sd = ck.get("model", ck)
+        recorded = ck.get("channel_vocab_sha256")
+        current = vocab_payload()["channel_vocab_sha256"]
+        if recorded and recorded != current:
+            raise SystemExit(
+                f"{path} was trained under channel vocabulary {recorded[:16]} "
+                f"and this one is {current[:16]}. Every embedding row would "
+                f"mean a different electrode.")
+
+        ck_route = ck.get("route_id") or route_id
+        own = self.state_dict()
+        # The frontend and patcher come across only when the montage IS the
+        # route: same electrode count, same patch length. Otherwise they are a
+        # different shape and a different meaning.
+        same_route = False
+        if ck_route in ROUTES:
+            r = ROUTES[ck_route]
+            same_route = (r.n_channels == self.route.n_channels
+                          and r.patch_t == self.route.patch_t)
+
+        taken, shape_mismatch, skipped = [], [], []
+        for k, v in sd.items():
+            if k not in own:
+                skipped.append(k)
+                continue
+            transferable = k.startswith(TRANSFERABLE)
+            if k.startswith(ROUTE_BOUND) and not same_route:
+                skipped.append(k)
+                continue
+            if not transferable and not k.startswith(ROUTE_BOUND):
+                skipped.append(k)
+                continue
+            if own[k].shape != v.shape:
+                shape_mismatch.append(
+                    f"{k}: checkpoint {tuple(v.shape)} vs model {tuple(own[k].shape)}")
+                continue
+            own[k] = v
+            taken.append(k)
+
+        if shape_mismatch and strict_shapes:
+            raise SystemExit(
+                f"{path}: {len(shape_mismatch)} tensor(s) do not fit this "
+                f"model, so loading it would train from scratch and report "
+                f"otherwise:\n  " + "\n  ".join(shape_mismatch[:8]))
+        if not any(k.startswith("shared_transformer.") for k in taken):
+            raise SystemExit(
+                f"{path} supplied no transformer weights. That is the part "
+                f"pretraining produced, and without it this is a from-scratch "
+                f"run with extra steps.\n"
+                f"  Keys in the checkpoint: {sorted(sd)[:6]} ...")
+        self.load_state_dict(own)
+        return {"taken": taken, "skipped": skipped,
+                "shape_mismatch": shape_mismatch,
+                "route_reused": [ck_route] if same_route else []}
+
+    def describe_transfer(self, report: Dict[str, List[str]]) -> str:
+        def n(prefix):
+            return sum(1 for k in report["taken"] if k.startswith(prefix))
+        parts = [f"transformer {n('shared_transformer.')}",
+                 f"channel encoder {n('channel_encoder.') + n('channel_to_token.')}",
+                 f"gate {'yes' if 'channel_token_gate' in report['taken'] else 'NO'}",
+                 f"frontend {n('wavelet_frontend.')}",
+                 f"patcher {n('patch_embed.')}"]
+        return "loaded: " + ", ".join(parts)

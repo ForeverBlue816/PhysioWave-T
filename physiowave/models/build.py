@@ -76,6 +76,41 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
     model_cfg = dict(cfg.get("model", {}) or {})
     name = model_cfg.get("name", "wast_tare")
 
+    if name == "eeg_c1":
+        # The C1 pretrained encoder with a classification head. Its parameters
+        # live under model.eeg_c1 rather than at the top of model, because the
+        # keys a downstream montage needs -- window_samples, sampling_rate,
+        # patch_samples -- are facts about the DATA and share no names with the
+        # other backbones' architecture blocks.
+        from physiowave.eeg_c1.downstream import EEGC1Downstream
+
+        params = dict(model_cfg.get("eeg_c1", {}) or {})
+        if model_cfg.get("num_classes") is not None:
+            params["num_classes"] = model_cfg["num_classes"]
+        for k in ("embed_dim", "depth", "num_heads", "mlp_ratio", "dropout",
+                  "norm", "ffn", "qk_norm", "channel_encoding",
+                  "channel_embed_dim", "max_level", "wave_kernel_size",
+                  "wavelet_names", "wave_init_mode", "use_separate_channel",
+                  "fold_synthesis", "fold_gamma"):
+            if k in model_cfg and k not in params:
+                params[k] = model_cfg[k]
+        pretrained = params.pop("pretrained", None)
+        report_to = params.pop("_report", None)
+        logger.info("Building the EEG C1 downstream model with %s", params)
+        model = EEGC1Downstream(**params)
+        if pretrained:
+            report = model.load_pretrained(pretrained)
+            logger.info("%s <- %s", model.describe_transfer(report), pretrained)
+            if report_to is not None:
+                report_to.update(report)
+        else:
+            # The control, and it has to be sayable out loud: a downstream
+            # number with nothing to compare it against says only that the
+            # architecture works.
+            logger.info("EEG C1 downstream: NO pretrained weights "
+                        "(the from-scratch control)")
+        return model
+
     if name in ("legacy", "legacy_channel_id"):
         params = dict(model_cfg.get("legacy", {}) or {})
         patch = params.get("patch_size", (1, 20))

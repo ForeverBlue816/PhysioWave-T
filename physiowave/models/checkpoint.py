@@ -184,10 +184,21 @@ def migrate_state_dict(
     for k, v in state.items():
         nk = k
         for old, new in key_map.items():
-            if nk.startswith(old):
-                nk = new + nk[len(old):]
+            if not nk.startswith(old):
+                continue
+            candidate = new + nk[len(old):]
+            # A MIGRATION, NOT A RENAME. The rename used to be unconditional,
+            # so a model that legitimately owns `patch_embed.` -- the EEG C1
+            # downstream encoder does -- had its patcher renamed out of
+            # existence on every save/load round trip: reported as "remapped",
+            # loaded as missing, and evaluated with a freshly initialised
+            # patcher while the log said the checkpoint had loaded. It is only
+            # a migration when the target wants the new name and does not know
+            # the old one.
+            if candidate in tgt_state and nk not in tgt_state:
+                nk = candidate
                 remapped.append((k, nk))
-                break
+            break
         if nk in tgt_state and tgt_state[nk].shape == v.shape:
             out[nk] = v
         else:

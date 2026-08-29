@@ -1,0 +1,72 @@
+# Sleep-EDF on a C1 pretrained encoder.
+#
+# WHAT TRANSFERS HERE IS THE TRANSFORMER, AND THAT IS THE QUESTION. Two bipolar
+# derivations at 100 Hz is not one of the four routes and cannot be made into
+# one: the wavelet filters are per-electrode and the patcher is per patch
+# length. So the frontend and the patcher are FRESH, sized for this montage,
+# and what comes from pretraining is the channel-name embedding, its gate, and
+# the shared transformer.
+#
+# That makes this the harder and more interesting of the two downstream tests.
+# P300 reuses almost the whole encoder; this reuses only the part that is
+# supposed to be montage-independent, which is the claim the architecture makes.
+#
+# A patch is 50 samples, 0.5 s at 100 Hz -- the timescale of a sleep spindle
+# (0.5-2 s) and a K-complex (0.5-1.5 s). 3000 samples give 60 patches per
+# channel, so 2 x 60 = 120 tokens.
+#
+# Fpz-Cz and Pz-Oz are in the channel vocabulary, so their embedding rows exist
+# -- but the pretraining corpora are monopolar, so those rows are very likely
+# still at their initialisation. What transfers is the MECHANISM, not a
+# representation of these two derivations.
+#
+#   python -m physiowave.train.finetune_main --config finetune/eeg_c1_sleep \
+#       --data-dir $PW_DATA_EEG/sleep_edf --num-classes 5 \
+#       --set model.eeg_c1.pretrained=<exported.pth>
+#
+# THE CONTROL is the same command with that --set left off. Run both.
+trainer: finetune
+run_name: finetune_eeg_c1_sleep
+
+data:
+  modality: eeg
+
+model:
+  name: eeg_c1
+  embed_dim: 384
+  depth: 6
+  num_heads: 6
+  mlp_ratio: 4.0
+  norm: rmsnorm
+  ffn: swiglu
+  qk_norm: true
+  max_level: 3
+  wave_kernel_size: 16
+  wavelet_names: [sym4, sym5, db6, sym8, db8]
+  wave_init_mode: pad
+  use_separate_channel: true
+  fold_synthesis: 3
+  fold_gamma: 0.1
+  channel_encoding: id
+  channel_embed_dim: 64
+  dropout: 0.1
+
+  eeg_c1:
+    # No route_id: this montage gets its own frontend.
+    # in_channels, window_samples, sampling_rate and channel_names
+    # come from the HDF5. Naming them here would be a second copy.
+    patch_samples: 50
+    pool: mean
+    head_dropout: 0.1
+    pretrained: null
+
+train:
+  epochs: 20
+  warmup_epochs: 2
+  lr: 3.0e-4                   # a fresh frontend needs more than P300's head
+  min_lr_ratio: 0.01
+  weight_decay: 0.05
+  batch_size: 32
+  precision: bf16
+  grad_clip: 1.0
+  label_smoothing: 0.1

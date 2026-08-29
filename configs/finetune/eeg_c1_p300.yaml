@@ -1,0 +1,67 @@
+# P300 (ERP-BCI) on a C1 pretrained encoder.
+#
+# THE STRONGEST TRANSFER THE CORPUS ALLOWS. The 58-channel montage
+# EEG/physio_p300_finetune.py writes is 58 of E64_256's 64 slots, at 256 Hz,
+# which is that route's sampling rate. So the pretrained WAVELET FRONTEND and
+# PATCHER transfer as well as the transformer -- the montage goes in the
+# route's slots by name and the six absent ones are masked, exactly as
+# pretraining ran on every corpus that did not fill its route.
+#
+# The window is 512 samples, 2 s, against the route's 4 s. Nothing on the
+# encoder path has a length baked in.
+#
+#   python -m physiowave.train.finetune_main --config finetune/eeg_c1_p300 \
+#       --data-dir $PW_DATA_EEG/erpbci --num-classes 2 \
+#       --set model.eeg_c1.pretrained=<exported.pth>
+#
+# THE CONTROL is the same command with that --set left off. Run both.
+trainer: finetune
+run_name: finetune_eeg_c1_p300
+
+data:
+  modality: eeg
+
+model:
+  name: eeg_c1
+  # Shared with pretraining and not free: these describe the checkpoint being
+  # loaded, and a mismatch is refused rather than reshaped.
+  embed_dim: 384
+  depth: 6
+  num_heads: 6
+  mlp_ratio: 4.0
+  norm: rmsnorm
+  ffn: swiglu
+  qk_norm: true
+  max_level: 3
+  wave_kernel_size: 16
+  wavelet_names: [sym4, sym5, db6, sym8, db8]
+  wave_init_mode: pad
+  use_separate_channel: true
+  fold_synthesis: 3
+  fold_gamma: 0.1
+  channel_encoding: id
+  channel_embed_dim: 64
+  # Fine-tuning is a different regime from masked pretraining: the input is no
+  # longer corrupted, the objective is a small labelled set, and dropout is
+  # doing what it is for.
+  dropout: 0.1
+
+  eeg_c1:
+    route_id: E64_256          # 58 of its 64 slots, 256 Hz, 128-sample patches
+    # in_channels, window_samples, sampling_rate and channel_names
+    # come from the HDF5. Naming them here would be a second copy.
+    patch_samples: 128
+    pool: mean
+    head_dropout: 0.1
+    pretrained: null           # set it, or leave it for the control
+
+train:
+  epochs: 30
+  warmup_epochs: 2
+  lr: 1.0e-4                   # a pretrained encoder, not a fresh one
+  min_lr_ratio: 0.01
+  weight_decay: 0.05
+  batch_size: 64
+  precision: bf16
+  grad_clip: 1.0
+  label_smoothing: 0.1
