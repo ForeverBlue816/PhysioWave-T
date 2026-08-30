@@ -267,7 +267,15 @@ def cache_subject(subject: int, edf_dir: str, cache_dir: str,
     """
     out = os.path.join(cache_dir, f"sub{subject:02d}.npz")
     if os.path.exists(out) and not overwrite:
-        return out
+        if cache_is_readable(out):
+            return out
+        # Existence was the whole resume check, and a worker killed mid-write
+        # leaves a file that exists. The next run skipped it and reported the
+        # subject "done"; the split stage then died on BadZipFile, three
+        # commands and one allocation later, pointing at the split.
+        print(f"  subject {subject}: cached file is unreadable, re-decoding "
+              f"({out})", file=sys.stderr)
+        os.unlink(out)
 
     if not verbose:
         # 245 runs of MNE's filter-design banner scrolls the progress bar off
@@ -311,9 +319,22 @@ def cache_subject(subject: int, edf_dir: str, cache_dir: str,
     # of EDF through MNE. Without the names in here that subsetting would be
     # by position against a list held somewhere else, which is the same
     # montage bug this file exists to avoid.
-    np.savez_compressed(out, data=X, label=y, n_runs=len(Xs),
-                        n_skipped=len(skipped),
-                        channel_names=np.array(channels, dtype="U32"))
+    # Written aside and renamed, because os.replace is atomic and
+    # np.savez_compressed is not: a worker killed partway through -- a login
+    # node's cgroup does exactly this -- otherwise leaves a truncated .npz at
+    # the name that means "this subject is done".
+    tmp = f"{out}.{os.getpid()}.tmp.npz"
+    try:
+        np.savez_compressed(tmp, data=X, label=y, n_runs=len(Xs),
+                            n_skipped=len(skipped),
+                            channel_names=np.array(channels, dtype="U32"))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.replace(tmp, out)
     return out
 
 
@@ -458,6 +479,23 @@ def readable_metadata(bundle: dict) -> dict:
     }
 
 
+def cache_is_readable(path: str) -> bool:
+    """Can this .npz be opened and does it hold what a split needs?
+
+    Cheap on purpose: np.load reads the zip's central directory, which sits at
+    the END of the file, so a truncated write fails here without decompressing
+    a single array. That is the corruption a killed writer actually produces.
+    A file that opens but holds a short `data` is not something this has been
+    seen to produce, and reading every array to rule it out would cost as much
+    as the decode it is meant to save.
+    """
+    try:
+        with np.load(path) as z:
+            return {"data", "label"} <= set(z.files)
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def find_subject_cache(cache_base: str, subject: int):
     """``(path, channel_names)`` for one subject, from whichever cache has it.
 
@@ -467,6 +505,14 @@ def find_subject_cache(cache_base: str, subject: int):
     for d in CACHE_DIRS:
         path = os.path.join(cache_base, d, f"sub{subject:02d}.npz")
         if not os.path.exists(path):
+            continue
+        if not cache_is_readable(path):
+            # Reported as missing, which is what it is. The caller's message
+            # names the subject and says to re-run the cache stage, and the
+            # cache stage now re-decodes an unreadable file rather than
+            # skipping it.
+            print(f"  subject {subject}: {path} is unreadable, treating it as "
+                  f"absent", file=sys.stderr)
             continue
         with np.load(path) as z:
             if "channel_names" in z.files:

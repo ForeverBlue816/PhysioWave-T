@@ -186,3 +186,77 @@ def test_resume_does_not_count_a_bad_shard_as_done(corpus_with_one_bad_shard):
             if p != victim]
     with h5py.File(good[0], "r") as f:
         assert _shard_data_is_readable(f, int(f["data"].shape[0]))
+
+
+# --------------------------------------------------------------------------- #
+# The same bug, in the P300 decode cache: non-atomic write + existence-only
+# resume. A login node's cgroup killed three workers mid-savez; the next run
+# saw the files exist, reported those subjects "done" without decoding them,
+# and the split stage died on BadZipFile one allocation later.
+# --------------------------------------------------------------------------- #
+def _p300_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "p300_prep", os.path.join(ROOT, "EEG", "physio_p300_finetune.py"))
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def _good_npz(path):
+    np.savez_compressed(path, data=np.zeros((3, 4, 5), np.float32),
+                        label=np.zeros(3, np.int64),
+                        channel_names=np.array(["Cz"], dtype="U32"))
+
+
+def _truncate(path):
+    """What a killed np.savez_compressed leaves: a prefix of a zip file."""
+    raw = open(path, "rb").read()
+    with open(path, "wb") as fh:
+        fh.write(raw[: len(raw) // 2])
+
+
+def test_a_truncated_decode_cache_is_not_a_decoded_subject(tmp_path):
+    p300 = _p300_module()
+    good, bad = tmp_path / "sub01.npz", tmp_path / "sub02.npz"
+    _good_npz(good)
+    _good_npz(bad)
+    _truncate(bad)
+
+    assert p300.cache_is_readable(str(good))
+    # The old resume check, verbatim -- and why it was not enough.
+    assert os.path.exists(bad), "a killed writer leaves a file that exists"
+    assert not p300.cache_is_readable(str(bad))
+
+
+def test_find_subject_cache_calls_an_unreadable_cache_absent(tmp_path, capsys):
+    """Absent is what it is: the caller's message says to re-run the decode.
+
+    Raising here instead is what actually happened -- BadZipFile out of a
+    list comprehension in the split stage's preflight, naming numpy rather
+    than the subject.
+    """
+    p300 = _p300_module()
+    c64 = tmp_path / "cache" / "c64"
+    c64.mkdir(parents=True)
+    _good_npz(c64 / "sub02.npz")
+    _truncate(c64 / "sub02.npz")
+
+    path, names = p300.find_subject_cache(str(tmp_path / "cache"), 2)
+    assert path is None and names is None
+    assert "unreadable" in capsys.readouterr().err
+
+
+def test_the_decode_publishes_atomically(tmp_path):
+    """No partial file ever carries the name that means "done".
+
+    Asserted on the source rather than by killing a worker: the write is one
+    np.savez_compressed call inside cache_subject, and what makes it safe is
+    that it does not target `out`.
+    """
+    src = open(os.path.join(ROOT, "EEG", "physio_p300_finetune.py")).read()
+    body = src[src.index("def cache_subject("):src.index("\ndef ", src.index("def cache_subject("))]
+    assert "np.savez_compressed(tmp" in body, "the decode must not write to `out`"
+    assert "os.replace(tmp, out)" in body, "and must publish with a rename"
+    # And the resume must verify, not stat.
+    assert "cache_is_readable(out)" in body
