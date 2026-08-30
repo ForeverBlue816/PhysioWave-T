@@ -991,6 +991,26 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, model, datasets,
                          "not the folded wavelet representation"})
 
 
+#: Threads for the figures that run the model. A login node has many cores and
+#: a small per-user thread quota, and torch defaults to one thread per core: the
+#: figure that first touches the model then dies with "libgomp: Thread creation
+#: failed: Resource temporarily unavailable", followed by "free(): corrupted
+#: unsorted chunks" and a segfault, because libgomp failing part-way through a
+#: parallel region leaves the allocator inconsistent. None of that names the
+#: cause. PW_VIZ_THREADS overrides; the work here is small enough that four is
+#: not the constraint.
+DEFAULT_THREADS = 4
+
+
+def _cap_threads() -> int:
+    n = int(os.environ.get("PW_VIZ_THREADS") or DEFAULT_THREADS)
+    n = max(1, min(n, os.cpu_count() or n))
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        os.environ.setdefault(var, str(n))
+    torch.set_num_threads(n)
+    return n
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -1002,6 +1022,10 @@ def main(argv=None) -> int:
     p.add_argument("--manifest", default=None,
                    help="override the manifest the run recorded")
     p.add_argument("--mask-seed", type=int, default=None)
+    p.add_argument("--threads", type=int, default=None,
+                   help=f"threads for the figures that run the model "
+                        f"(default {DEFAULT_THREADS}; a login node's per-user "
+                        f"quota is what one-thread-per-core runs into)")
     p.add_argument("--only", nargs="*", default=None,
                    help="figure names to regenerate")
     args = p.parse_args(argv)
@@ -1101,6 +1125,10 @@ def main(argv=None) -> int:
 
     epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
     step_rows = read_jsonl(os.path.join(run_dir, "metrics_step.jsonl"))
+
+    if args.threads:
+        os.environ["PW_VIZ_THREADS"] = str(args.threads)
+    _cap_threads()
 
     todo = set(args.only) if args.only else None
 
