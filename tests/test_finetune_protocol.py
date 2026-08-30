@@ -351,3 +351,74 @@ def test_asking_the_cache_for_a_channel_it_lacks_is_refused():
     X = np.zeros((1, 3, 4), dtype=np.float32)
     with pytest.raises(SystemExit, match="Cz"):
         conv._take_channels(X, ["Fp1", "Fp2", "Oz"], ["Fp1", "Cz"], "test")
+
+
+# --------------------------------------------------------------------------- #
+# a cache that predates the channel names in it
+# --------------------------------------------------------------------------- #
+def _legacy_cache(tmp_path, n_channels=58, subjects=(1, 2)):
+    import numpy as np
+
+    conv = _p300_module()
+    base = tmp_path / "cache"
+    (base / f"c{n_channels}").mkdir(parents=True)
+    for s in subjects:
+        np.savez_compressed(base / f"c{n_channels}" / f"sub{s:02d}.npz",
+                            data=np.zeros((4, n_channels, 512), dtype="float32"),
+                            label=np.zeros(4, dtype="int64"))
+    return conv, str(base)
+
+
+def test_a_legacy_cache_is_adopted_rather_than_re_decoded(tmp_path):
+    """The list is not a guess: the directory name is what the writer used."""
+    conv, base = _legacy_cache(tmp_path)
+    path, names = conv.find_subject_cache(base, 1)
+    assert path.endswith("sub01.npz")
+    assert names == conv.CHANNELS_58
+
+
+def test_the_superset_cache_wins_over_a_legacy_one(tmp_path):
+    import numpy as np
+
+    conv, base = _legacy_cache(tmp_path)
+    (tmp_path / "cache" / "c64").mkdir()
+    np.savez_compressed(tmp_path / "cache" / "c64" / "sub01.npz",
+                        data=np.zeros((4, 64, 512), dtype="float32"),
+                        label=np.zeros(4, dtype="int64"),
+                        channel_names=np.array(conv.EEG_64, dtype="U32"))
+    path, names = conv.find_subject_cache(base, 1)
+    assert path.endswith("c64/sub01.npz") and len(names) == 64
+
+
+def test_a_legacy_cache_with_the_wrong_width_is_refused(tmp_path):
+    conv, base = _legacy_cache(tmp_path, n_channels=58)
+    import numpy as np
+
+    np.savez_compressed(tmp_path / "cache" / "c58" / "sub03.npz",
+                        data=np.zeros((4, 40, 512), dtype="float32"),
+                        label=np.zeros(4, dtype="int64"))
+    with pytest.raises(SystemExit, match="does not match"):
+        conv.find_subject_cache(base, 3)
+
+
+def test_58_still_comes_out_of_a_legacy_cache(tmp_path):
+    import numpy as np
+
+    conv, _ = _legacy_cache(tmp_path)
+    X = np.arange(58 * 4, dtype="float32").reshape(1, 58, 4)
+    assert conv._take_channels(X, conv.CHANNELS_58, conv.CHANNELS_58, "x").shape \
+        == (1, 58, 4)
+
+
+def test_62_out_of_a_58_cache_names_the_four_that_were_never_decoded(tmp_path):
+    import numpy as np
+
+    conv, _ = _legacy_cache(tmp_path)
+    X = np.zeros((1, 58, 4), dtype="float32")
+    with pytest.raises(SystemExit, match="AF7"):
+        conv._take_channels(X, conv.CHANNELS_58, conv.CHANNELS_62, "x")
+
+
+def test_a_missing_subject_is_reported_not_invented(tmp_path):
+    conv, base = _legacy_cache(tmp_path, subjects=(1,))
+    assert conv.find_subject_cache(base, 9) == (None, None)

@@ -170,6 +170,18 @@ CHANNELS_64 = CHANNELS_62 + ["P9", "P10"]
 
 CHANNEL_SETS = {58: CHANNELS_58, 62: CHANNELS_62, 64: CHANNELS_64}
 
+#: A cache written before the superset cache existed carries no channel names.
+#: They are still knowable and not a guess: the code that wrote it picked
+#: `EEG_64 if --all-channels else CHANNELS_58` and put the result in a
+#: directory named for the count, and MNE's `raw.pick(names)` returns the
+#: channels in the order asked for. So the directory name determines the list.
+#: Adopting one of these is what saves a re-decode of 245 runs per subject for
+#: a channel set that is already on disk.
+LEGACY_CACHE_CHANNELS = {"c58": CHANNELS_58, "c64": EEG_64}
+#: Newest first: a superset cache can serve any request, a legacy one only the
+#: set it was decoded with.
+CACHE_DIRS = ("c64", "c58")
+
 # The nine the paper keeps (8, 10 and 12 dropped, following BENDR).
 PAPER_SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 9, 11]
 # What EEGPT's preparation script actually writes.
@@ -440,22 +452,52 @@ def readable_metadata(bundle: dict) -> dict:
     }
 
 
+def find_subject_cache(cache_base: str, subject: int):
+    """``(path, channel_names)`` for one subject, from whichever cache has it.
+
+    The superset cache first, then a legacy one. Returns ``(None, None)`` when
+    no cache holds the subject, which is the caller's to report.
+    """
+    for d in CACHE_DIRS:
+        path = os.path.join(cache_base, d, f"sub{subject:02d}.npz")
+        if not os.path.exists(path):
+            continue
+        with np.load(path) as z:
+            if "channel_names" in z.files:
+                return path, [str(c) for c in z["channel_names"]]
+            n = z["data"].shape[1]
+        names = LEGACY_CACHE_CHANNELS.get(d)
+        if names is None or len(names) != n:
+            raise SystemExit(
+                f"{path} records no channel names and holds {n} channels, "
+                f"which does not match what a {d} cache was written with.\n"
+                f"  Taking the subset by position would be a guess. Re-run "
+                f"--stage cache --overwrite.")
+        return path, list(names)
+    return None, None
+
+
 def _take_channels(X, cached: list[str], wanted: list[str], where: str):
     """Reorder a cached array onto ``wanted``, by name."""
     index = {c.lower(): i for i, c in enumerate(cached)}
     missing = [c for c in wanted if c.lower() not in index]
     if missing:
         raise SystemExit(
-            f"{where} holds {len(cached)} channels and {missing} are not among "
-            f"them.\n  The cache is the superset the EDF has; asking for a "
-            f"channel it does not carry is a channel the recording does not "
-            f"have.")
+            f"{where} holds {len(cached)} channels and does not have "
+            f"{missing}.\n"
+            f"  Those electrodes were never decoded, so no split can produce "
+            f"them: this cache was built for a smaller channel set. Re-decode "
+            f"once and every set becomes a split:\n"
+            f"      python EEG/physio_p300_finetune.py --stage cache "
+            f"--overwrite --edf-dir <edf> --out-dir <out> --jobs 4\n"
+            f"  Or ask for a set this cache has -- --channels "
+            f"{len(cached)} is on disk now.")
     if list(wanted) == list(cached):
         return X
     return X[:, [index[c.lower()] for c in wanted], :]
 
 
-def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
+def write_split(name: str, subjects: list[int], cache_base: str, out_dir: str,
                 channels: list[str], meta_bundle: dict | None = None) -> dict:
     """Concatenate cached subjects into one HDF5, growing it incrementally."""
     path = os.path.join(out_dir, f"{name}.h5")
@@ -469,20 +511,18 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
         label = f.create_dataset("label", shape=(0,), maxshape=(None,), dtype="int64")
         subj = f.create_dataset("subject", shape=(0,), maxshape=(None,), dtype="int64")
         for s in subjects:
-            npz = os.path.join(cache_dir, f"sub{s:02d}.npz")
-            if not os.path.exists(npz):
+            npz, cached = find_subject_cache(cache_base, s)
+            if npz is None:
                 print(f"  [{name}] subject {s}: no cache, skipped", file=sys.stderr)
                 continue
+            if os.path.basename(os.path.dirname(npz)) != CACHE_DIRS[0]:
+                # Said once per subject rather than swallowed: the file is
+                # being read under a channel list that is not written in it.
+                print(f"  [{name}] subject {s}: adopting the legacy "
+                      f"{len(cached)}-channel cache at "
+                      f"{os.path.dirname(npz)}", file=sys.stderr)
             with np.load(npz) as z:
                 X, y = z["data"], z["label"]
-                cached = ([str(c) for c in z["channel_names"]]
-                          if "channel_names" in z.files else None)
-            if cached is None:
-                raise SystemExit(
-                    f"{npz} was written before the cache recorded its channel "
-                    f"names, so the subset cannot be taken by name and taking "
-                    f"it by position would be a guess.\n"
-                    f"  Re-run --stage cache --overwrite.")
             X = _take_channels(X, cached, channels, npz)
             n = len(y)
             data.resize(total + n, axis=0); data[total:total + n] = X
@@ -586,12 +626,12 @@ def main() -> None:
             )
 
     channels = CHANNEL_SETS[64 if args.all_channels else args.channels]
-    cache_dir = args.cache_dir or os.path.join(args.edf_dir, "cache")
-    # ONE cache, holding every EEG channel the EDF has. It used to be keyed by
-    # the channel count, which meant changing the set cost a full re-decode --
-    # 245 runs through MNE per subject -- for a choice the split stage can make
-    # by name in seconds.
-    cache_dir = os.path.join(cache_dir, f"c{len(EEG_64)}")
+    cache_base = args.cache_dir or os.path.join(args.edf_dir, "cache")
+    # ONE cache, holding every EEG channel the EDF has, so changing the channel
+    # set is a split rather than another 245 runs per subject through MNE. The
+    # cache stage writes here; the SPLIT stage reads this and, failing that, a
+    # legacy cache written for one particular set -- see find_subject_cache.
+    cache_dir = os.path.join(cache_base, f"c{len(EEG_64)}")
     os.makedirs(cache_dir, exist_ok=True)
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -730,11 +770,12 @@ def main() -> None:
         # quietly missing subjects. The cache stage prints its failures to
         # stderr, which is one scrollback away from being missed.
         missing = [s for s in subjects
-                   if not os.path.exists(os.path.join(cache_dir, f"sub{s:02d}.npz"))]
+                   if find_subject_cache(cache_base, s)[0] is None]
         if missing and not args.allow_missing:
             raise SystemExit(
                 f"\n{len(missing)} of {len(subjects)} subject(s) have no cache: "
                 f"{', '.join(str(s) for s in missing)}\n\n"
+                f"  Searched {', '.join(CACHE_DIRS)} under {cache_base}.\n\n"
                 f"  Nothing was written. Rerun the cache stage -- subjects "
                 f"already cached are skipped,\n  so only the missing ones are "
                 f"decoded:\n\n"
@@ -765,7 +806,7 @@ def main() -> None:
                   f"({COORDINATE_SOURCE}, {DERIVATION_TYPE})")
 
         for name in ("train", "val", "test"):
-            meta["splits"][name] = write_split(name, split[name], cache_dir,
+            meta["splits"][name] = write_split(name, split[name], cache_base,
                                                args.out_dir, channels, bundle)
         empty = [n for n, m in meta["splits"].items() if m["epochs"] == 0]
         if empty:
