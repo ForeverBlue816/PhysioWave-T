@@ -1,7 +1,10 @@
 # Ablation A -- detach only: the fix in isolation
 #
-# Differs from eeg_c1_moe.yaml in exactly the two objective lines below, so a
-# difference in results is attributable to them and to nothing else.
+# The ladder was run at the 1.0/0.25 weighting, and is PINNED to it here. The
+# main config has since moved to 0.5/0.5, so inheriting its weights would
+# silently re-base every rung against a different objective and the
+# comparison would no longer be an ablation of the mechanism. Every
+# objective key is therefore written out below rather than inherited.
 defaults: [pretrain/eeg_c1_moe]
 
 objective:
@@ -10,3 +13,4 @@ objective:
   raw_beta: 0.5
   fold_kl: 1.0e-3
   mask_before_frontend: false
+  normalize_spec_target: true

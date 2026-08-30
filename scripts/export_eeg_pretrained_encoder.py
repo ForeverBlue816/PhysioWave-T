@@ -136,6 +136,15 @@ def main(argv=None) -> int:
         "source_checkpoint": os.path.abspath(args.checkpoint),
         "epoch": ck.get("epoch"),
         "global_step": ck.get("global_step"),
+        # WHICH checkpoint this is, and what picked it. A file called best.pth
+        # says nothing about the criterion, and the criterion changed: it used
+        # to be the spec loss alone and is now the total. Both are carried, so
+        # an exported encoder can be traced to the bar it cleared.
+        "objective": ck.get("objective"),
+        "best_scores": ck.get("best_scores"),
+        "best_epochs": ck.get("best_epochs"),
+        "checkpoint_selection": ck.get("checkpoint_selection"),
+        # Alias for the spec bar, kept for readers written against it.
         "best_val_loss_masked_mse": ck.get("best_val_loss_masked_mse"),
         **vocab_payload(),
     }

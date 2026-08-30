@@ -1,13 +1,18 @@
 """
 Training loop for the EEG C1 multi-route pretrainer.
 
-The objective is unchanged from the legacy pretrainer:
+The objective:
 
     loss = spec_weight * masked MSE on the DETACHED clean folded-wavelet
-           patches
+           patches, normalised per patch
          + raw_weight  * masked SmoothL1 on the DETACHED preprocessed EEG
            patches
          + fold_kl     * ScaleFold KL
+
+    at spec_weight = raw_weight = 0.5, resolved from the config by
+    ``physiowave.eeg_c1.objective.resolve_eeg_c1_objective`` -- the one place
+    those numbers are read, so the banner, the figures and the progress report
+    cannot each quote a different default.
 
     Under mask_before_frontend the masked patches are zeroed in the SIGNAL
     before the wavelet frontend runs, so nothing inside a masked patch can
@@ -17,7 +22,19 @@ and nothing else. No reference consistency, no contrastive term, no query
 specialisation -- those belong to the WAST/TARE path, which this one does not
 touch.
 
-Two things here are less obvious than the loop:
+Four things here are less obvious than the loop:
+
+**The two losses are not comparable in magnitude.** An MSE on normalised
+wavelet coefficients and a SmoothL1 on z-scored volts are different units with
+a different penalty shape; the raw term is the smaller number for reasons that
+have nothing to do with which head is doing better. The comparison is
+``masked_{spec,raw}_corr`` and ``masked_{spec,raw}_nmse``, both dimensionless,
+both reported globally and per route and per dataset.
+
+**Validation metrics are aggregated across ranks, breakdowns included.** The
+sweep is partitioned, so a per-route mean computed on one rank is a mean over
+that rank's slice. Sums and counts are all-reduced and the mean taken from the
+totals.
 
 **Validation masks are fixed.** A validation loss computed under a fresh random
 mask each epoch moves because the mask moved, and the curve then measures the
@@ -49,6 +66,9 @@ from channel_embedding import save_vocab, vocab_payload
 from .data import (DEFAULT_BATCH_BY_ROUTE, CorpusIndex, EEGWindowDataset,
                    RouteBatchLoader, RouteSchedule, collate_windows)
 from .model import MultiRouteEEGPretrainer, masked_reconstruction_loss
+from .objective import (objective_banner, objective_equation,
+                        resolve_eeg_c1_objective, resume_incompatibilities,
+                        resume_refusal_message)
 from .routes import PRETRAIN_DATASETS, ROUTES
 from ..train.utils import (fmt_eta, make_grad_scaler, progress,
                            resolve_progress, set_postfix)
@@ -219,8 +239,38 @@ def module_grad_norms(model) -> Dict[str, float]:
     return out
 
 
+#: The route-macro summaries, as ``macro name -> the metric it averages``.
+#: Unweighted across the routes present in validation, deliberately: the
+#: validation sweep is proportional to corpus size, so a sample-weighted
+#: summary is 97% TUEG and HBN and says almost nothing about E32_512.
+MACRO_ROUTE_METRICS = {
+    "macro_route_loss_total": "loss_total",
+    "macro_route_loss_spec": "loss_masked_spec_mse",
+    "macro_route_loss_raw": "loss_masked_raw_smoothl1",
+    "macro_route_spec_corr": "masked_spec_corr",
+    "macro_route_raw_corr": "masked_raw_corr",
+    "macro_route_spec_nmse": "masked_spec_nmse",
+    "macro_route_raw_nmse": "masked_raw_nmse",
+}
+
+
 class Accumulator:
-    """Running means, globally and per route and per dataset."""
+    """Running sums and counts, globally and per route and per dataset.
+
+    The validation sweep is PARTITIONED: each rank walks its own windows of
+    every dataset. Four global scalars used to be all-reduced and NOTHING else
+    was, so every ``route/<id>/...`` and ``dataset/<id>/...`` number written to
+    metrics_epoch.jsonl was rank 0's quarter of the sweep -- and those are
+    precisely the columns the per-route report exists to show.
+
+    Sums and counts rather than means because that is what combines under any
+    partition. ValIterator happens to emit the same number of batches on every
+    rank -- its stride keeps each rank's slice full -- so a mean of means would
+    give the same answer today. It stops doing so the moment that changes:
+    ``max_batches_per_dataset``, an uneven route, a dataset shorter than one
+    rank's batch. Reducing the totals is right in all of those cases and costs
+    one collective an epoch.
+    """
 
     def __init__(self):
         self.sums: Dict[str, float] = {}
@@ -234,17 +284,97 @@ class Accumulator:
                 self.sums[key] = self.sums.get(key, 0.0) + float(v)
                 self.counts[key] = self.counts.get(key, 0) + 1
 
+    def merge(self, other_sums: Dict[str, float], other_counts: Dict[str, int]):
+        for k, v in other_sums.items():
+            self.sums[k] = self.sums.get(k, 0.0) + float(v)
+        for k, c in other_counts.items():
+            self.counts[k] = self.counts.get(k, 0) + int(c)
+
+    def all_reduce(self, distributed: bool, device=None):
+        """Sum every rank's (sum, count) for EVERY key, including the breakdowns.
+
+        ``all_gather_object`` rather than a tensor all-reduce, because the key
+        SETS differ between ranks: a rank whose slice of a small dataset was
+        shorter than one batch contributes no ``dataset/faced/...`` keys at
+        all, and a fixed-layout reduction would need the union of the keys
+        before it could start. This exchanges the dictionaries and adds them,
+        so every rank ends with the same one.
+        """
+        if not distributed or not dist.is_available() or not dist.is_initialized():
+            return self
+        payload = [None] * dist.get_world_size()
+        dist.all_gather_object(payload, (self.sums, self.counts))
+        merged = Accumulator()
+        for sums, counts in payload:
+            merged.merge(sums or {}, counts or {})
+        self.sums, self.counts = merged.sums, merged.counts
+        return self
+
     def mean(self) -> Dict[str, float]:
         return {k: self.sums[k] / self.counts[k] for k in self.sums
                 if self.counts[k]}
 
 
-def _reduce_mean(value: float, distributed: bool, device) -> float:
-    if not distributed:
-        return value
-    t = torch.tensor([value], dtype=torch.float64, device=device)
-    dist.all_reduce(t, op=dist.ReduceOp.SUM)
-    return float(t.item() / dist.get_world_size())
+def macro_route_metrics(means: Dict[str, float],
+                        macro: Optional[Dict[str, str]] = None
+                        ) -> Dict[str, float]:
+    """Unweighted mean across the routes present, one entry per macro name.
+
+    Reads the already-globally-aggregated ``route/<id>/<metric>`` values, so it
+    must run AFTER ``Accumulator.all_reduce`` -- a macro built from rank 0's
+    slice is a macro over a quarter of the sweep.
+    """
+    macro = macro or MACRO_ROUTE_METRICS
+    by_metric: Dict[str, List[float]] = {}
+    for key, value in means.items():
+        if not key.startswith("route/"):
+            continue
+        parts = key.split("/", 2)
+        if len(parts) != 3:
+            continue
+        _, _route_id, metric = parts
+        if isinstance(value, (int, float)) and math.isfinite(value):
+            by_metric.setdefault(metric, []).append(float(value))
+    out: Dict[str, float] = {}
+    for name, metric in macro.items():
+        vals = by_metric.get(metric)
+        if vals:
+            out[name] = sum(vals) / len(vals)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Checkpoint selection
+# --------------------------------------------------------------------------- #
+
+#: ``criterion -> (validation metric, files written when it improves)``.
+#:
+#: best.pth is a copy of best_total.pth. It used to be the best SPEC loss under
+#: the name ``loss_masked_mse``, which is the compatibility alias for the spec
+#: term -- so once the objective became half raw, the file every downstream
+#: script loads by default was being selected by half of it. It now means what
+#: its name has always implied: the best model under the loss that was trained.
+BEST_SELECTION = {
+    "total": ("loss_total", ("best_total.pth", "best.pth")),
+    "spec": ("loss_masked_spec_mse", ("best_spec.pth",)),
+    "raw": ("loss_masked_raw_smoothl1", ("best_raw.pth",)),
+    "macro_total": ("macro_route_loss_total", ("best_macro_total.pth",)),
+}
+BEST_KEYS = tuple(BEST_SELECTION)
+
+#: What each file on disk was chosen by, recorded IN the checkpoint so a file
+#: found a year later does not have to be matched to the code that wrote it.
+CHECKPOINT_SELECTION = {
+    "best.pth": "val/loss_total",
+    "best_total.pth": "val/loss_total",
+    "best_spec.pth": "val/loss_masked_spec_mse",
+    "best_raw.pth": "val/loss_masked_raw_smoothl1",
+    "best_macro_total.pth": "val/macro_route_loss_total",
+}
+
+#: Human-readable names for the "new best ..." lines.
+BEST_LABEL = {"total": "total", "spec": "spec", "raw": "raw",
+              "macro_total": "macro-route total"}
 
 
 # --------------------------------------------------------------------------- #
@@ -267,25 +397,27 @@ class EEGC1Trainer:
 
         self.epochs = int(tcfg.get("epochs", 10))
         self.grad_accum = int(tcfg.get("grad_accumulation_steps", 1))
-        # The objective's weights. Read from an `objective:` block, falling
-        # back to `train:` keys so an existing config keeps working.
-        ocfg = cfg.get("objective", {}) or {}
-        def _obj(name, train_name, default):
-            if name in ocfg:
-                return ocfg[name]
-            return tcfg.get(train_name, default)
-        self.spec_weight = float(_obj("spec_weight", "spec_recon_weight", 1.0))
-        self.raw_weight = float(_obj("raw_weight", "raw_recon_weight", 0.25))
-        self.raw_beta = float(_obj("raw_beta", "raw_smooth_l1_beta", 0.5))
-        self.fold_kl = float(_obj("fold_kl", "fold_kl", 1e-3))
-        self.mask_before_frontend = bool(
-            _obj("mask_before_frontend", "mask_before_frontend", True))
-        self.normalize_spec_target = bool(
-            _obj("normalize_spec_target", "normalize_spec_target", True))
+        # The objective's weights, resolved ONCE, here, by the same helper
+        # the figures and the progress report call. They used to have a default
+        # each; that agreed only for as long as every default was 1.0/0.25, and
+        # moving the config to 0.5 is precisely the edit those defaults would
+        # not have followed.
+        self.objective = resolve_eeg_c1_objective(cfg)
+        self.spec_weight = float(self.objective["spec_weight"])
+        self.raw_weight = float(self.objective["raw_weight"])
+        self.raw_beta = float(self.objective["raw_beta"])
+        self.fold_kl = float(self.objective["fold_kl"])
+        self.mask_before_frontend = bool(self.objective["mask_before_frontend"])
+        self.normalize_spec_target = bool(self.objective["normalize_spec_target"])
         self.mask_ratio = float(mcfg.get("mask_ratio", 0.5))
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
         self.vis_every = int(tcfg.get("vis_every_epochs", 5))
+        # How many passes over one dataset per epoch is worth a line in the
+        # banner. Configurable rather than hard-coded: `balanced` on a corpus
+        # with a 30x size spread reaches 20x on the small ones by design.
+        self.passes_warn_threshold = float(
+            tcfg.get("max_passes_per_epoch_warn", 5.0))
         # 'auto' is a bar on a terminal and periodic lines under sbatch, where a
         # bar that redraws with carriage returns becomes one enormous line in
         # the .out. PW_PROGRESS overrides it without editing a config, which is
@@ -374,7 +506,13 @@ class EEGC1Trainer:
 
         self.epoch = 0
         self.global_step = 0
-        self.best = float("inf")
+        # One bar per selection criterion. best.pth used to mean "best
+        # loss_masked_mse", which is the compatibility alias for the SPEC term
+        # alone -- so with a balanced dual objective the exported checkpoint was
+        # chosen by half the loss it was trained on.
+        self.best_scores: Dict[str, float] = {k: float("inf")
+                                              for k in BEST_KEYS}
+        self.best_epochs: Dict[str, Optional[int]] = {k: None for k in BEST_KEYS}
         self.history: Dict[str, List] = {"train": [], "val": []}
         self.tb = None
         if self.is_main:
@@ -448,9 +586,9 @@ class EEGC1Trainer:
         print(f"  downstream encoder      {report['downstream_encoder']:,}"
               f"   (+{report['pretraining_only']:,} pretraining-only:"
               f" both decoders and the mask token)")
-        print(f"  objective: spec {self.spec_weight:g} x MSE"
-              f"  + raw {self.raw_weight:g} x SmoothL1(beta={self.raw_beta:g})"
-              f"  + fold_kl {self.fold_kl:g} x KL")
+        for line in objective_banner(self.objective):
+            print(f"  {line}")
+        print(f"  L_total = {objective_equation(self.objective)}")
         print(f"  spec target: {'normalised per patch' if self.normalize_spec_target else 'RAW -- the loss will track the frontend scale'}",
               flush=True)
         print(f"  masking: {'signal before the frontend' if self.mask_before_frontend else 'tokens only, after the frontend'}"
@@ -464,6 +602,8 @@ class EEGC1Trainer:
         counts = self.train_index.window_counts()
         total_w = max(1, sum(counts.values()))
         policy = getattr(self.schedule, "weight_policy", "explicit")
+        explicit_steps = self.cfg.get("train", {}).get("steps_per_epoch") is not None
+        oversampled: Dict[str, float] = {}
         print(f"  mixture policy: {policy}")
         print("    dataset          corpus%   step%  window%   passes/epoch")
         for d in self.schedule.dataset_ids:
@@ -474,11 +614,49 @@ class EEGC1Trainer:
             # being read a hundred times to fill a quota. Under `proportional`
             # every row here is 1.0.
             passes = seen / max(1, counts.get(d, 0))
+            oversampled[d] = passes
             print(f"    {d:<14s} {counts.get(d,0)/total_w*100:7.2f}% "
                   f"{mixture['by_step'][d]*100:6.2f}% "
                   f"{mixture['by_window'][d]*100:7.2f}%   {passes:6.2f}x")
         print(f"  channel vocab sha256    {vocab_payload()['channel_vocab_sha256'][:16]}")
-        print(f"  steps/epoch {self.schedule.steps_per_epoch}  "
+
+        # -- the training budget, spelled out ------------------------------- #
+        # These four numbers are what an epoch length actually buys, and every
+        # one of them is a derived quantity that nobody computes by hand
+        # correctly under sbatch. steps_per_epoch is SCHEDULED steps; the
+        # optimizer sees steps_per_epoch / grad_accum of them.
+        steps_per_epoch = int(self.schedule.steps_per_epoch)
+        updates_per_epoch = max(1, steps_per_epoch // self.grad_accum)
+        world = int(getattr(self.info, "world_size", 1) or 1)
+        print("  budget:")
+        print(f"    resolved steps per epoch   {steps_per_epoch}"
+              f"{'  (explicit override)' if explicit_steps else '  (derived from the mixture)'}")
+        print(f"    total optimizer updates    {updates_per_epoch * self.epochs}"
+              f"   ({updates_per_epoch}/epoch x {self.epochs} epochs,"
+              f" grad_accum {self.grad_accum})")
+        print(f"    effective world size       {world}")
+        print(f"    per-route batch size       " + "  ".join(
+            f"{rid}={self.batch_by_route[rid]}" for rid in ROUTES
+            if rid in self.batch_by_route))
+        print(f"    passes per dataset/epoch   " + "  ".join(
+            f"{d}={oversampled[d]:.2f}x" for d in self.schedule.dataset_ids))
+        # A warning, never a refusal: repeated sampling is a legitimate choice
+        # under `balanced`, and an explicit STEPS_PER_EPOCH is how the final
+        # annealing runs buy their updates. What is NOT acceptable is it
+        # happening without anybody seeing it.
+        loud = {d: n for d, n in oversampled.items()
+                if n > self.passes_warn_threshold}
+        if loud:
+            print(f"  WARNING: at {steps_per_epoch} steps/epoch these datasets "
+                  f"are read more than {self.passes_warn_threshold:g}x per "
+                  f"epoch:")
+            for d, n in sorted(loud.items(), key=lambda kv: -kv[1]):
+                print(f"    {d:<14s} {n:6.2f} passes/epoch "
+                      f"({counts.get(d, 0):,} windows)")
+            print("    An epoch is then a repeat of the same windows rather "
+                  "than new exposure. Training continues; "
+                  "train.max_passes_per_epoch_warn sets the threshold.")
+        print(f"  steps/epoch {steps_per_epoch}  "
               f"epochs {self.epochs}  grad_accum {self.grad_accum}")
         print("=" * 66, flush=True)
 
@@ -530,7 +708,14 @@ class EEGC1Trainer:
             "scaler": self.scaler.state_dict(),
             "epoch": self.epoch,
             "global_step": self.global_step,
-            "best_val_loss_masked_mse": self.best,
+            "best_scores": dict(self.best_scores),
+            "best_epochs": dict(self.best_epochs),
+            "checkpoint_selection": dict(CHECKPOINT_SELECTION),
+            # Backward-compatible ALIAS for the spec bar, and nothing selects
+            # on it any more. A reader that only knows this name gets the
+            # number it always meant.
+            "best_val_loss_masked_mse": self.best_scores["spec"],
+            "objective": dict(self.objective),
             "sampler": self.schedule.state_dict(),
             "history": self.history,
             "rng": {
@@ -547,6 +732,33 @@ class EEGC1Trainer:
         path = os.path.join(self.out_dir, name)
         torch.save(self.state_dict(), path + ".tmp")
         os.replace(path + ".tmp", path)
+
+    def _restore_best_records(self, ck: Dict):
+        """The four bars, migrating a checkpoint that only had one.
+
+        Before the dual objective there was a single ``best_val_loss_masked_mse``
+        and it meant the spec loss. Reading it into the TOTAL bar would start
+        the new run with a total-loss threshold borrowed from a different
+        quantity, and a genuinely better model could then fail to clear it for
+        the whole run.
+        """
+        scores = ck.get("best_scores")
+        epochs = ck.get("best_epochs") or {}
+        if isinstance(scores, dict) and scores:
+            self.best_scores = {k: float(scores.get(k, float("inf")))
+                                for k in BEST_KEYS}
+            self.best_epochs = {k: epochs.get(k) for k in BEST_KEYS}
+            return
+        legacy = ck.get("best_val_loss_masked_mse")
+        self.best_scores = {k: float("inf") for k in BEST_KEYS}
+        self.best_epochs = {k: None for k in BEST_KEYS}
+        if legacy is not None and math.isfinite(float(legacy)):
+            self.best_scores["spec"] = float(legacy)
+            self.best_epochs["spec"] = ck.get("epoch")
+        print(f"  migrated legacy checkpoint-selection state: "
+              f"best spec = {self.best_scores['spec']:.5f} from "
+              f"best_val_loss_masked_mse; total/raw/macro_total start at "
+              f"infinity (they were never recorded)", flush=True)
 
     def _check_vocab(self, ck, path):
         """An embedding row means whichever electrode held that id when it was
@@ -579,14 +791,47 @@ class EEGC1Trainer:
         ck = torch.load(path, map_location="cpu", weights_only=False)
         self._check_vocab(ck, path)
         self.raw_model.load_state_dict(ck["model"])
+        # Deliberately NOT checked against resume_incompatibilities: a change
+        # of objective is the ordinary REASON to use --init-from. The weights
+        # transfer; nothing that was accumulated under the old weighting --
+        # optimizer moments, cosine position, best bars -- comes with them.
+        old_obj = resolve_eeg_c1_objective(ck.get("config") or {})
         print(f"initialised from {path} "
               f"(weights only; it was at epoch {ck.get('epoch', '?')}, "
-              f"step {ck.get('global_step', '?')}, best "
-              f"{ck.get('best_val_loss_masked_mse', float('nan')):.5f})",
+              f"step {ck.get('global_step', '?')}, best spec "
+              f"{float(ck.get('best_val_loss_masked_mse', float('nan'))):.5f})",
               flush=True)
+        if objective_equation(old_obj) != objective_equation(self.objective):
+            print(f"  its objective was {objective_equation(old_obj)}; "
+                  f"this run trains {objective_equation(self.objective)}. "
+                  f"Weights only -- optimizer, schedule, epoch counter and "
+                  f"best-so-far records all start fresh.", flush=True)
 
     def load(self, path: str):
         ck = torch.load(path, map_location="cpu", weights_only=False)
+        # BEFORE the weights: an exact resume claims this process continues the
+        # one that wrote the file. If the loss it is continuing is not the loss
+        # that produced the optimizer moments, the cosine's position and the
+        # best-so-far bars, the continuation is a fiction and the run's own
+        # metrics file is the only place the change would ever have shown --
+        # unlabelled, as one curve.
+        diffs = resume_incompatibilities(ck.get("config"), self.cfg,
+                                         ck.get("sampler"))
+        if diffs:
+            raise SystemExit(resume_refusal_message(path, diffs))
+        # train.epochs is NOT in that list, because extending a run is the
+        # ordinary reason to resume one. It is not free, though: the cosine's
+        # total is epochs x steps_per_epoch, so a longer run re-shapes the
+        # anneal from here on rather than continuing the old curve. Said out
+        # loud, because the learning rate then does something the first
+        # submission's plot does not predict.
+        old_epochs = ((ck.get("config") or {}).get("train") or {}).get("epochs")
+        if old_epochs is not None and int(old_epochs) != self.epochs:
+            print(f"  note: this checkpoint was scheduled for {old_epochs} "
+                  f"epochs and this run is scheduled for {self.epochs}. The "
+                  f"cosine's horizon moves with it, so the learning rate from "
+                  f"here follows the new schedule, not the old one.",
+                  flush=True)
         # STRICT, deliberately. A checkpoint from the single-decoder objective
         # has no raw_reconstruction_heads, and loading it loosely would resume
         # a run whose optimizer state, scheduler position and step count all
@@ -620,7 +865,7 @@ class EEGC1Trainer:
             self.scaler.load_state_dict(ck["scaler"])
         self.epoch = int(ck.get("epoch", 0))
         self.global_step = int(ck.get("global_step", 0))
-        self.best = float(ck.get("best_val_loss_masked_mse", float("inf")))
+        self._restore_best_records(ck)
         self.history = ck.get("history", {"train": [], "val": []})
         if ck.get("sampler"):
             self.schedule.load_state_dict(ck["sampler"])
@@ -631,7 +876,12 @@ class EEGC1Trainer:
         if "numpy" in rng:
             np.random.set_state(rng["numpy"])
         self._check_vocab(ck, path)
-        print(f"resumed from {path}: epoch {self.epoch}, step {self.global_step}")
+        bars = "  ".join(
+            f"{BEST_LABEL[k]} {self.best_scores[k]:.5f}"
+            f"@{self.best_epochs[k] if self.best_epochs[k] is not None else '-'}"
+            for k in BEST_KEYS if math.isfinite(self.best_scores[k]))
+        print(f"resumed from {path}: epoch {self.epoch}, step "
+              f"{self.global_step}" + (f"  best: {bars}" if bars else ""))
 
     # -- one epoch --------------------------------------------------------- #
     def train_epoch(self) -> Dict[str, float]:
@@ -834,7 +1084,17 @@ class EEGC1Trainer:
                         metrics[f"visible_{tag}_mae"] = float(e.mean())
             acc.add(metrics, batch["route_id"], batch["dataset_id"])
         it.close()
+        # EVERY key, not just the four global scalars that used to be reduced.
+        # ValIterator partitions each dataset across ranks, so
+        # `route/E32_512/masked_spec_corr` on rank 0 was a mean over rank 0's
+        # windows: four ranks held four different per-route tables and only
+        # rank 0's reached metrics_epoch.jsonl. Sums and counts go over the
+        # wire and the mean is taken from the totals, which is the form that
+        # stays correct if the slices ever stop being equal.
+        acc.all_reduce(self.distributed, self.device)
         means = acc.mean()
+        # After the reduction, so the macro is over every rank's routes.
+        means.update(macro_route_metrics(means))
         means["val_seconds"] = time.time() - val_t0
         means["val_batches"] = float(n_val_batches)
         if self.is_main:
@@ -845,10 +1105,6 @@ class EEGC1Trainer:
                       "w") as f:
                 json.dump(payload, f)
             self._append_jsonl("error_histogram_by_epoch.jsonl", payload)
-        for k in ("loss_total", "loss_masked_spec_mse",
-                  "loss_masked_raw_smoothl1", "loss_masked_mse"):
-            if k in means:
-                means[k] = _reduce_mean(means[k], self.distributed, self.device)
         return means
 
     # -- driver ------------------------------------------------------------ #
@@ -886,31 +1142,68 @@ class EEGC1Trainer:
                 # match metrics_epoch.jsonl, which is 0-based. The fraction is
                 # a count of epochs FINISHED, which is a different number and
                 # is spelled as one.
-                print(f"epoch {epoch} done ({epoch + 1}/{self.epochs}): train mse "
-                      f"{train_metrics.get('loss_masked_mse', float('nan')):.5f}  "
-                      f"val mse {val_metrics.get('loss_masked_mse', float('nan')):.5f}  "
+                nan = float("nan")
+                print(f"epoch {epoch} done ({epoch + 1}/{self.epochs}): "
+                      f"train total "
+                      f"{train_metrics.get('loss_total', nan):.5f}  "
+                      f"val total {val_metrics.get('loss_total', nan):.5f} "
+                      f"(spec {val_metrics.get('loss_masked_spec_mse', nan):.5f} "
+                      f"r {val_metrics.get('masked_spec_corr', nan):.3f} "
+                      f"nmse {val_metrics.get('masked_spec_nmse', nan):.3f} | "
+                      f"raw {val_metrics.get('loss_masked_raw_smoothl1', nan):.5f} "
+                      f"r {val_metrics.get('masked_raw_corr', nan):.3f} "
+                      f"nmse {val_metrics.get('masked_raw_nmse', nan):.3f} | "
+                      f"macro {val_metrics.get('macro_route_loss_total', nan):.5f})  "
                       f"gate {train_metrics.get('channel_token_gate_tanh', 0):.4f}  "
-                      f"[{fmt_eta(train_metrics.get('epoch_seconds', float('nan')))} "
-                      f"train + {fmt_eta(val_metrics.get('val_seconds', float('nan')))} "
+                      f"[{fmt_eta(train_metrics.get('epoch_seconds', nan))} "
+                      f"train + {fmt_eta(val_metrics.get('val_seconds', nan))} "
                       f"val, elapsed {fmt_eta(spent)}, run eta {fmt_eta(left)}]",
                       flush=True)
 
             self.schedule.start_step = 0
             self.epoch = epoch + 1
-            # self.best is updated BEFORE latest.pth is written. Written the
-            # other way round, latest.pth records the previous epoch's best, and
-            # a resume from it then believes the best is worse than it is --
-            # letting the next epoch overwrite best.pth with a worse checkpoint.
-            v = val_metrics.get("loss_masked_mse")
-            improved = v is not None and v < self.best
-            if improved:
-                self.best = v
+            # The bars are updated BEFORE latest.pth is written. Written the
+            # other way round, latest.pth records the previous epoch's bests,
+            # and a resume from it then believes the best is worse than it is --
+            # letting the next epoch overwrite a best checkpoint with a worse
+            # one.
+            improved = self._update_best_records(epoch, val_metrics)
             self.save("latest.pth")
-            if improved:
-                self.save("best.pth")
+            self._save_best(improved)
             if self.max_steps and self.global_step >= self.max_steps:
                 break
         return 0
+
+    def _save_best(self, improved: List[str]):
+        """Write the file(s) each improved criterion owns. best.pth is in
+        `total`'s list, which is what makes it a copy of best_total.pth."""
+        for key in improved:
+            for name in BEST_SELECTION[key][1]:
+                self.save(name)
+
+    def _update_best_records(self, epoch: int,
+                             val_metrics: Dict[str, float]) -> List[str]:
+        """Which criteria improved this epoch. Every rank agrees on the answer.
+
+        val_metrics is identical on every rank after Accumulator.all_reduce, so
+        the four bars move in step even though only rank 0 writes files.
+        """
+        improved: List[str] = []
+        for key, (metric, _files) in BEST_SELECTION.items():
+            v = val_metrics.get(metric)
+            if v is None or not isinstance(v, (int, float)) \
+                    or not math.isfinite(float(v)):
+                continue
+            if float(v) < self.best_scores[key]:
+                self.best_scores[key] = float(v)
+                self.best_epochs[key] = epoch
+                improved.append(key)
+                if self.is_main:
+                    files = ", ".join(BEST_SELECTION[key][1])
+                    print(f"  new best {BEST_LABEL[key]}: {float(v):.5f} "
+                          f"at epoch {epoch}  ({metric} -> {files})",
+                          flush=True)
+        return improved
 
 
 class _nullcontext:

@@ -50,10 +50,16 @@ The objective
                                    |                |
                                pred_spec         pred_raw
 
-    L = L_spec + lambda_raw * L_raw + lambda_fold * L_foldKL
+    L = w_spec * L_spec + w_raw * L_raw + lambda_fold * L_foldKL
 
     L_spec = masked MSE      ( pred_spec, stopgrad(clean folded wavelet) )
     L_raw  = masked SmoothL1 ( pred_raw,  stopgrad(clean preprocessed EEG) )
+
+The canonical weighting is w_spec = w_raw = 0.5: two reconstruction terms of
+equal standing rather than an objective and a hint. The numbers themselves live
+in configs/pretrain/eeg_c1_moe.yaml and reach every consumer through
+``physiowave.eeg_c1.objective.resolve_eeg_c1_objective``; the defaults here are
+that module's, not a second copy.
 
 Three properties this shape exists to get, each of which the previous version
 lacked:
@@ -79,7 +85,6 @@ the preprocessed EEG as well ties the tokens to the measured signal.
 
 from __future__ import annotations
 
-import math
 import warnings
 from typing import Dict, Optional
 
@@ -91,6 +96,7 @@ from head_modules import ReconstructionHead
 from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
 from wavelet_modules import ScaleFold, SoftGateWaveletDecomp
 
+from .objective import DEFAULT_OBJECTIVE
 from .routes import ROUTES, Route
 
 
@@ -754,30 +760,88 @@ class MultiRouteEEGPretrainer(nn.Module):
         }
 
 
-def masked_reconstruction_loss(out, spec_weight: float = 1.0,
-                               raw_weight: float = 0.25,
-                               fold_kl: float = 1e-3,
-                               raw_beta: float = 0.5):
+#: Denominator floor for NMSE. Small enough that a real target's energy is
+#: never what it clamps; present so that an all-zero target gives a finite
+#: number instead of an inf that poisons every mean downstream.
+NMSE_EPS = 1e-12
+
+
+def _masked_nmse(pred, target, eps: float = NMSE_EPS):
+    """``MSE(pred, target) / MSE(0, target)`` over the elements handed in.
+
+    Dimensionless, and anchored to a baseline anyone can check: 1.0 is what
+    predicting zero scores, below 1.0 is better than that, above 1.0 is worse.
+    The spec target is normalised per patch, so its denominator sits near 1 --
+    but it is computed rather than assumed, because a patch of masked zeros is
+    normalised to zeros and its energy is not 1.
+    """
+    num = torch.nn.functional.mse_loss(pred, target)
+    den = torch.nn.functional.mse_loss(torch.zeros_like(target), target)
+    return num / den.clamp_min(eps)
+
+
+def _masked_corr(pred, target):
+    """Pearson r over the elements handed in; 0 when either side is constant.
+
+    Dimensionless, so it survives any change to the target's scale -- which is
+    the whole reason the spec target is normalised, and the reason this is the
+    number to compare the two heads on rather than their losses.
+    """
+    pc = pred - pred.mean()
+    tc = target - target.mean()
+    denom = pc.norm() * tc.norm()
+    if float(denom) <= 0:
+        return torch.zeros((), device=pred.device, dtype=pred.dtype)
+    return (pc @ tc) / denom
+
+
+def masked_reconstruction_loss(out, spec_weight: Optional[float] = None,
+                               raw_weight: Optional[float] = None,
+                               fold_kl: Optional[float] = None,
+                               raw_beta: Optional[float] = None):
     """``L = w_spec*MSE(spec) + w_raw*SmoothL1(raw) + fold_kl*KL``, and metrics.
 
-    Both terms are computed over masked tokens only. Padded channel slots are
-    never masked -- ``_select_mask`` excludes them and ``_check_mask_override``
-    refuses them -- so validity does not have to be applied a second time here,
-    and the denominator is the number of masked tokens rather than the number
-    of tokens.
+    The weights default to the canonical objective in
+    ``physiowave.eeg_c1.objective.DEFAULT_OBJECTIVE`` (0.5 / 0.5 / 1e-3), which
+    is the same dict the config resolver falls back to. There is no second copy
+    of these numbers here to drift from the config.
+
+    Both terms are computed over masked VALID tokens only. Padded channel slots
+    are never masked -- ``_select_mask`` excludes them and
+    ``_check_mask_override`` refuses them -- and the intersection is taken here
+    as well, so the guarantee is local to this function rather than inherited
+    from two callers.
 
     SmoothL1 for the raw term rather than MSE. The preprocessed EEG is clipped
     but still holds clinical events an order of magnitude above the background,
     and under a squared penalty a handful of those would set the gradient for
-    the whole auxiliary term.
+    the whole term.
+
+    THE TWO LOSSES ARE NOT COMPARABLE IN MAGNITUDE. One is an MSE on per-patch
+    normalised wavelet coefficients, the other a SmoothL1 on z-scored volts;
+    the raw number is smaller for reasons of units and of the knee at beta, not
+    because that head is doing better. ``masked_{spec,raw}_corr`` and
+    ``masked_{spec,raw}_nmse`` are dimensionless and are the comparison.
 
     The old single-argument call ``masked_reconstruction_loss(out, 1e-3)`` is
     NOT compatible: the second positional is now spec_weight. Callers pass
     fold_kl by name.
     """
+    spec_weight = (float(DEFAULT_OBJECTIVE["spec_weight"])
+                   if spec_weight is None else float(spec_weight))
+    raw_weight = (float(DEFAULT_OBJECTIVE["raw_weight"])
+                  if raw_weight is None else float(raw_weight))
+    fold_kl = (float(DEFAULT_OBJECTIVE["fold_kl"])
+               if fold_kl is None else float(fold_kl))
+    raw_beta = (float(DEFAULT_OBJECTIVE["raw_beta"])
+                if raw_beta is None else float(raw_beta))
+
     pred_spec, target_spec = out["pred_spec"], out["target_spec"]
     pred_raw, target_raw = out["pred_raw"], out["target_raw"]
     mask = out["mask"]
+    valid = out.get("valid_tokens")
+    if valid is not None:
+        mask = mask & valid
 
     n = int(mask.sum())
     reg = out.get("fold_reg")
@@ -792,6 +856,8 @@ def masked_reconstruction_loss(out, spec_weight: float = 1.0,
             "loss_masked_raw_smoothl1": 0.0, "loss_fold_kl": 0.0,
             "masked_spec_mae": 0.0, "masked_spec_rmse": 0.0,
             "masked_raw_mae": 0.0, "masked_raw_rmse": 0.0,
+            "masked_spec_corr": 0.0, "masked_raw_corr": 0.0,
+            "masked_spec_nmse": 0.0, "masked_raw_nmse": 0.0,
             "masked_corr": 0.0, "actual_mask_ratio": 0.0,
             "clean_online_spec_delta": 0.0,
             # compatibility aliases, as below
@@ -806,22 +872,31 @@ def masked_reconstruction_loss(out, spec_weight: float = 1.0,
     loss_raw = torch.nn.functional.smooth_l1_loss(p_raw, t_raw, beta=raw_beta)
 
     kl = reg if reg is not None else pred_spec.sum() * 0.0
+    # Explicit and unaveraged. Predicting one head from a blend of the two, or
+    # folding them into a single term before weighting, would make neither
+    # loss the thing its logged value names.
     total = spec_weight * loss_spec + raw_weight * loss_raw + fold_kl * kl
 
     with torch.no_grad():
         spec_mae = (p_spec - t_spec).abs().mean()
         spec_rmse = loss_spec.sqrt()
         raw_mae = (p_raw - t_raw).abs().mean()
-        raw_rmse = torch.nn.functional.mse_loss(p_raw, t_raw).sqrt()
-        pc, tc = p_spec - p_spec.mean(), t_spec - t_spec.mean()
-        denom = pc.norm() * tc.norm()
-        corr = (pc @ tc / denom) if float(denom) > 0 else torch.zeros(
-            (), device=p_spec.device)
-        valid = out.get("valid_tokens")
+        raw_mse = torch.nn.functional.mse_loss(p_raw, t_raw)
+        raw_rmse = raw_mse.sqrt()
+        spec_corr = _masked_corr(p_spec.float(), t_spec.float())
+        raw_corr = _masked_corr(p_raw.float(), t_raw.float())
+        spec_nmse = _masked_nmse(p_spec.float(), t_spec.float())
+        raw_nmse = _masked_nmse(p_raw.float(), t_raw.float())
         denom_tokens = int(valid.sum()) if valid is not None else mask.numel()
         ratio = n / max(1, denom_tokens)
         delta = out.get("clean_online_spec_delta")
 
+    # float(), not a "make it finite" wrapper. Every value below is finite by
+    # construction for finite inputs -- NMSE clamps its denominator and corr
+    # guards a zero one -- so a NaN here means the MODEL produced one, and
+    # coercing it to 0.0 would report a diverged run as a perfect loss and let
+    # it win checkpoint selection. The accumulator drops non-finite values and
+    # the best-score bars refuse them; both need to see the NaN to do that.
     return total, {
         "loss_total": float(total.detach()),
         "loss_masked_spec_mse": float(loss_spec.detach()),
@@ -831,13 +906,21 @@ def masked_reconstruction_loss(out, spec_weight: float = 1.0,
         "masked_spec_rmse": float(spec_rmse),
         "masked_raw_mae": float(raw_mae),
         "masked_raw_rmse": float(raw_rmse),
-        "masked_corr": float(corr),
+        # Dimensionless, and the only honest way to say which head is doing
+        # better: r is scale-free, and NMSE is measured against the
+        # zero-prediction baseline on that head's own target.
+        "masked_spec_corr": float(spec_corr),
+        "masked_raw_corr": float(raw_corr),
+        "masked_spec_nmse": float(spec_nmse),
+        "masked_raw_nmse": float(raw_nmse),
         "actual_mask_ratio": float(ratio),
         "clean_online_spec_delta": float(delta) if delta is not None else 0.0,
         # Compatibility aliases. The history JSONL and the figure captions
         # were written against these names when the spec term was the whole
-        # objective, so they still resolve to it.
+        # objective, so they still resolve to it. New code uses the explicit
+        # spec/raw names -- `loss_masked_mse` does not say which head it is.
         "loss_masked_mse": float(loss_spec.detach()),
+        "masked_corr": float(spec_corr),
         "masked_mae": float(spec_mae),
         "masked_rmse": float(spec_rmse),
     }

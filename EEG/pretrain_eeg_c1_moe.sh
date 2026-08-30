@@ -65,8 +65,10 @@ pw_require_python_deps || exit 1
 
 NUM_GPUS="${NUM_GPUS:-4}"          # GPUs per node
 NNODES="${NNODES:-${SLURM_NNODES:-1}}"
-# Which objective. pretrain/eeg_c1_moe is the full one; the two ablations
-# differ from it in exactly the raw_weight and mask_before_frontend lines.
+# Which objective. pretrain/eeg_c1_moe is the full one -- 0.5 x spec MSE
+# + 0.5 x raw SmoothL1 + 1e-3 x ScaleFold KL. The two ablations are pinned to
+# the earlier 1.0/0.25 weighting they were run at and differ from each other in
+# the raw_weight and mask_before_frontend lines.
 CONFIG="${CONFIG:-pretrain/eeg_c1_moe}"
 # NO DEFAULTS FOR THE HYPERPARAMETERS. Each of these used to carry a copy of
 # the config's value and pass it through --set unconditionally, so the config
@@ -98,6 +100,26 @@ INIT_FROM="${INIT_FROM:-}"
 # steps_per_epoch is DERIVED from the mixture when the config leaves it
 # null -- 384 under balanced. Setting it is how you buy more optimizer
 # steps per epoch without changing what the mixture is.
+#
+# A RECOMMENDED FINAL ANNEALING RUN, from an existing checkpoint's weights:
+#
+#   EPOCHS=15 STEPS_PER_EPOCH=768 GRAD_ACCUMULATION=1 LR=1e-4 \
+#   SET="train.warmup_epochs=0" \
+#   INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth \
+#   bash EEG/pretrain_eeg_c1_moe.sh
+#
+# 768 x 15 = 11,520 optimizer updates at grad_accum 1, twice what the derived
+# 384-step epoch gives, and the point of the budget is updates and sample
+# exposure rather than a wider model -- 384/6/6 is not changed for this.
+# INIT_FROM and not RESUME: a change of epoch length is a change of the unit
+# the cosine counts in, and a change of objective weights is a different loss;
+# --resume refuses both by design and says so.
+#
+# NOTHING HERE IS HARD-CODED IN PYTHON. These are values for this cluster and
+# this corpus; the trainer's banner prints the steps/epoch, the total optimizer
+# updates, the world size, the per-route batch and the passes/epoch it actually
+# resolved, and warns when an epoch reads one dataset more than
+# train.max_passes_per_epoch_warn (5) times.
 STEPS_PER_EPOCH="${STEPS_PER_EPOCH:-}"
 # Anything else, space separated: SET="model.embed_dim=512 model.depth=8".
 # For the architecture, which has no business having an environment
@@ -230,5 +252,11 @@ if [[ ${_rc} -eq 0 ]]; then
     echo "Figures:"
     echo "  python scripts/visualize_eeg_pretraining.py \\"
     echo "      --run-dir ${OUTPUT_DIR} --checkpoint best.pth --split val --format svg"
+    echo ""
+    echo "Progress:"
+    echo "  python scripts/eeg_c1_progress.py ${OUTPUT_DIR}"
+    echo ""
+    echo "Checkpoints: best.pth (= best_total.pth, lowest val total loss),"
+    echo "  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth"
 fi
 exit "${_rc}"

@@ -11,12 +11,28 @@ metrics files and the corpus the run trained on. Nothing is illustrative: the
 masks drawn are the masks the model was given, the reconstructions are that
 checkpoint's outputs, and the wavelet responses are its learned filters.
 
-WHAT THE MODEL RECONSTRUCTS. The head predicts FOLDED WAVELET PATCHES, not raw
-EEG. Spec(x) is decomposed into J+1 scales and the dynamic fold reduces the
-scale axis back to one row per electrode; that folded representation is what is
-patched, masked and predicted. Raw EEG appears in the figures only as the
-context strip above, and is labelled as such. Calling the bottom rows "raw EEG
-reconstruction" would claim an inverse transform this model does not compute.
+WHAT THE MODEL RECONSTRUCTS. TWO things, at equal weight. One head predicts
+FOLDED WAVELET PATCHES: Spec(x) is decomposed into J+1 scales and the dynamic
+fold reduces the scale axis back to one row per electrode, and that folded
+representation is what is patched, masked and predicted. The other head
+predicts the PREPROCESSED EEG of the same masked patches -- a waveform, in the
+z-scored units the preprocessing produced, and not an inverse wavelet
+transform. Both appear in fig_mask_reconstruction; the raw head has
+14_raw_waveform_reconstruction to itself.
+
+THREE RULES THE RECONSTRUCTION FIGURES FOLLOW, because breaking any of them
+flatters the model:
+
+  * the spec target drawn is ``target_spec`` -- the per-patch NORMALISED
+    tensor the loss is computed against -- not the unnormalised ``clean_spec``.
+    Comparing a normalised prediction to an unnormalised target is a
+    comparison of two different quantities;
+  * a target and its composite share colour limits, taken from the target.
+    Independent autoscaling makes a prediction with a third of the amplitude
+    draw at the same contrast;
+  * predictions are shown on MASKED patches only. No gradient ever reached a
+    visible token's decoder output, so displaying one as reconstruction
+    reports a number nothing trained.
 
 Alongside every figure:
     figures/<name>.svg          the figure
@@ -50,6 +66,8 @@ from physiowave.eeg_c1.data import (CorpusIndex, EEGWindowDataset,  # noqa: E402
                                     collate_windows)
 from physiowave.eeg_c1.model import (MultiRouteEEGPretrainer,  # noqa: E402
                                      masked_reconstruction_loss)
+from physiowave.eeg_c1.objective import (objective_equation,  # noqa: E402
+                                         resolve_eeg_c1_objective)
 from physiowave.eeg_c1.routes import (PRETRAIN_DATASETS, ROUTES,  # noqa: E402
                                       Route)
 from physiowave.eeg_c1.train import _mask_generator            # noqa: E402
@@ -239,12 +257,35 @@ def _series(rows: List[Dict], key: str):
     return np.asarray(xs, float), np.asarray(ys, float)
 
 
+#: ``(logging key, fallback keys, label)``. The fallbacks are the pre-dual
+#: names, so a run from before the raw head still renders. New code names the
+#: head it means: `loss_masked_mse` does not say whether it is spec or raw.
+CONVERGENCE_PANELS = (
+    (("loss_total",), "total loss"),
+    (("loss_masked_spec_mse", "loss_masked_mse"), "masked spec MSE"),
+    (("loss_masked_raw_smoothl1",), "masked raw SmoothL1"),
+    (("masked_spec_corr", "masked_corr"), "masked spec corr"),
+)
+
+
+def _first_key(rows: List[Dict], keys) -> str:
+    """The first of ``keys`` this run actually logged, under any prefix.
+
+    metrics_step.jsonl holds bare names and metrics_epoch.jsonl holds
+    ``train/`` and ``val/`` ones, so a probe for the bare name alone would miss
+    a run whose step file is absent and fall back to a key that does not exist.
+    """
+    for k in keys:
+        if any(k in r or f"train/{k}" in r or f"val/{k}" in r for r in rows):
+            return k
+    return keys[0]
+
+
 def fig_pretraining_convergence(w: FigureWriter, epoch_rows, step_rows):
-    metrics = [("loss_total", "total loss"), ("loss_masked_mse", "masked MSE"),
-               ("masked_rmse", "masked RMSE"), ("masked_mae", "masked MAE")]
     fig, axes = plt.subplots(1, 4, figsize=(13, 3.1))
     data = {}
-    for ax, (key, label) in zip(axes, metrics):
+    for ax, (keys, label) in zip(axes, CONVERGENCE_PANELS):
+        key = _first_key(step_rows + epoch_rows, keys)
         sx, sy = _series(step_rows, key)
         if sx.size:
             # Raw step values, not a smoothed curve: a window long enough to
@@ -265,34 +306,50 @@ def fig_pretraining_convergence(w: FigureWriter, epoch_rows, step_rows):
             data[f"val_x_{key}"], data[f"val_y_{key}"] = vx, vy
         ax.set_title(label)
         ax.set_xlabel("global step")
-        if key != "loss_total":
+        if key.endswith("mse") or key.endswith("smoothl1"):
             ax.set_yscale("log")
     axes[0].set_ylabel("loss")
     axes[0].legend(frameon=False)
-    fig.suptitle("Masked wavelet-patch reconstruction: convergence", y=1.03)
+    fig.suptitle("Masked dual reconstruction: convergence. The spec and raw "
+                 "panels are different units and are not comparable to each "
+                 "other.", y=1.03)
     w.save(fig, "fig_pretraining_convergence", data)
 
 
 def fig_route_convergence(w: FigureWriter, epoch_rows):
+    """Per route and per dataset, on the TOTAL loss -- what is being selected on.
+
+    These curves are globally aggregated across ranks: the validation sweep is
+    partitioned, so before that reduction each of these lines was one rank's
+    slice of the dataset.
+    """
     fig, axes = plt.subplots(1, 2, figsize=(10, 3.4))
     data = {}
+    metric = _first_key(epoch_rows, ("loss_total", "loss_masked_mse"))
     for rid, color in ROUTE_COLOR.items():
-        x, y = _series(epoch_rows, f"val/route/{rid}/loss_masked_mse")
+        x, y = _series(epoch_rows, f"val/route/{rid}/{metric}")
         if x.size:
             axes[0].plot(x, y, color=color, marker="o", ms=2.5, label=rid)
             data[f"route_{rid}_x"], data[f"route_{rid}_y"] = x, y
-    axes[0].set_title("validation masked MSE, by route")
+    mx, my = _series(epoch_rows, "val/macro_route_loss_total")
+    if mx.size:
+        # The unweighted mean of the four lines above, which is what
+        # best_macro_total.pth is selected on. It is NOT the global validation
+        # loss: that one is 97% TUEG and HBN by batch count.
+        axes[0].plot(mx, my, color="0.2", ls="--", lw=1.4, label="macro (mean)")
+        data["macro_x"], data["macro_y"] = mx, my
+    axes[0].set_title(f"validation {metric}, by route")
     axes[0].set_xlabel("global step")
-    axes[0].set_ylabel("masked MSE")
+    axes[0].set_ylabel(metric)
     axes[0].legend(frameon=False)
 
     for d in PRETRAIN_DATASETS:
-        x, y = _series(epoch_rows, f"val/dataset/{d}/loss_masked_mse")
+        x, y = _series(epoch_rows, f"val/dataset/{d}/{metric}")
         if x.size:
             axes[1].plot(x, y, color=DATASET_COLOR[d], marker=".", ms=3,
                          label=d)
             data[f"dataset_{d}_x"], data[f"dataset_{d}_y"] = x, y
-    axes[1].set_title("validation masked MSE, by dataset (supplementary)")
+    axes[1].set_title(f"validation {metric}, by dataset (supplementary)")
     axes[1].set_xlabel("global step")
     axes[1].legend(frameon=False, ncol=2)
     w.save(fig, "fig_route_convergence", data)
@@ -302,26 +359,115 @@ def fig_route_convergence(w: FigureWriter, epoch_rows):
 # 4 & 5. real masks and real reconstructions
 # --------------------------------------------------------------------------- #
 
+def _expand(mask_cp: np.ndarray, patch_t: int) -> np.ndarray:
+    """``[C, P]`` patch mask to ``[C, P*patch_t]``, the sample grid."""
+    return np.repeat(mask_cp, patch_t, axis=1)
+
+
+def _composite(target: np.ndarray, pred: np.ndarray,
+               m: np.ndarray) -> np.ndarray:
+    """Target where the model could SEE, prediction where it could not.
+
+    Showing the decoder's output on visible patches as though it were
+    reconstruction is the thing this function exists to prevent: nothing in the
+    loss ever looks at a visible token, so those values are unsupervised, and a
+    figure that displays them is reporting a number no gradient produced.
+    """
+    return np.where(m, pred, target)
+
+
+def _hide(target: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """The target with the masked patches removed -- NaN, drawn as blank."""
+    out = target.astype(float).copy()
+    out[m] = np.nan
+    return out
+
+
+def _corrupt(target: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """What the frontend was actually handed: masked patches zeroed.
+
+    Zero rather than NaN: this is the SIGNAL the model saw, and the fill is
+    zero because the window is z-scored, so zero is its mean.
+    """
+    out = target.astype(float).copy()
+    out[m] = 0.0
+    return out
+
+
+def _masked_error(pred: np.ndarray, target: np.ndarray, m: np.ndarray,
+                  valid_rows: np.ndarray) -> np.ndarray:
+    """``|pred - target|`` on masked valid samples, NaN everywhere else."""
+    e = np.abs(pred.astype(float) - target.astype(float))
+    e[~m] = np.nan
+    e[~valid_rows] = np.nan
+    return e
+
+
+def _sym_limits(target: np.ndarray, valid_rows: np.ndarray,
+                q: float = 99.5) -> float:
+    """A robust symmetric limit from the TARGET, shared by every panel of a pair.
+
+    Autoscaling the target and the prediction independently is what makes a
+    flat prediction look like a good one: matplotlib stretches whatever range
+    it is given, so two panels with different limits are not comparable however
+    similar they look. One limit, taken from the target, and a prediction that
+    is too small stays visibly too small.
+    """
+    vals = target[valid_rows]
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        return 1.0
+    v = float(np.percentile(np.abs(vals), q))
+    return v if v > 0 else 1.0
+
+
 @torch.no_grad()
 def _fixed_example(model, ds: EEGWindowDataset, route: Route, mask_seed: int,
-                   window_index: int = 0, device="cpu"):
-    """One fixed validation window under its fixed mask, through the model."""
+                   window_index: int = 0, device="cpu",
+                   objective: Optional[Dict] = None):
+    """One fixed validation window under its fixed mask, through the model.
+
+    Everything is returned on the ``[C, T]`` sample grid, unpatchified with the
+    model's own inverse, so a panel can be indexed by channel and time without
+    the caller reconstructing the channel-major token order.
+    """
     item = ds[window_index]
     batch = collate_windows([item])
     meta = {k: v.to(device) for k, v in ds.montage().items()}
     gen = _mask_generator(mask_seed, ds.dataset_id, window_index)
     out = model(batch["x"].to(device), route.route_id, channel_meta=meta,
                 mask_ratio=model.mask_ratio, mask_generator=gen)
-    _, metrics = masked_reconstruction_loss(out)
-    C, P = route.n_channels, route.patches_per_channel
+    o = objective or {}
+    _, metrics = masked_reconstruction_loss(
+        out,
+        spec_weight=o.get("spec_weight"), raw_weight=o.get("raw_weight"),
+        fold_kl=o.get("fold_kl"), raw_beta=o.get("raw_beta"))
+    C, P, pt = route.n_channels, route.patches_per_channel, route.patch_t
+
+    def flat(key):
+        return model.unpatchify(out[key], C, pt)[0].detach().cpu().numpy()
+
+    mask = out["mask"][0].detach().cpu().numpy().reshape(C, P)
+    valid = (out["valid_tokens"][0].detach().cpu().numpy().reshape(C, P)
+             if out["valid_tokens"] is not None else np.ones((C, P), bool))
     return {
         "raw": batch["x"][0].cpu().numpy(),
-        "spec": out["spec"][0].detach().cpu().numpy(),
-        "target": out["target"][0].detach().cpu().numpy().reshape(C, P, -1),
-        "pred": out["pred"][0].detach().cpu().numpy().reshape(C, P, -1),
-        "mask": out["mask"][0].detach().cpu().numpy().reshape(C, P),
-        "valid": (out["valid_tokens"][0].detach().cpu().numpy().reshape(C, P)
-                  if out["valid_tokens"] is not None else np.ones((C, P), bool)),
+        # The UNNORMALISED frontend output. Kept for the wavelet-analysis
+        # figures; it is NOT the reconstruction target when
+        # normalize_spec_target is on, and nothing below labels it as one.
+        "clean_spec": out["clean_spec"][0].detach().cpu().numpy(),
+        "spec": out["clean_spec"][0].detach().cpu().numpy(),
+        # What the loss actually compares, on the sample grid.
+        "target_spec": flat("target_spec"),
+        "pred_spec": flat("pred_spec"),
+        "target_raw": flat("target_raw"),
+        "pred_raw": flat("pred_raw"),
+        "normalize_spec_target": bool(out.get("normalize_spec_target", True)),
+        # -- compatibility aliases: the older figures asked for these -------- #
+        "target": flat("target_spec"),
+        "pred": flat("pred_spec"),
+        "mask": mask,
+        "valid": valid,
         "metrics": metrics,
         "subject_id": item["subject_id"],
         "recording_id": item["recording_id"],
@@ -329,69 +475,175 @@ def _fixed_example(model, ds: EEGWindowDataset, route: Route, mask_seed: int,
     }
 
 
-def fig_mask_reconstruction(w: FigureWriter, model, datasets, mask_seed, device):
+def _route_rows(datasets) -> List:
+    """One deterministic ``(route, dataset)`` pair per route, in route order.
+
+    ``sorted`` rather than "the first one the iteration happens to yield": a
+    figure whose sample moves because a manifest was rebuilt in a different
+    order is not the fixed sample it claims to be.
+    """
     rows = []
     for rid in ROUTES:
-        pick = next((d for d in datasets
-                     if datasets[d].route_id == rid), None)
-        if pick:
-            rows.append((rid, pick))
+        members = sorted(d for d in datasets
+                         if datasets[d].route_id == rid and len(datasets[d]))
+        if members:
+            rows.append((rid, members[0]))
+    return rows
+
+
+#: Panel titles, in order. The figure and the tests read the same list.
+RECONSTRUCTION_PANEL_TITLES = (
+    "raw EEG target", "raw EEG, mask applied", "raw composite reconstruction",
+    "raw |error|, masked only", "spec target", "masked spec target",
+    "spec composite reconstruction", "spec |error|, masked only",
+)
+
+
+def reconstruction_panels(ex: Dict, route: Route) -> List:
+    """``[(array, title, cmap, vmin, vmax)] x 8`` for one route row.
+
+    Pure, so the three properties that make the figure honest can be checked
+    without rendering anything:
+
+    * panels 0-2 share colour limits, and 4-6 share theirs. Taken from the
+      TARGET, so a prediction with a third of the amplitude draws at a third of
+      the contrast instead of being stretched to match.
+    * the spec panels are ``target_spec``, the per-patch normalised tensor the
+      loss is computed against -- never ``clean_spec``, which is on a different
+      scale and is not what any gradient compared against.
+    * the two error panels are NaN off the masked valid patches. Nothing
+      supervises a visible token's decoder output.
+    """
+    pt = route.patch_t
+    m = _expand(ex["mask"], pt)
+    valid_rows = _expand(ex["valid"], pt)
+    raw_t, raw_p = ex["target_raw"], ex["pred_raw"]
+    spec_t, spec_p = ex["target_spec"], ex["pred_spec"]
+    raw_lim = _sym_limits(raw_t, valid_rows)
+    spec_lim = _sym_limits(spec_t, valid_rows)
+    spec_label = ("normalised spec target"
+                  if ex.get("normalize_spec_target", True)
+                  else "spec target (raw scale)")
+    titles = list(RECONSTRUCTION_PANEL_TITLES)
+    titles[4] = spec_label
+    titles[5] = f"masked {spec_label}"
+    return [
+        (raw_t, titles[0], "RdBu_r", -raw_lim, raw_lim),
+        (_corrupt(raw_t, m), titles[1], "RdBu_r", -raw_lim, raw_lim),
+        (_composite(raw_t, raw_p, m), titles[2], "RdBu_r", -raw_lim, raw_lim),
+        (_masked_error(raw_p, raw_t, m, valid_rows), titles[3], "magma",
+         0.0, None),
+        (spec_t, titles[4], "RdBu_r", -spec_lim, spec_lim),
+        (_hide(spec_t, m), titles[5], "RdBu_r", -spec_lim, spec_lim),
+        (_composite(spec_t, spec_p, m), titles[6], "RdBu_r",
+         -spec_lim, spec_lim),
+        (_masked_error(spec_p, spec_t, m, valid_rows), titles[7], "magma",
+         0.0, None),
+    ]
+
+
+def fig_mask_reconstruction(w: FigureWriter, model, datasets, mask_seed, device,
+                            objective: Optional[Dict] = None):
+    """Both heads, one row per route, on one fixed window under one fixed mask.
+
+    Eight panels, in two groups of four that read the same way: target, what
+    the model was handed, the composite reconstruction, and the error on the
+    masked patches alone.
+
+    Four things the previous version of this figure got wrong, each of which
+    flattered the model:
+
+    * it showed raw EEG only as context, so the second head -- half the
+      objective -- never appeared;
+    * it compared the UNNORMALISED clean_spec against a prediction trained
+      against the normalised target, which is a comparison of two different
+      quantities;
+    * it autoscaled target and prediction independently, so a prediction with a
+      third of the target's amplitude drew at the same contrast;
+    * its error map covered visible patches too, and the visible patches are
+      not supervised: their error is small because the encoder passes the token
+      through, not because anything reconstructed them.
+    """
+    rows = _route_rows(datasets)
     if not rows:
         return
-    fig, axes = plt.subplots(len(rows), 6, figsize=(17, 2.5 * len(rows)),
+    fig, axes = plt.subplots(len(rows), 8, figsize=(21, 2.6 * len(rows)),
                              squeeze=False)
     data, meta_rows = {}, []
     for r, (rid, dsid) in enumerate(rows):
         route = ROUTES[rid]
         ex = _fixed_example(model, datasets[dsid], route, mask_seed,
-                            device=device)
-        C, P = route.n_channels, route.patches_per_channel
-        recon = ex["pred"].reshape(C, -1)
-        tgt = ex["target"].reshape(C, -1)
-        masked_repr = tgt.copy()
-        masked_repr[np.repeat(ex["mask"], route.patch_t, axis=1)] = np.nan
-        err = np.abs(recon - tgt)
+                            device=device, objective=objective)
+        pt = route.patch_t
+        P = route.patches_per_channel
+        m = _expand(ex["mask"], pt)
+        valid_rows = _expand(ex["valid"], pt)
+        raw_t, raw_p = ex["target_raw"], ex["pred_raw"]
+        spec_t, spec_p = ex["target_spec"], ex["pred_spec"]
+        raw_err = _masked_error(raw_p, raw_t, m, valid_rows)
+        spec_err = _masked_error(spec_p, spec_t, m, valid_rows)
+        raw_lim = _sym_limits(raw_t, valid_rows)
+        spec_lim = _sym_limits(spec_t, valid_rows)
 
-        panels = [
-            (ex["raw"], "raw EEG (context only)", "RdBu_r"),
-            (ex["spec"], "folded-wavelet target", "viridis"),
-            (ex["mask"].astype(float), "binary patch mask", "gray_r"),
-            (masked_repr, "masked representation", "viridis"),
-            (recon, "predicted folded-wavelet patches", "viridis"),
-            (err, "|reconstruction error|", "magma"),
-        ]
-        for c, (arr, title, cmap) in enumerate(panels):
+        panels = reconstruction_panels(ex, route)
+        for c, (arr, title, cmap, vmin, vmax) in enumerate(panels):
             ax = axes[r][c]
-            ax.imshow(arr, aspect="auto", cmap=cmap, interpolation="nearest")
+            ax.imshow(arr, aspect="auto", cmap=cmap, interpolation="nearest",
+                      vmin=vmin, vmax=vmax)
             if r == 0:
                 ax.set_title(title)
             if c == 0:
-                ax.set_ylabel(f"{rid}\n{dsid}\n{C} ch")
+                ax.set_ylabel(f"{rid}\n{dsid}\n{route.n_channels} ch")
             ax.set_xticks([])
             ax.set_yticks([])
-            # Grey overlay marking the masked TIME patches, on the panels whose
-            # x axis is samples rather than patches.
-            if c in (1, 3, 4, 5):
-                for p in range(P):
-                    if ex["mask"][:, p].any():
-                        ax.axvspan(p * route.patch_t, (p + 1) * route.patch_t,
-                                   color="0.5", alpha=0.16, lw=0)
-        m = ex["metrics"]
-        axes[r][5].set_xlabel(
-            f"MSE {m['loss_masked_mse']:.4f}  RMSE {m['masked_rmse']:.4f}  "
-            f"MAE {m['masked_mae']:.4f}  r {m['masked_corr']:.3f}")
-        data[f"{rid}_target"] = tgt
-        data[f"{rid}_pred"] = recon
+            # The columns any channel has a masked patch in, marked on the
+            # panels whose x axis is samples.
+            for pi in range(P):
+                if ex["mask"][:, pi].any():
+                    ax.axvspan(pi * pt, (pi + 1) * pt, color="0.5",
+                               alpha=0.10, lw=0)
+        mt = ex["metrics"]
+        ratio = ex["mask"].sum() / max(1, ex["valid"].sum())
+        axes[r][3].set_xlabel(
+            f"SmoothL1 {mt['loss_masked_raw_smoothl1']:.4f}  "
+            f"r {mt['masked_raw_corr']:.3f}  NMSE {mt['masked_raw_nmse']:.3f}")
+        axes[r][7].set_xlabel(
+            f"MSE {mt['loss_masked_spec_mse']:.4f}  "
+            f"r {mt['masked_spec_corr']:.3f}  NMSE {mt['masked_spec_nmse']:.3f}")
+        # The realised ratio, not the requested one: the budget is per sample
+        # over the VALID tokens, so a route with padded slots masks fewer.
+        axes[r][0].set_xlabel(f"masked {ratio * 100:.1f}% of valid patches")
+        data[f"{rid}_target_raw"] = raw_t
+        data[f"{rid}_pred_raw"] = raw_p
+        data[f"{rid}_target_spec"] = spec_t
+        data[f"{rid}_pred_spec"] = spec_p
+        data[f"{rid}_masked_error_raw"] = raw_err
+        data[f"{rid}_masked_error_spec"] = spec_err
         data[f"{rid}_mask"] = ex["mask"]
+        data[f"{rid}_valid"] = ex["valid"]
+        # Compatibility with the pre-dual arrays, which meant the spec pair.
+        data[f"{rid}_target"] = spec_t
+        data[f"{rid}_pred"] = spec_p
         meta_rows.append({"route_id": rid, "dataset_id": dsid,
                           "subject_id": ex["subject_id"],
                           "recording_id": ex["recording_id"],
                           "window_index": ex["window_index"],
-                          "mask_seed": mask_seed, **m})
-    fig.suptitle("Fixed validation windows under their fixed masks. The head "
-                 "predicts folded wavelet patches; raw EEG is context only.",
-                 y=1.005)
-    w.save(fig, "fig_mask_reconstruction", data, {"examples": meta_rows})
+                          "mask_seed": mask_seed,
+                          "actual_mask_ratio": float(ratio),
+                          "raw_color_limit": raw_lim,
+                          "spec_color_limit": spec_lim,
+                          "spec_target_is_normalised": ex["normalize_spec_target"],
+                          **mt})
+    fig.suptitle(
+        "Fixed validation windows under their fixed masks. Composite = target "
+        "on visible patches, prediction on masked ones; the error maps are "
+        "masked patches only, because visible patches are not supervised. "
+        "Target and composite share colour limits.", y=1.005)
+    w.save(fig, "fig_mask_reconstruction", data,
+           {"examples": meta_rows,
+            "panels": list(RECONSTRUCTION_PANEL_TITLES),
+            "note": "spec panels use target_spec -- the per-patch normalised "
+                    "target the loss is computed against -- not clean_spec"})
 
 
 def fig_mask_examples_by_dataset(w: FigureWriter, model, datasets, mask_seed,
@@ -704,10 +956,13 @@ def fig_dual_objective(w: FigureWriter, epoch_rows):
     if all(math.isnan(v) for v in spec_tr):
         return
 
-    meta = w.base_meta.get("objective", {})
-    ws = float(meta.get("spec_weight", 1.0))
-    wr = float(meta.get("raw_weight", 0.25))
-    wk = float(meta.get("fold_kl", 1e-3))
+    # From the run's own resolved configuration, through the same helper the
+    # trainer used. NOT a literal: a plotting default is exactly how a figure
+    # comes to caption weights the run never trained under.
+    meta = resolve_eeg_c1_objective({"objective": w.base_meta.get("objective")})
+    ws = float(meta["spec_weight"])
+    wr = float(meta["raw_weight"])
+    wk = float(meta["fold_kl"])
 
     fig, axes = plt.subplots(1, 3, figsize=(9.6, 2.9))
 
@@ -744,14 +999,17 @@ def fig_dual_objective(w: FigureWriter, epoch_rows):
     ax.grid(alpha=0.25, lw=0.5)
     ax.legend(frameon=False, loc="upper right")
 
-    fig.suptitle("The two reconstruction targets", y=1.04, fontsize=10)
+    fig.suptitle(f"The two reconstruction targets:  spec x{ws:g}   "
+                 f"raw x{wr:g}   fold KL x{wk:g}", y=1.04, fontsize=10)
     fig.tight_layout()
     w.save(fig, "10_dual_objective",
            data={"epoch": ep, "spec_train": spec_tr, "spec_val": spec_va,
                  "raw_train": raw_tr, "raw_val": raw_va, "fold_kl": kl_tr},
            meta={"weights": {"spec": ws, "raw": wr, "fold_kl": wk},
+                 "objective_equation": objective_equation(meta),
                  "note": "panels 1-2 are unweighted losses on their own "
-                         "scales; panel 3 is what enters the total"})
+                         "scales and are NOT comparable to each other; panel 3 "
+                         "is what enters the total"})
 
 
 # --------------------------------------------------------------------------- #
@@ -919,76 +1177,164 @@ def fig_route_cost(w: FigureWriter, epoch_rows):
 # --------------------------------------------------------------------------- #
 
 def fig_raw_waveform_reconstruction(w: FigureWriter, model, datasets,
-                                    mask_seed, device):
+                                    mask_seed, device,
+                                    objective: Optional[Dict] = None):
     """The second head's prediction against the EEG it was asked to predict.
 
+    One row per route, so E19_256's reconstruction can be read against
+    E128_512's rather than against nothing. The previous version showed the
+    first dataset the iteration happened to yield and one channel of it, which
+    is a sample, not a comparison.
+
     This is the only figure in the set showing a WAVEFORM in the units the
-    recording was made in. The spec figures show folded wavelet patches, which
-    are not EEG and must not be captioned as though they were.
+    recording was preprocessed into. The spec figures show folded wavelet
+    patches, which are not EEG and must not be captioned as though they were.
+
+    The prediction is drawn ONLY inside masked intervals. Outside them the
+    decoder is unsupervised -- no gradient ever reached those outputs -- and a
+    continuous orange line across the whole window would be read as a
+    reconstruction of the whole window.
     """
-    import torch
-
-    picked = None
-    for dataset_id, ds in datasets.items():
-        if len(ds):
-            picked = (dataset_id, ds)
-            break
-    if picked is None:
+    rows = _route_rows(datasets)
+    if not rows:
         return
-    dataset_id, ds = picked
-    route = ds.route
-    montage = ds.montage()
-    n = min(4, len(ds))
-    x = torch.stack([ds[i]["x"] for i in range(n)]).to(device)
-    meta = {k: v.to(device) for k, v in montage.items()}
-    gen = torch.Generator(device="cpu").manual_seed(mask_seed)
 
-    with torch.no_grad():
-        out = model(x, route.route_id, channel_meta=meta, mask_generator=gen)
+    fig, axes = plt.subplots(
+        2 * len(rows), 1, figsize=(9.4, 2.3 * len(rows)),
+        gridspec_kw={"height_ratios": [3, 1] * len(rows)})
+    axes = np.atleast_1d(axes).reshape(-1)
+    data, meta_rows = {}, []
 
-    pt = route.patch_t
-    P = route.patches_per_channel
-    pred = model.unpatchify(out["pred_raw"], route.n_channels, pt)[0].cpu()
-    target = model.unpatchify(out["target_raw"], route.n_channels, pt)[0].cpu()
-    mask = out["mask"][0].reshape(route.n_channels, P).cpu().numpy()
+    for i, (rid, dsid) in enumerate(rows):
+        route = ROUTES[rid]
+        ds = datasets[dsid]
+        ex = _fixed_example(model, ds, route, mask_seed, window_index=0,
+                            device=device, objective=objective)
+        pt, P = route.patch_t, route.patches_per_channel
+        mask, valid = ex["mask"], ex["valid"]
+        n_masked = mask.sum(axis=1)
+        # A VALID channel with SOME masked patches and some visible ones. Not
+        # simply the most-masked channel: at mask_ratio 0.70 a good many
+        # channels have all P patches hidden, and a row with no visible stretch
+        # shows neither the context the model had nor the boundary between the
+        # two -- the shading covers the whole window and the composite is the
+        # prediction everywhere.
+        ok = valid.all(axis=1)
+        mixed = np.where(ok & (n_masked > 0) & (n_masked < P))[0]
+        if mixed.size:
+            want = max(1, min(P - 1, int(round(model.mask_ratio * P))))
+            ch = int(mixed[np.argmin(np.abs(n_masked[mixed] - want))])
+        else:
+            fallback = np.where(n_masked > 0)[0]
+            if fallback.size == 0:
+                continue
+            ch = int(fallback[np.argmax(n_masked[fallback])])
 
-    # A channel with masked patches, so the figure shows the task rather than
-    # a stretch the model was handed.
-    per_channel = mask.sum(axis=1)
-    ch = int(np.argmax(per_channel))
-    t = np.arange(route.window_samples) / route.sampling_rate
+        target = ex["target_raw"][ch]
+        pred = ex["pred_raw"][ch]
+        m = _expand(mask[ch:ch + 1], pt)[0]
+        composite = np.where(m, pred, target)
+        t = np.arange(target.size) / route.sampling_rate
 
-    fig, axes = plt.subplots(2, 1, figsize=(8.6, 3.8), sharex=True,
-                             gridspec_kw={"height_ratios": [3, 1]})
-    ax = axes[0]
-    ax.plot(t, target[ch].numpy(), color="0.25", lw=0.9, label="preprocessed EEG")
-    ax.plot(t, pred[ch].numpy(), color=OKABE_ITO[1], lw=0.9, alpha=0.9,
-            label="raw decoder")
-    for p in range(P):
-        if mask[ch, p]:
-            ax.axvspan(p * pt / route.sampling_rate,
-                       (p + 1) * pt / route.sampling_rate,
-                       color=OKABE_ITO[4], alpha=0.18, lw=0)
-    ax.set_ylabel("amplitude (z-scored)")
-    ax.set_title(f"{dataset_id}  {route.route_id}  channel "
-                 f"{route.slots[ch]}   shaded = masked before the frontend")
-    ax.legend(frameon=False, ncol=2)
-    ax.grid(alpha=0.2, lw=0.5)
+        # Dimensionless, and computed on the masked samples of THIS channel,
+        # so the numbers under the row are the numbers the row shows.
+        # float64 throughout. In float32 the sums of squares behind a
+        # correlation over a few thousand samples overflow to inf on a route
+        # whose decoder has not converged, and numpy reports it as
+        # "overflow encountered in matmul" rather than as a number.
+        pm = pred[m].astype(np.float64)
+        tm = target[m].astype(np.float64)
+        if tm.size:
+            resid = float(np.mean((pm - tm) ** 2))
+            base = float(np.mean(tm ** 2))
+            nmse = resid / max(base, 1e-12)
+            pc, tc = pm - pm.mean(), tm - tm.mean()
+            den = float(np.linalg.norm(pc) * np.linalg.norm(tc))
+            corr = float(np.dot(pc, tc) / den) if den > 0 and np.isfinite(den) \
+                else float("nan")
+            mae = float(np.mean(np.abs(pm - tm)))
+            rmse = math.sqrt(resid)
+        else:
+            nmse = corr = mae = rmse = float("nan")
 
-    err = (pred[ch] - target[ch]).abs().numpy()
-    axes[1].fill_between(t, 0, err, color=OKABE_ITO[3], lw=0)
-    axes[1].set_ylabel("|error|")
-    axes[1].set_xlabel("time (s)")
-    axes[1].grid(alpha=0.2, lw=0.5)
+        ax, ax_err = axes[2 * i], axes[2 * i + 1]
+        ax.plot(t, target, color="0.25", lw=0.9,
+                label="preprocessed EEG (target)")
+        ax.plot(t, np.where(m, composite, np.nan), color=OKABE_ITO[1], lw=1.1,
+                label="raw head, masked patches only")
+        ax.plot(t, composite, color=OKABE_ITO[0], lw=0.6, alpha=0.55,
+                label="composite (target visible + prediction masked)")
+        for pi in range(P):
+            if mask[ch, pi]:
+                ax.axvspan(pi * pt / route.sampling_rate,
+                           (pi + 1) * pt / route.sampling_rate,
+                           color=OKABE_ITO[4], alpha=0.16, lw=0)
+        ax.set_ylabel("amplitude\n(z-scored)")
+        ax.set_title(
+            f"{rid}  {dsid}  channel {route.slots[ch]}   "
+            f"r {corr:.3f}   NMSE {nmse:.3f}   MAE {mae:.3f}   "
+            f"RMSE {rmse:.3f}   masked {mask[ch].sum()}/{P} patches",
+            loc="left")
+        ax.grid(alpha=0.2, lw=0.5)
+        ax.set_xticklabels([])
+        if i == 0:
+            ax.legend(frameon=False, ncol=3, fontsize=6.5, loc="upper right")
 
+        err = np.abs(pred - target)
+        err[~m] = np.nan
+        ax_err.fill_between(t, 0, np.nan_to_num(err), where=m,
+                            color=OKABE_ITO[3], lw=0)
+        ax_err.set_ylabel("|error|\nmasked")
+        ax_err.grid(alpha=0.2, lw=0.5)
+        if i == len(rows) - 1:
+            ax_err.set_xlabel("time (s)")
+        else:
+            ax_err.set_xticklabels([])
+
+        data[f"{rid}_time"] = t
+        data[f"{rid}_target"] = target
+        data[f"{rid}_pred"] = pred
+        data[f"{rid}_composite"] = composite
+        data[f"{rid}_mask"] = mask[ch]
+        data[f"{rid}_masked_error"] = err
+        meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                          "channel": route.slots[ch], "channel_slot": ch,
+                          "subject_id": ex["subject_id"],
+                          "recording_id": ex["recording_id"],
+                          "window_index": ex["window_index"],
+                          "mask_seed": mask_seed,
+                          "raw_corr": corr, "raw_nmse": nmse,
+                          "raw_mae": mae, "raw_rmse": rmse})
+
+    if not meta_rows:
+        plt.close(fig)
+        return
+    # Compatibility with the single-route version of this figure, whose npz
+    # held bare `time`/`target`/`pred`/`mask` and whose metadata was flat.
+    # Paper scripts written against those names keep working and get the first
+    # route's row, which is what they used to get.
+    first = meta_rows[0]["route_id"]
+    for bare in ("time", "target", "pred", "composite", "mask",
+                 "masked_error"):
+        data[bare] = data[f"{first}_{bare}"]
+    fig.suptitle(
+        "Raw-head reconstruction, one row per route. The trace is PREPROCESSED, "
+        "z-scored EEG -- not raw EDF values, and not the folded wavelet "
+        "representation. Shaded = masked before the frontend; the prediction is "
+        "drawn only there, because visible patches are unsupervised.", y=1.005,
+        fontsize=8.5)
     fig.tight_layout()
-    w.save(fig, "14_raw_waveform_reconstruction",
-           data={"time": t, "target": target[ch].numpy(),
-                 "pred": pred[ch].numpy(), "mask": mask[ch]},
-           meta={"dataset_id": dataset_id, "route_id": route.route_id,
-                 "channel": route.slots[ch],
-                 "note": "z-scored preprocessed EEG, not raw EDF values, and "
-                         "not the folded wavelet representation"})
+    w.save(fig, "14_raw_waveform_reconstruction", data,
+           {"rows": meta_rows,
+            # The flat keys the single-route version wrote, from the first row.
+            "dataset_id": meta_rows[0]["dataset_id"],
+            "route_id": meta_rows[0]["route_id"],
+            "channel": meta_rows[0]["channel"],
+            "note": "z-scored preprocessed EEG, not raw EDF values, and not "
+                    "the folded wavelet representation; the prediction is "
+                    "shown on masked patches only. One row per route; the "
+                    "unprefixed arrays are the first route's, for scripts "
+                    "written against the single-route version."})
 
 
 #: Threads for the figures that run the model. A login node has many cores and
@@ -1047,6 +1393,7 @@ def main(argv=None) -> int:
     cfg = ck.get("config", {})
     mcfg = cfg.get("model", {})
     device = torch.device("cpu")
+    objective = resolve_eeg_c1_objective(cfg)
 
     model = MultiRouteEEGPretrainer(
         embed_dim=int(mcfg.get("embed_dim", 384)),
@@ -1061,6 +1408,16 @@ def main(argv=None) -> int:
         fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
         fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
         mask_ratio=float(mcfg.get("mask_ratio", 0.5)),
+        # Not cosmetic. normalize_spec_target decides what target_spec IS, and
+        # mask_before_frontend decides whether the online view was corrupted at
+        # all; defaulting both would render an ablation run as though it had
+        # been trained the standard way.
+        mask_before_frontend=bool(objective["mask_before_frontend"]),
+        normalize_spec_target=bool(objective["normalize_spec_target"]),
+        mlp_ratio=float(mcfg.get("mlp_ratio", 4.0)),
+        use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
+        masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
+        importance_ratio=float(mcfg.get("importance_ratio", 0.6)),
         channel_encoding=mcfg.get("channel_encoding", "id"),
         channel_injection=mcfg.get("channel_injection", "token"),
         channel_embed_dim=int(mcfg.get("channel_embed_dim", 64)),
@@ -1114,13 +1471,14 @@ def main(argv=None) -> int:
         "plotting_script_git_commit": git_commit(),
         "split": args.split, "mask_seed": mask_seed,
         "manifest": manifest_path,
-        # The weights the run was trained under, recorded beside every figure
-        # so a caption cannot quote a default the run did not use.
-        "objective": cfg.get("objective", {}) or {
-            "spec_weight": cfg.get("train", {}).get("spec_recon_weight", 1.0),
-            "raw_weight": cfg.get("train", {}).get("raw_recon_weight", 0.25),
-            "fold_kl": cfg.get("train", {}).get("fold_kl", 1e-3),
-        },
+        # The weights the run was trained under, resolved by the SAME helper
+        # the trainer uses. This used to read train.spec_recon_weight and
+        # train.raw_recon_weight -- keys the config stopped writing -- and fell
+        # back to hard-coded 1.0/0.25, which happened to be right. At 0.5/0.5
+        # it would have captioned every figure with weights the run never
+        # trained under, and nothing in the pipeline would have disagreed.
+        "objective": objective,
+        "objective_equation": objective_equation(objective),
     })
 
     epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
@@ -1152,10 +1510,12 @@ def main(argv=None) -> int:
         fig_route_cost(writer, epoch_rows)
     if datasets:
         if want("fig_mask_reconstruction"):
-            fig_mask_reconstruction(writer, model, datasets, mask_seed, device)
+            fig_mask_reconstruction(writer, model, datasets, mask_seed, device,
+                                    objective=objective)
         if want("fig_raw_waveform_reconstruction"):
             fig_raw_waveform_reconstruction(writer, model, datasets,
-                                            mask_seed, device)
+                                            mask_seed, device,
+                                            objective=objective)
         if want("fig_mask_examples_by_dataset"):
             fig_mask_examples_by_dataset(writer, model, datasets, mask_seed,
                                          device)

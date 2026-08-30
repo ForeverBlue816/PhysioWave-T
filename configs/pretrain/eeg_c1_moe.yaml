@@ -50,9 +50,25 @@ data:
 # ---------------------------------------------------------------------------
 # The self-supervised objective
 #
-#   L = spec_weight * MSE( pred_spec, stopgrad(clean folded wavelet) )
+#   L = spec_weight * MSE( pred_spec, stopgrad(clean folded wavelet, per-patch
+#                                              normalised) )
 #     + raw_weight  * SmoothL1( pred_raw, stopgrad(clean preprocessed EEG) )
 #     + fold_kl     * ScaleFold KL
+#
+# EQUAL WEIGHTS. Both heads read the same encoder, and 0.5/0.5 says the encoder
+# is answerable to both: a representation that predicts the folded wavelet of a
+# hidden half-second and one that predicts its waveform are different
+# constraints, and weighting one at a quarter of the other made the second an
+# ornament -- a term whose gradient the first could always outvote. The two are
+# not comparable in MAGNITUDE (an MSE on normalised coefficients against a
+# SmoothL1 on z-scored volts), which is exactly why the weights are not tuned
+# from their loss values; the comparable numbers are masked_{spec,raw}_corr and
+# masked_{spec,raw}_nmse, which the trainer reports per route and per dataset.
+#
+# The budget went into STEPS, not into width. 384/6/6 is unchanged, and the
+# annealing runs buy optimizer updates and sample exposure instead -- see
+# EEG/pretrain_eeg_c1_moe.sh's STEPS_PER_EPOCH note. A larger model that has
+# seen less of the corpus reconstructs better and transfers no further.
 #
 # Both targets are stop-gradient: they are produced by the frontend being
 # trained, so an attached target could be moved toward the prediction instead.
@@ -63,18 +79,31 @@ data:
 # patch has already spread into its neighbours' features by the time the mask
 # token replaces it.
 #
-# THE THREE ABLATION MODES, which differ in these two lines and nothing else:
+# THE ABLATION LADDER that established the two mechanisms was run at the
+# earlier 1.0/0.25 weighting and is preserved at those values in
+# eeg_c1_moe_ablation_{a,b}.yaml -- an ablation compared against a config that
+# has since moved is not an ablation:
 #
-#   A  raw_weight: 0.0   mask_before_frontend: false   -- detach alone
-#   B  raw_weight: 0.25  mask_before_frontend: false   -- + raw fidelity
-#   C  raw_weight: 0.25  mask_before_frontend: true    -- + no-leak masking
+#   A  spec 1.0  raw 0.00  mask_before_frontend: false   -- detach alone
+#   B  spec 1.0  raw 0.25  mask_before_frontend: false   -- + raw fidelity
+#   C  spec 1.0  raw 0.25  mask_before_frontend: true    -- + no-leak masking
 #
-# C is this file. The pre-detach objective is deliberately NOT reachable: a
-# target that can be moved by the model is not a configuration option, and the
-# runs that used it already exist as checkpoints.
+# This file is C's mechanisms at the final weighting. The pre-detach objective
+# is deliberately NOT reachable: a target that can be moved by the model is not
+# a configuration option, and the runs that used it already exist as
+# checkpoints.
+#
+# THIS BLOCK IS THE ONLY SOURCE OF THESE NUMBERS. The trainer, the startup
+# banner, the figures and scripts/eeg_c1_progress.py all read them through
+# physiowave.eeg_c1.objective.resolve_eeg_c1_objective. Until this change they
+# each carried their own default and the visualizer read a `train:` key the
+# config had stopped writing; the numbers agreed only because they were all
+# still 1.0/0.25. Moving this line to 0.5 is exactly the edit that would have
+# separated them -- training at raw 0.5 while the figure said raw 0.25, with
+# nothing in the pipeline able to notice.
 objective:
-  spec_weight: 1.0
-  raw_weight: 0.25
+  spec_weight: 0.5
+  raw_weight: 0.5
   raw_beta: 0.5              # SmoothL1 knee, in z-scored units
   fold_kl: 1.0e-3
   mask_before_frontend: true
@@ -146,7 +175,10 @@ train:
   lr: 3.0e-4
   min_lr_ratio: 0.01
   weight_decay: 0.05
-  fold_kl: 1.0e-3
+  # fold_kl lives in objective:, and used to live here as well. Two
+  # copies of one number is one copy that is wrong, and the resolver
+  # prefers objective: -- so the value here was read by nothing while
+  # looking exactly like the value in force.
   clip_grad_norm: 1.0
   precision: bf16
   # 1, not 4. 769 scheduled steps at grad_accum 4 is 192 OPTIMIZER steps

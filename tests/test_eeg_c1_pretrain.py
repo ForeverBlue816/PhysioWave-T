@@ -717,6 +717,9 @@ REQUIRED_FIGURES = [
     "fig_mask_reconstruction", "fig_mask_examples_by_dataset",
     "fig_mask_statistics", "fig_wavelet_frequency_response",
     "fig_scale_fold_weights", "fig_channel_embedding",
+    # The two the dual objective needs. Without them the figure set shows one
+    # of the two reconstruction heads and reports weights nothing resolved.
+    "10_dual_objective", "14_raw_waveform_reconstruction",
 ]
 
 
@@ -741,7 +744,10 @@ def test_18_all_required_svgs_generate_from_a_smoke_checkpoint(tmp_path):
            "train.batch_size_by_route.E128_512=1"]
     r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-3000:]
-    assert (run_dir / "best.pth").is_file()
+    # Every file the selection policy names, not just the compatibility copy.
+    for name in ("latest.pth", "best.pth", "best_total.pth", "best_spec.pth",
+                 "best_raw.pth", "best_macro_total.pth"):
+        assert (run_dir / name).is_file(), name
 
     r = subprocess.run(
         [sys.executable, "scripts/visualize_eeg_pretraining.py",

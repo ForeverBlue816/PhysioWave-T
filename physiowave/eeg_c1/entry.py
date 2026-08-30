@@ -13,7 +13,7 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
+import time
 from typing import Dict, List, Optional
 
 from .routes import PRETRAIN_DATASETS
@@ -75,16 +75,64 @@ def build_smoke_corpus(root: str, datasets: Optional[List[str]] = None,
     return _merge_manifests(dirs, os.path.join(root, "merged"))
 
 
+#: How long a non-zero rank waits for rank 0's smoke corpus. Seven datasets of
+#: synthetic shards take a few seconds; five minutes is a bound, not an
+#: estimate, and hitting it means rank 0 died rather than that it was slow.
+SMOKE_CORPUS_TIMEOUT_S = 300
+
+
+def _smoke_corpus_once(root: str) -> Dict[str, str]:
+    """Build on rank 0, wait on the rest. Returns the merged manifest paths.
+
+    Called BEFORE ``setup_distributed``, so the rank comes from torchrun's
+    environment rather than from a process group that does not exist yet, and
+    the wait is a poll rather than a barrier for the same reason.
+    """
+    merged = os.path.join(root, "merged")
+    paths = {split: os.path.join(merged, f"manifest_{split}.jsonl")
+             for split in ("train", "val")}
+    if int(os.environ.get("RANK", "0")) == 0:
+        built = build_smoke_corpus(root)
+        print(f"  smoke corpus (SYNTHETIC) written to {root}", flush=True)
+        return built
+
+    deadline = time.time() + SMOKE_CORPUS_TIMEOUT_S
+    while time.time() < deadline:
+        if all(os.path.isfile(p) and os.path.getsize(p) for p in paths.values()):
+            return paths
+        time.sleep(0.5)
+    raise SystemExit(
+        f"rank {os.environ.get('RANK')} waited {SMOKE_CORPUS_TIMEOUT_S}s for "
+        f"rank 0 to write {merged} and it did not appear. Rank 0 builds the "
+        f"smoke corpus; if it failed, its error is the one to read.")
+
+
 def run(cfg: Dict, out_dir: str, args) -> int:
     """Build the trainer this config asks for and run it."""
     from ..train.utils import set_seed, setup_distributed, cleanup_distributed
     from .train import EEGC1Trainer
 
     smoke = bool(getattr(args, "smoke_test", False))
-    tmp: Optional[tempfile.TemporaryDirectory] = None
     if smoke:
-        tmp = tempfile.TemporaryDirectory(prefix="eeg_c1_smoke_")
-        corpus = build_smoke_corpus(os.path.join(tmp.name, "smoke_corpus"))
+        # UNDER THE OUTPUT DIRECTORY, not a system temp dir that is deleted when
+        # the process exits. Everything else about a run is reproducible from
+        # its own output directory -- config_resolved.yaml, dataset_manifest.json,
+        # train_command.txt -- and the corpus was the one exception: the figures
+        # need real validation windows, and by the time you could run
+        # scripts/visualize_eeg_pretraining.py on a smoke run, the windows it
+        # trained on no longer existed, so fig_mask_reconstruction and
+        # fig_raw_waveform_reconstruction silently did not appear.
+        #
+        # It stays unmistakable: the directory is named smoke_corpus, and every
+        # shard inside it carries "synthetic": true in its provenance. Delete
+        # it when you are done with the run; nothing in the real path reads it.
+        #
+        # RANK 0 BUILDS IT, the others wait for the manifests. One shared
+        # directory and N writers is a race; N private directories -- what the
+        # temp dir gave -- is worse still, because the ranks would then train
+        # on different corpora and the schedule assumes they agree on every
+        # dataset's length.
+        corpus = _smoke_corpus_once(os.path.join(out_dir, "smoke_corpus"))
         cfg.setdefault("data", {})
         cfg["data"]["manifest_train"] = corpus["train"]
         cfg["data"]["manifest_val"] = corpus["val"]
@@ -142,5 +190,3 @@ def run(cfg: Dict, out_dir: str, args) -> int:
         return rc
     finally:
         cleanup_distributed()
-        if tmp is not None:
-            tmp.cleanup()
