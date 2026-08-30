@@ -422,3 +422,83 @@ def test_62_out_of_a_58_cache_names_the_four_that_were_never_decoded(tmp_path):
 def test_a_missing_subject_is_reported_not_invented(tmp_path):
     conv, base = _legacy_cache(tmp_path, subjects=(1,))
     assert conv.find_subject_cache(base, 9) == (None, None)
+
+
+# --------------------------------------------------------------------------- #
+# the gate that scales the whole channel-identity path
+# --------------------------------------------------------------------------- #
+def _export(tmp_path, drop_gate: bool):
+    """An exported encoder, optionally missing the key an old export dropped."""
+    from physiowave.eeg_c1.downstream import ROUTE_BOUND, TRANSFERABLE
+    from channel_embedding import vocab_payload
+
+    full = EEGC1Downstream(
+        in_channels=64, window_samples=1024, sampling_rate=256, patch_samples=128,
+        num_classes=2, channel_names=SLOTS, route_id="E64_256", embed_dim=32,
+        depth=1, num_heads=2, channel_embed_dim=8)
+    keep = {k: v for k, v in full.state_dict().items()
+            if k.startswith(TRANSFERABLE) or k.startswith(ROUTE_BOUND)}
+    if drop_gate:
+        keep.pop("channel_token_gate")
+    path = tmp_path / ("no_gate.pth" if drop_gate else "with_gate.pth")
+    torch.save({"model": keep, "route_id": "E64_256", **vocab_payload()}, path)
+    return str(path)
+
+
+def _on_route_64(**kw):
+    return EEGC1Downstream(
+        in_channels=64, window_samples=512, sampling_rate=256, patch_samples=128,
+        num_classes=2, channel_names=SLOTS, route_id="E64_256", embed_dim=32,
+        depth=1, num_heads=2, channel_embed_dim=8, **kw)
+
+
+def test_a_gateless_export_is_refused(tmp_path):
+    """tanh(0) = 0 multiplies the whole channel path away, silently."""
+    path = _export(tmp_path, drop_gate=True)
+    with pytest.raises(SystemExit, match="channel_token_gate"):
+        _on_route_64().load_pretrained(path)
+
+
+def test_the_refusal_names_the_re_export(tmp_path):
+    path = _export(tmp_path, drop_gate=True)
+    with pytest.raises(SystemExit, match="export_eeg_pretrained_encoder"):
+        _on_route_64().load_pretrained(path)
+
+
+def test_a_gateless_export_loads_when_the_ablation_is_deliberate(tmp_path):
+    path = _export(tmp_path, drop_gate=True)
+    report = _on_route_64().load_pretrained(path, allow_missing_gate=True)
+    assert "channel_token_gate" not in report["taken"]
+
+
+def test_a_complete_export_loads(tmp_path):
+    path = _export(tmp_path, drop_gate=False)
+    report = _on_route_64().load_pretrained(path)
+    assert "channel_token_gate" in report["taken"]
+
+
+def test_a_zero_gate_really_does_erase_the_channel_code():
+    """Why the missing key matters, stated as behaviour rather than as a claim.
+
+    Off a route, so the ids the caller passes are the ids the encoder reads:
+    on a route `_slot_meta` replaces them with the route's own, which is
+    correct there and would hide the effect being measured here.
+    """
+    model = build_free(pool="mean").eval()
+    x = torch.randn(1, 2, 600)
+    a = {"channel_ids": torch.tensor([2, 3]),
+         "valid_channel_mask": torch.ones(2, dtype=torch.bool)}
+    b = {"channel_ids": torch.tensor([32, 52]),
+         "valid_channel_mask": torch.ones(2, dtype=torch.bool)}
+    with torch.no_grad():
+        model.channel_token_gate.fill_(0.0)
+        # two completely different electrode identities, identical tokens
+        assert torch.allclose(model.encode(x, a), model.encode(x, b))
+        model.channel_token_gate.fill_(0.33)          # what pretraining reached
+        assert not torch.allclose(model.encode(x, a), model.encode(x, b))
+
+
+def test_a_frozen_probe_cannot_recover_a_dead_gate():
+    model = _on_route_64(freeze_encoder=True)
+    gate = dict(model.named_parameters())["channel_token_gate"]
+    assert not gate.requires_grad

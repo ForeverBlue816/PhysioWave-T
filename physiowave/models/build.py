@@ -95,6 +95,7 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
             if k in model_cfg and k not in params:
                 params[k] = model_cfg[k]
         pretrained = params.pop("pretrained", None)
+        allow_missing_gate = bool(params.pop("allow_missing_gate", False))
         report_to = params.pop("_report", None)
         logger.info("Building the EEG C1 downstream model with %s", params)
         model = EEGC1Downstream(**params)
@@ -106,7 +107,8 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
                         sf.kind, sf.in_channels, sf.out_channels,
                         f" {sf.out_names}" if sf.out_names else "")
         if pretrained:
-            report = model.load_pretrained(pretrained)
+            report = model.load_pretrained(
+                pretrained, allow_missing_gate=allow_missing_gate)
             logger.info("%s <- %s", model.describe_transfer(report), pretrained)
             if report_to is not None:
                 report_to.update(report)

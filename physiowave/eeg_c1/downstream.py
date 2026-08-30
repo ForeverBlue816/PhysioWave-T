@@ -450,7 +450,8 @@ class EEGC1Downstream(nn.Module):
 
     # -- loading ------------------------------------------------------------- #
     def load_pretrained(self, path: str, route_id: Optional[str] = None,
-                        strict_shapes: bool = True) -> Dict[str, List[str]]:
+                        strict_shapes: bool = True,
+                        allow_missing_gate: bool = False) -> Dict[str, List[str]]:
         """Load what an exported encoder can supply, and report exactly what.
 
         Silence here is the failure mode. A checkpoint whose shapes disagree
@@ -509,6 +510,29 @@ class EEGC1Downstream(nn.Module):
                 f"pretraining produced, and without it this is a from-scratch "
                 f"run with extra steps.\n"
                 f"  Keys in the checkpoint: {sorted(sd)[:6]} ...")
+        if (self.channel_encoder is not None and not allow_missing_gate
+                and "channel_token_gate" not in taken):
+            # Silent zero, and the worst kind: the channel encoder's weights
+            # load, the log says they loaded, and every one of them is then
+            # multiplied by tanh(0) = 0. Under --freeze-encoder the gate never
+            # moves, so the C1 mechanism is off for the whole run -- in the
+            # experiment that exists to measure it. Exports before the fix in
+            # 3ba3b8f dropped this key, because it is a bare scalar and the
+            # allowlist was module prefixes.
+            raise SystemExit(
+                f"{path} has no channel_token_gate.\n"
+                f"  It scales the ENTIRE channel-identity path "
+                f"(delta = tanh(gate) * proj(code)) and initialises to zero, so "
+                f"loading this encoder gives a model whose C1 mechanism "
+                f"contributes exactly nothing -- and a frozen probe can never "
+                f"move it off zero.\n"
+                f"  The export dropped it; the pretraining checkpoint still has "
+                f"it. Re-export:\n"
+                f"      python scripts/export_eeg_pretrained_encoder.py \\\n"
+                f"          --checkpoint <pretrain>/best.pth --route "
+                f"{ck_route or '<route>'} --output {path}\n"
+                f"  --allow-missing-gate runs anyway, which is only right if "
+                f"you are deliberately ablating the mechanism.")
         self.load_state_dict(own)
         return {"taken": taken, "skipped": skipped,
                 "shape_mismatch": shape_mismatch,

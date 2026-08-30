@@ -72,21 +72,27 @@ model:
     head_dropout: 0.5
     head_max_norm: 0.25
 
-    # THE ONE THAT MATTERS ON THIS DATASET. Fpz-Cz and Pz-Oz are bipolar
-    # derivations. Their rows exist in the channel vocabulary (ids 2 and 3) but
-    # every pretraining corpus is monopolar, so those rows are still at their
-    # initialisation and the channel encoder -- the whole C1 mechanism -- has
-    # been contributing nothing here.
+    # TWO CHANNELS, because that is what was recorded.
     #
-    # A 1x1 mix onto thirteen named 10-20 electrodes gives it rows pretraining
-    # actually trained. This is EEGPT's chan_conv, which maps the same two
-    # derivations onto the same thirteen names for the same reason. It is not
-    # a claim that the mix recovers those electrodes: it is a learned adapter
-    # whose OUTPUT NAMES are what the channel encoder looks up, and it is
-    # trainable under --freeze-encoder because it adapts a montage rather than
-    # representing one.
-    spatial_filter: mix
-    spatial_channels: [F3, F4, C3, C4, P3, P4, Fpz, Fz, Cz, CPz, Pz, POz, Oz]
+    # EEGPT maps them onto thirteen named 10-20 electrodes with a 1x1 conv
+    # (their chan_conv) so that their channel embeddings have pretrained rows
+    # to look up -- Fpz-Cz and Pz-Oz are bipolar derivations, and every
+    # pretraining corpus here is monopolar, so those two vocabulary rows (ids
+    # 2 and 3) are still near their initialisation.
+    #
+    # That is a real mechanism and it is available:
+    #
+    #     --set model.eeg_c1.spatial_filter=mix     #           model.eeg_c1.spatial_channels="[F3, F4, C3, C4, P3, P4, Fpz,     #                                           Fz, Cz, CPz, Pz, POz, Oz]"
+    #
+    # It is not the default, for a reason worth writing down: thirteen outputs
+    # of a linear map from two inputs span a two-dimensional space. The montage
+    # gets thirteen names and the recording still has two degrees of freedom --
+    # no information is added, only an addressing scheme for the channel
+    # embedding. Whether that addressing is worth anything is measurable, and
+    # until it has been measured on this dataset the default should be the
+    # montage that was recorded. Run it as an ablation against this config;
+    # the delta is the answer.
+    spatial_filter: none
     pretrained: null
 
 # EEGPT's downstream budget for this dataset, from finetune_EEGPT_SleepEDF.py:
