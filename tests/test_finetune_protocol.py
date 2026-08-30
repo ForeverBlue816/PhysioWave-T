@@ -139,3 +139,121 @@ def test_time_pooling_is_sensitive_to_when_the_deflection_happens():
 def test_an_unknown_pool_is_refused():
     with pytest.raises(ValueError):
         build(pool="attention")
+
+
+# --------------------------------------------------------------------------- #
+# the adaptive spatial filter, and the head that reads the time axis
+# --------------------------------------------------------------------------- #
+SLEEP_NAMES = ["F3", "F4", "C3", "C4", "P3", "P4", "Fpz", "Fz", "Cz", "CPz",
+               "Pz", "POz", "Oz"]
+
+
+def build_free(pool="mean", freeze=False, num_classes=5, **kw):
+    """A montage that is on no route, so it gets its own frontend."""
+    return EEGC1Downstream(
+        in_channels=2, window_samples=600, sampling_rate=100, patch_samples=50,
+        num_classes=num_classes, channel_names=["Fpz-Cz", "Pz-Oz"],
+        embed_dim=32, depth=1, num_heads=2, channel_embed_dim=8, pool=pool,
+        freeze_encoder=freeze, **kw)
+
+
+def test_a_scale_filter_keeps_the_montage():
+    model = build(pool="time", spatial_filter="scale")
+    assert model.raw_channels == 8 and model.in_channels == 8
+    assert model.spatial_filter.gain.shape == (1, 8, 1)
+
+
+def test_a_mix_filter_replaces_the_montage_with_its_named_outputs():
+    model = build_free(pool="attn", spatial_filter="mix",
+                       spatial_channels=SLEEP_NAMES)
+    # the file still hands it two derivations; the frontend is built for 13
+    assert model.raw_channels == 2
+    assert model.in_channels == 13
+    assert model.model_channel_names == SLEEP_NAMES
+    out = model(torch.randn(2, 2, 600))
+    assert out["logits"].shape == (2, 5)
+
+
+def test_a_mix_looks_up_its_own_names_not_the_files():
+    """Fpz-Cz's vocabulary row must not end up attached to a virtual Fz."""
+    from channel_embedding import channel_ids_for
+
+    model = build_free(pool="attn", spatial_filter="mix",
+                       spatial_channels=SLEEP_NAMES)
+    ids = model._model_name_meta(torch.device("cpu"))["channel_ids"]
+    expected, _ = channel_ids_for(SLEEP_NAMES)
+    assert ids.tolist() == list(expected)
+
+
+def test_the_spatial_filter_trains_under_a_frozen_encoder():
+    """EEGPT's probe optimiser is [chan_scale] + the linear layers."""
+    model = build(pool="time", spatial_filter="scale", freeze=True)
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    assert any(n.startswith("spatial_filter") for n in trainable)
+    assert any(n.startswith("head") for n in trainable)
+    assert not any(n.startswith("shared_transformer") for n in trainable)
+
+
+def test_the_filter_stays_in_train_mode_when_the_encoder_is_frozen():
+    model = build_free(pool="attn", spatial_filter="mix",
+                       spatial_channels=SLEEP_NAMES, freeze=True)
+    model.train()
+    assert model.spatial_filter.training
+    assert not model.shared_transformer.training
+
+
+def test_the_attn_head_does_not_grow_with_the_number_of_positions():
+    """Why staging gets it and P300 does not: 60 positions cannot be flattened."""
+    short = build_free(pool="attn", probe_dim=16, head_depth=1)
+    long_ = EEGC1Downstream(
+        in_channels=2, window_samples=3000, sampling_rate=100, patch_samples=50,
+        num_classes=5, channel_names=["Fpz-Cz", "Pz-Oz"], embed_dim=32, depth=1,
+        num_heads=2, channel_embed_dim=8, pool="attn", probe_dim=16, head_depth=1)
+    n = lambda m: sum(p.numel() for p in m.head.parameters())  # noqa: E731
+    assert short.n_patches == 12 and long_.n_patches == 60
+    assert n(short) == n(long_)
+
+
+def test_the_flatten_head_does_grow_with_them():
+    a = build(pool="time", probe_dim=16)
+    b = EEGC1Downstream(
+        in_channels=8, window_samples=1024, sampling_rate=256, patch_samples=128,
+        num_classes=2, channel_names=SLOTS[:8], embed_dim=32, depth=1,
+        num_heads=2, channel_embed_dim=8, pool="time", probe_dim=16)
+    n = lambda m: sum(p.numel() for p in m.head.parameters())  # noqa: E731
+    assert n(b) > n(a)
+
+
+def test_max_norm_actually_constrains_the_rows():
+    from physiowave.eeg_c1.heads import MaxNormLinear
+
+    layer = MaxNormLinear(8, 3, max_norm=0.25)
+    with torch.no_grad():
+        layer.weight.fill_(10.0)
+    layer(torch.randn(2, 8))
+    assert torch.all(layer.weight.norm(p=2, dim=1) <= 0.25 + 1e-5)
+
+
+def test_max_norm_zero_leaves_the_weights_alone():
+    from physiowave.eeg_c1.heads import MaxNormLinear
+
+    layer = MaxNormLinear(8, 3, max_norm=0.0)
+    with torch.no_grad():
+        layer.weight.fill_(10.0)
+    layer(torch.randn(2, 8))
+    assert torch.all(layer.weight == 10.0)
+
+
+def test_channel_attention_pooling_is_not_a_mean():
+    from physiowave.eeg_c1.heads import ChannelPool
+
+    tokens = torch.randn(2, 6, 4, 32)
+    pool = ChannelPool("attn", 32)
+    with torch.no_grad():
+        pool.query.copy_(tokens[0, 0, 0] * 4.0)     # a query that picks one out
+        assert not torch.allclose(pool(tokens), tokens.mean(dim=1), atol=1e-3)
+
+
+def test_a_mix_without_output_names_is_refused():
+    with pytest.raises(ValueError):
+        build_free(spatial_filter="mix")

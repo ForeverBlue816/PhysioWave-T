@@ -52,19 +52,41 @@ model:
   dropout: 0.1
 
   eeg_c1:
-    # pool stays `mean` here, unlike P300. A sleep stage is 30 s of spectral
-    # content and averaging over the 60 patches is a fair summary of it, where
-    # an ERP is a moment and averaging destroys it. Worth saying out loud that
-    # this makes our sleep probe WEAKER than EEGPT's: theirs is a 4-layer
-    # TransformerDecoder with a cls token over the time positions (~330k
-    # trainable parameters), which is not a linear probe by any reading.
-    # `--set model.eeg_c1.pool=time` is the closer shape if you want it.
     # No route_id: this montage gets its own frontend.
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
-    patch_samples: 50
-    pool: mean
-    head_dropout: 0.1
+    patch_samples: 50           # 60 positions over the 30 s window
+
+    # A 30 s window is sixty 0.5 s positions, which is too many to flatten and
+    # exactly what EEGPT reads with a sequence model: their Sleep-EDFx head is
+    # Linear(2048, 64), a sinusoidal position code, a cls token, a 4-layer
+    # transformer over the positions, then Linear(64, 5). Ours is the same
+    # shape. `mean` was the old setting and it threw the time axis away, which
+    # for staging is throwing away the transitions -- N1 is defined partly by
+    # what it is between.
+    pool: attn
+    probe_dim: 64               # their linear_probe1 width here
+    head_depth: 4               # their num_layers
+    head_heads: 4
+    channel_pool: attn
+    head_dropout: 0.5
+    head_max_norm: 0.25
+
+    # THE ONE THAT MATTERS ON THIS DATASET. Fpz-Cz and Pz-Oz are bipolar
+    # derivations. Their rows exist in the channel vocabulary (ids 2 and 3) but
+    # every pretraining corpus is monopolar, so those rows are still at their
+    # initialisation and the channel encoder -- the whole C1 mechanism -- has
+    # been contributing nothing here.
+    #
+    # A 1x1 mix onto thirteen named 10-20 electrodes gives it rows pretraining
+    # actually trained. This is EEGPT's chan_conv, which maps the same two
+    # derivations onto the same thirteen names for the same reason. It is not
+    # a claim that the mix recovers those electrodes: it is a learned adapter
+    # whose OUTPUT NAMES are what the channel encoder looks up, and it is
+    # trainable under --freeze-encoder because it adapts a montage rather than
+    # representing one.
+    spatial_filter: mix
+    spatial_channels: [F3, F4, C3, C4, P3, P4, Fpz, Fz, Cz, CPz, Pz, POz, Oz]
     pretrained: null
 
 # EEGPT's downstream budget for this dataset, from finetune_EEGPT_SleepEDF.py:

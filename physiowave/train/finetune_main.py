@@ -354,9 +354,11 @@ def render_test_block(metrics: Dict[str, float], args, run_name: str) -> str:
 
     mode = "linear probe" if args.freeze_encoder else "full fine-tune"
     init = "pretrained" if getattr(args, "_pretrained", False) else "from scratch"
-    out = [RULE,
-           f"  {run_name}  \u00b7  TEST  \u00b7  {args.config}  \u00b7  {mode}  \u00b7  {init}",
-           RULE]
+    trainable = getattr(args, "_trainable_params", None)
+    header = f"  {run_name}  \u00b7  TEST  \u00b7  {args.config}  \u00b7  {mode}  \u00b7  {init}"
+    if trainable is not None:
+        header += f"  \u00b7  {trainable:,} trainable"
+    out = [RULE, header, RULE]
     for key, label in shown:
         value = metrics.get(key, float("nan"))
         floor = CHANCE.get(key)
@@ -547,7 +549,13 @@ def main(argv=None) -> int:
         if info.is_main:
             logger.info("loaded encoder from %s (epoch %s)", args.pretrained,
                         payload.get("epoch", "?"))
-    if args.freeze_encoder:
+    if args.freeze_encoder and not getattr(model, "_frozen", False):
+        # The fallback, for architectures that do not take freeze_encoder
+        # themselves. EEGC1Downstream does, and it knows that its adaptive
+        # spatial filter is an adapter between montages rather than part of the
+        # representation -- freezing that too would measure the encoder's
+        # response to the wrong electrode gains. Re-running this loop over it
+        # would undo exactly that.
         for name, param in model.named_parameters():
             if not name.startswith("head"):
                 param.requires_grad = False
@@ -555,6 +563,12 @@ def main(argv=None) -> int:
         model = DDP(model, device_ids=[info.local_rank] if device.type == "cuda" else None,
                     find_unused_parameters=True)
     core = model.module if hasattr(model, "module") else model
+    # Hoisted out of the logging block: the trainable count belongs in
+    # results.json as well as in the log. A probe's score is only evidence
+    # about the encoder to the extent that its head is small, and "small" is a
+    # number a reader has to be able to see next to the score.
+    n_total = sum(p.numel() for p in core.parameters())
+    n_trainable = sum(p.numel() for p in core.parameters() if p.requires_grad)
     if info.is_main:
         # State the block that is actually running. The components are dataclass
         # defaults rather than YAML entries, so reading the configs does not tell
@@ -564,12 +578,11 @@ def main(argv=None) -> int:
         if bb is not None:
             logger.info("backbone: depth=%d dim=%d | rope=%s norm=%s ffn=%s qk_norm=%s",
                         bb.depth, bb.embed_dim, bb.use_rope, bb.norm, bb.ffn, bb.qk_norm)
-        total = sum(p.numel() for p in core.parameters())
-        trainable = sum(p.numel() for p in core.parameters() if p.requires_grad)
-        # Raw counts as well as millions: a linear probe leaves a couple of
-        # thousand parameters trainable, which "0.00 M" reads as "none at all".
+        # Raw counts as well as millions: a linear probe leaves a few thousand
+        # parameters trainable, which "0.00 M" reads as "none at all".
         logger.info("model %.2f M parameters (%s trainable, %.1f%%)",
-                    total / 1e6, f"{trainable:,}", 100.0 * trainable / max(total, 1))
+                    n_total / 1e6, f"{n_trainable:,}",
+                    100.0 * n_trainable / max(n_total, 1))
 
     meta = build_channel_meta(C, args.channel_names, args.channel_xyz, device)
 
@@ -678,6 +691,8 @@ def main(argv=None) -> int:
                                "best_val": best_score if best_epoch >= 0 else None,
                                "hparams": {k: v for k, v, _ in hparams},
                                "frozen_encoder": bool(args.freeze_encoder),
+                               "total_params": n_total,
+                               "trainable_params": n_trainable,
                                "pretrained": bool(
                                    args.pretrained
                                    or (model_cfg.get("eeg_c1") or {}).get("pretrained"))}
@@ -699,6 +714,7 @@ def main(argv=None) -> int:
                         te["acc"], te["balanced_acc"], te["kappa"], te["weighted_f1"],
                         te["auroc"])
             args._pretrained = results["pretrained"]
+            args._trainable_params = n_trainable
             print(render_test_block(te, args, os.path.basename(
                 os.path.normpath(args.output_dir))), flush=True)
     if info.is_main:

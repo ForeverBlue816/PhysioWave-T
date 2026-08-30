@@ -98,6 +98,13 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
         report_to = params.pop("_report", None)
         logger.info("Building the EEG C1 downstream model with %s", params)
         model = EEGC1Downstream(**params)
+        sf = getattr(model, "spatial_filter", None)
+        if sf is not None:
+            # Worth its own line: with `mix` the montage the model sees is not
+            # the montage in the file, and the log above prints the file's.
+            logger.info("adaptive spatial filter: %s, %d -> %d channel(s)%s",
+                        sf.kind, sf.in_channels, sf.out_channels,
+                        f" {sf.out_names}" if sf.out_names else "")
         if pretrained:
             report = model.load_pretrained(pretrained)
             logger.info("%s <- %s", model.describe_transfer(report), pretrained)

@@ -57,9 +57,22 @@ model:
     # of everything else. `time` averages over electrodes only and keeps the
     # time axis, which is the shape EEGPT's probe has: a per-position
     # Linear(2048, 16), a flatten over the positions, then a Linear to logits.
-    pool: time
+    pool: time                 # project each position, then flatten
     probe_dim: 16              # their linear_probe1 width
-    head_dropout: 0.1
+    channel_pool: attn         # a learned query over electrodes, 384 parameters,
+                               # instead of a flat mean. EEGPT's encoder hands
+                               # its head channel-agnostic summary tokens and
+                               # ours does not, so this is the cheapest way to
+                               # let the head say WHERE as well as when.
+    head_dropout: 0.5          # theirs, on both the probe and the fine-tune
+    head_max_norm: 0.25        # LinearWithConstraint(240, 2, max_norm=0.25).
+                               # An EEGNet-style row renorm, which on a few
+                               # thousand labelled windows does the work weight
+                               # decay on a 7k-parameter head cannot.
+    spatial_filter: scale      # their chan_scale: one learnable gain per
+                               # electrode, trained even under --freeze-encoder
+                               # because it adapts the montage rather than
+                               # representing it (their Table 8 ablates it)
     pretrained: null           # set it, or leave it for the control
 
 # EEGPT's downstream budget, because the point of this run is to sit next to

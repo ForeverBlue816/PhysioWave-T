@@ -87,6 +87,7 @@ def load_run(path):
         with open(hpath) as fh:
             history = json.load(fh)
     return {"name": name, "path": path, "test": test, "hparams": hp,
+            "trainable": data.get("trainable_params"),
             "frozen": bool(frozen), "pretrained": bool(pretrained),
             "guessed": guessed, "best_epoch": data.get("best_epoch"),
             "select_by": data.get("select_by", "?"), "history": history,
@@ -115,7 +116,7 @@ def print_group(task, regime, rows, metrics, width):
     head = f"    {'run':<22}"
     for _, name in metrics:
         head += f"  {name:^{8 + width}}"
-    head += "  best"
+    head += f"  {'best':>5}  {'trainable':>10}"
     print(head)
 
     by_init = {}
@@ -126,7 +127,11 @@ def print_group(task, regime, rows, metrics, width):
             floor = CHANCE.get(key)
             line += f"  {value:>7.4f} {bar(value, width, lo=floor or 0.0)}"
         best = row["best_epoch"]
-        line += f"  ep{best}" if best is not None and best >= 0 else "   -"
+        line += f"  {('ep' + str(best)) if best is not None and best >= 0 else '-':>5}"
+        # The head's size, every row. A probe's number is evidence about the
+        # encoder only in proportion to how little of it the head could have
+        # supplied, and that ratio is not visible in the score.
+        line += f"  {row['trainable']:>10,}" if row["trainable"] is not None else " " * 12
         if row["guessed"]:
             line += "  (init read off the name)"
         print(line)

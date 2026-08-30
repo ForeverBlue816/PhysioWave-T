@@ -46,6 +46,7 @@ from channel_embedding import (CHANNEL_VOCAB, ChannelEncoder, PAD_ID,
                                channel_ids_for, vocab_payload)
 from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
 
+from .heads import AdaptiveSpatialFilter, TemporalHead
 from .model import WaveletFrontend
 from .routes import ROUTES, Route
 
@@ -65,6 +66,15 @@ TRANSFERABLE = ("channel_encoder.", "channel_to_token.", "channel_token_gate",
 #: Only when the montage and rate match the route the checkpoint was exported
 #: for. Refused otherwise, loudly, rather than reshaped.
 ROUTE_BOUND = ("wavelet_frontend.", "patch_embed.")
+
+#: What ``--freeze-encoder`` leaves trainable. The spatial filter is in here
+#: because it is in EEGPT's probe too: their PhysioP300 optimiser is given
+#: ``[self.chan_scale] + linear_probe1 + linear_probe2``, and the ablation in
+#: their Table 8 is between having that filter and not. It is an ADAPTER
+#: BETWEEN TWO MONTAGES, not part of the representation -- freezing it would
+#: measure the encoder's response to the wrong electrode gains rather than the
+#: encoder.
+TRAINABLE_WHEN_FROZEN = ("head", "spatial_filter")
 
 
 def _slots_for(route: Route, channel_names: Sequence[str]) -> torch.Tensor:
@@ -136,8 +146,27 @@ class EEGC1Downstream(nn.Module):
                  channel_token_gate_init: float = 0.0,
                  channel_vocab_size: Optional[int] = None,
                  pool: str = "mean", head_dropout: float = 0.0,
-                 probe_dim: int = 16, freeze_encoder: bool = False):
+                 probe_dim: int = 16, head_depth: int = 4, head_heads: int = 4,
+                 head_max_norm: float = 0.0, channel_pool: str = "mean",
+                 spatial_filter: str = "none",
+                 spatial_channels: Optional[Sequence[str]] = None,
+                 spatial_max_norm: float = 1.0,
+                 freeze_encoder: bool = False):
         super().__init__()
+        # THE SPATIAL FILTER COMES FIRST, because with `mix` it decides what
+        # montage the rest of the model is built for: the frontend's electrode
+        # count, the route slots, and -- the part that matters -- which channel
+        # vocabulary rows this dataset gets to use.
+        self.raw_channels = int(in_channels)
+        self.spatial_filter = None
+        if spatial_filter != "none":
+            self.spatial_filter = AdaptiveSpatialFilter(
+                spatial_filter, self.raw_channels, spatial_channels,
+                max_norm=spatial_max_norm)
+            if spatial_filter == "mix":
+                channel_names = list(self.spatial_filter.out_names)
+                in_channels = self.spatial_filter.out_channels
+        self.model_channel_names = list(channel_names) if channel_names else None
         # ON A ROUTE, IF IT FITS. P300 is 58 electrodes at 256 Hz and every one
         # of them is one of E64_256's 64 slots, so putting them in those slots
         # and masking the six that are absent makes the pretrained FRONTEND and
@@ -174,8 +203,9 @@ class EEGC1Downstream(nn.Module):
         self.num_classes = int(num_classes)
         self.embed_dim = int(embed_dim)
         self.pool = pool
-        if pool not in ("mean", "max", "cls_free_mean", "time"):
-            raise ValueError(f"pool must be mean, max or time, got {pool!r}")
+        if pool not in ("mean", "max", "cls_free_mean", "time", "attn"):
+            raise ValueError(
+                f"pool must be mean, max, time or attn, got {pool!r}")
         # ``time`` keeps the time axis and only averages over channels, which is
         # what an ERP head needs and what EEGPT's linear probe does: theirs is a
         # per-position Linear(2048, 16), a flatten over the 15 positions, then a
@@ -209,19 +239,28 @@ class EEGC1Downstream(nn.Module):
             mlp_ratio=mlp_ratio, dropout=dropout, rope_dim=rope_dim,
             norm=norm, ffn=ffn, qk_norm=qk_norm)
 
-        self.head_norm = nn.LayerNorm(embed_dim)
-        self.head_drop = nn.Dropout(head_dropout)
-        if pool == "time":
-            self.head_proj = nn.Linear(embed_dim, int(probe_dim))
-            self.head = nn.Linear(self.n_patches * int(probe_dim), self.num_classes)
+        if pool in ("time", "attn"):
+            # `time` flattens the projected positions (EEGPT's PhysioP300 head);
+            # `attn` reads them with a cls token and a small transformer (their
+            # Sleep-EDFx head). Both keep the time axis, which is the property
+            # that matters and the one a mean does not have.
+            self.head_norm = self.head_drop = None
+            self.head = TemporalHead(
+                "flatten" if pool == "time" else "attn",
+                embed_dim=embed_dim, n_positions=self.n_patches,
+                num_classes=self.num_classes, probe_dim=probe_dim,
+                depth=head_depth, num_heads=head_heads, dropout=head_dropout,
+                max_norm=head_max_norm, channel_pool=channel_pool,
+                norm=norm, ffn=ffn, qk_norm=qk_norm)
         else:
-            self.head_proj = None
+            self.head_norm = nn.LayerNorm(embed_dim)
+            self.head_drop = nn.Dropout(head_dropout)
             self.head = nn.Linear(embed_dim, self.num_classes)
 
         self._frozen = bool(freeze_encoder)
         if self._frozen:
             for name, p in self.named_parameters():
-                if not name.startswith(("head", "head_norm", "head_drop")):
+                if not name.startswith(TRAINABLE_WHEN_FROZEN):
                     p.requires_grad_(False)
 
     def train(self, mode: bool = True):
@@ -238,7 +277,7 @@ class EEGC1Downstream(nn.Module):
         super().train(mode)
         if mode and self._frozen:
             for name, module in self.named_children():
-                if not name.startswith("head"):
+                if not name.startswith(TRAINABLE_WHEN_FROZEN):
                     module.eval()
         return self
 
@@ -276,6 +315,25 @@ class EEGC1Downstream(nn.Module):
         return {"channel_ids": ids.to(device),
                 "valid_channel_mask": valid.to(device)}
 
+    def _model_name_meta(self, device) -> Optional[Dict[str, torch.Tensor]]:
+        """Channel metadata for the montage the MODEL sees, not the recorded one.
+
+        With a ``mix`` spatial filter the two are different objects: the file
+        carries two bipolar derivations and the model is looking at thirteen
+        named 10-20 electrodes that the mix produced. Resolving the incoming
+        names here would attach Fpz-Cz's vocabulary row to a virtual Fz, so the
+        model's own output names are what is looked up, and every one of them
+        is valid by construction.
+        """
+        if self.channel_encoder is None:
+            return None
+        if not self.model_channel_names:
+            raise ValueError("a mix spatial filter needs output electrode names")
+        ids_list, _ = channel_ids_for(self.model_channel_names)
+        ids = torch.as_tensor(ids_list, dtype=torch.long, device=device)
+        return {"channel_ids": ids,
+                "valid_channel_mask": torch.ones_like(ids, dtype=torch.bool)}
+
     def _to_slots(self, x: torch.Tensor) -> torch.Tensor:
         """Place a montage in the route's slots; absent slots stay zero.
 
@@ -311,13 +369,25 @@ class EEGC1Downstream(nn.Module):
             raise ValueError(
                 f"a {x.shape[-1]}-sample window is not a whole number of "
                 f"{r.patch_t}-sample patches")
-        if x.shape[-2] != self.in_channels:
+        if x.shape[-2] != self.raw_channels:
             raise ValueError(
                 f"{x.shape[-2]} channels, the model was built for "
-                f"{self.in_channels}")
-        cm = self._meta_tensors(meta, x.device)
-        if cm is not None and not bool(cm["valid_channel_mask"].all()):
-            x = x * cm["valid_channel_mask"].to(x.dtype).view(1, -1, 1)
+                f"{self.raw_channels}"
+                + (f" (before its {self.spatial_filter.kind} spatial filter)"
+                   if self.spatial_filter is not None else ""))
+        if self.spatial_filter is not None and self.spatial_filter.kind == "mix":
+            # A mix replaces the montage, so the recorded channel metadata
+            # describes the filter's INPUT and has nothing to say about its
+            # output. The mask would be meaningless here too: every output
+            # electrode is a combination of all the inputs.
+            x = self.spatial_filter(x)
+            cm = self._model_name_meta(x.device)
+        else:
+            cm = self._meta_tensors(meta, x.device)
+            if cm is not None and not bool(cm["valid_channel_mask"].all()):
+                x = x * cm["valid_channel_mask"].to(x.dtype).view(1, -1, 1)
+            if self.spatial_filter is not None:
+                x = self.spatial_filter(x)
         x = self._to_slots(x)
         cm = self._slot_meta(cm)
         spec = self.wavelet_frontend(x)
@@ -337,16 +407,15 @@ class EEGC1Downstream(nn.Module):
 
     def forward(self, x: torch.Tensor, meta=None) -> Dict[str, torch.Tensor]:
         tokens = self.encode(x, meta)                       # [B, C*P, D]
-        if self.pool == "time":
-            B, L, D = tokens.shape
+        if isinstance(self.head, TemporalHead):
             # The patcher emits tokens channel-major, [C, P] flattened, which is
-            # the order `encode` adds the channel code and the 2-D position in.
-            # Axis 1 of the reshape is electrodes and is averaged; axis 2 is
-            # time and is kept.
-            h = tokens.reshape(B, L // self.n_patches, self.n_patches, D).mean(dim=1)
-            h = self.head_proj(self.head_drop(self.head_norm(h)))   # [B, P, probe]
-            pooled = h.flatten(1)
-            return {"logits": self.head(pooled), "features": pooled}
+            # the order `encode` adds the channel code and the 2-D position in,
+            # so this reshape is electrodes on axis 1 and time on axis 2. The
+            # head decides what to do with each; nothing here pools.
+            B, L, D = tokens.shape
+            logits, pooled = self.head(
+                tokens.reshape(B, L // self.n_patches, self.n_patches, D))
+            return {"logits": logits, "features": pooled}
         pooled = tokens.max(dim=1).values if self.pool == "max" else tokens.mean(dim=1)
         return {"logits": self.head(self.head_drop(self.head_norm(pooled))),
                 "features": pooled}
