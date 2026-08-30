@@ -39,26 +39,40 @@ data:
   # micro-batch is route-specific -- see batch_size_by_route below. Both are
   # logged every epoch, with passes/epoch beside them.
   #
-  # PROPORTIONAL, as of 2026-08-30. An epoch is now ONE PASS OVER THE CORPUS
-  # and nothing is revisited to fill a quota.
+  # temperature:0.5 -- P(d) proportional to n_d**0.5 / b_d, the dial between
+  # `balanced` (size ignored) and `proportional` (size is everything). Both
+  # extremes were run and both failed, in opposite directions:
   #
-  # What this buys: under `balanced` a step was drawn from a route with
-  # probability 1/4 regardless of size, so the five small corpora were shown
-  # 20 to 50 times per epoch while most of TUEG went unseen. The model saw the
-  # same windows over and over. Proportional shows every window once.
+  #   proportional  one pass = 10,573 steps at world 16 and ~10 s/step, so 29 h
+  #                 for a single epoch against a 24 h walltime -- and the
+  #                 mixture it produced was 88.7% TUEG, which is the imbalance
+  #                 `balanced` exists to remove, arriving as a side effect of
+  #                 the epoch definition.
+  #   balanced      P(route)=1/4 regardless of size. At 768 steps over 10
+  #                 epochs the model saw 0.29x of TUEG and 0.27x of HBN while
+  #                 re-reading physionet_mi 20 times and tdbrain 17 times. Most
+  #                 of the compute went into the three smallest corpora.
   #
-  # WHAT IT COSTS, said plainly: TUEG is ~13.7 M of ~15.4 M windows, so it now
-  # carries about three quarters of every epoch, and the five small corpora
-  # carry a few percent between them. If the reason for `balanced` was to stop
-  # TUEG dominating the representation, that reason has not gone away -- it has
-  # been traded for coverage. temperature:0.5 is the dial between the two and
-  # is one `WEIGHTS=temperature:0.5` away at submission.
+  # At the SAME 768 steps, temperature:0.5 turns those wasted re-reads into
+  # data the model has not seen:
   #
-  # steps_per_epoch is left null and therefore DERIVED from this: the exact
-  # one-pass length, which under proportional every dataset hits at once. It
-  # will be far larger than the 384 that `balanced` produced; the startup
-  # banner prints the number it resolved.
-  weights: proportional
+  #                    balanced          temperature:0.5
+  #     tueg             0.29x                0.33x
+  #     hbn              0.27x                1.05x     <- a full pass
+  #     physionet_mi    19.92x                6.36x
+  #     tdbrain         17.08x                4.16x
+  #
+  # HBN is 1.35 M windows and the second largest corpus; under `balanced` it
+  # shares E128_512 with HGD, which is a thirtieth of its size, and the route's
+  # equal share left it seeing a quarter of one pass over a whole run.
+  #
+  # It costs 7.5 M windows over the run against balanced's 9.1 M, because a
+  # larger share of steps goes to E128_512 and that route draws 24 windows a
+  # step rather than 128. Fewer windows, more DISTINCT windows -- which is the
+  # quantity that was short.
+  #
+  # WEIGHTS=balanced or WEIGHTS=proportional at submission if this is wrong.
+  weights: temperature:0.5
 
 # ---------------------------------------------------------------------------
 # The self-supervised objective
@@ -202,17 +216,29 @@ model:
   channel_token_gate_init: 0.0
 
 train:
-  # 5, against 50 before. An epoch is now a full pass over 15.4 M windows
-  # rather than 384 sampled steps, so five of them is more total exposure than
-  # fifty of the old ones, not less.
-  epochs: 5
-  # ONE EPOCH, which under `proportional` is a fifth of the run by epochs and
-  # tens of thousands of steps in absolute terms -- against 768 under the old
-  # 50x384 schedule. 2 was right when an epoch was 384 sampled steps (768 of
-  # 19,200, about 4%); at five full passes it would have put 40% of the run on
-  # the warmup ramp. The banner prints the resolved step count, which is what
-  # turns this fraction into a number.
-  warmup_epochs: 1
+  # 60 x 768 = 46,080 optimizer updates. Ten epochs was the first attempt and
+  # was an order of magnitude short: 7,680 updates, 8 M windows against a
+  # 15.4 M corpus, TUEG seen 0.3 times over the WHOLE run. A 30 M model from
+  # random initialisation does not converge on that, and the number that says
+  # so is the update count, not the epoch count.
+  #
+  # 60 buys 45 M windows -- 2.9x the corpus, TUEG 2.0x, HBN 6.3x -- for ~128 h
+  # of training, about six 24 h jobs with RESUME=auto. Raising it further is
+  # linear and safe (100 -> 4.9x the corpus, ten jobs); the table is in the
+  # report, and EPOCHS= overrides this without editing the file.
+  #
+  # AN EPOCH IS THE UNIT THE COSINE COUNTS IN, so this number has to be decided
+  # BEFORE the first submission and left alone. Raising it on a later resume
+  # reshapes the anneal from that point on -- the trainer prints a note when it
+  # sees that happen, but the curve is still two schedules stitched together.
+  epochs: 60
+  # 2 of 60 = 1,536 of 46,080 updates, 3.3% -- squarely in the usual 5-10%
+  # band's lower half, which is where it should be for a warmup measured in
+  # steps. At the earlier 10-epoch budget the same 2 was 20% of the run; the
+  # fraction moved because the run got longer, not because the ramp did. The
+  # ramp is a number of STEPS and does not scale with EPOCHS, so raising the
+  # epoch count further only makes this fraction smaller.
+  warmup_epochs: 2
   # UNCHANGED, deliberately, across a doubled model and an eight-fold longer
   # run. 3e-4 is the linear-scaling value for this effective batch (MAE's
   # blr 1.5e-4 x batch/256), and that scaling depends on the batch, not on the
@@ -240,8 +266,52 @@ train:
   # 1 is still right: accumulation buys a bigger effective batch at the price
   # of updates, and updates are what this objective needs.
   grad_accumulation_steps: 1
-  steps_per_epoch: null          # null -> one pass over the corpus in expectation
+  # EXPLICIT, not derived, and bounded from BOTH sides.
+  #
+  # THE FLOOR is what a mixture policy derives: 386 steps under `balanced`, set
+  # by physionet_mi -- "one pass in expectation" means the pass of whichever
+  # dataset runs out first. That is a floor the smallest corpus imposes, not a
+  # budget. 768 is twice it.
+  #
+  # THE CEILING IS THE WALLTIME, for a reason that is not obvious: latest.pth
+  # is written at EPOCH BOUNDARIES ONLY, with start_step reset to 0 before it
+  # is saved. A job killed mid-epoch resumes from the START of that epoch, so
+  # an epoch that does not fit one allocation never completes and the run makes
+  # no progress however often it is resubmitted.
+  #
+  # 768 sits far inside that: ~2.1 h per epoch at the measured ~10 s/step, so a
+  # kill costs at most two hours and ten epochs is ~21 h of training. 6144 was
+  # tried and rejected -- it fits a 24 h job with only 5 h to spare and puts
+  # seventeen hours at risk on every kill, which is the wrong trade for a
+  # cluster that hands out preemptible time.
+  #
+  # THE STEP COUNT IS NOT THE LEVER FOR "sees too little data". At 768 x 10 the
+  # model sees 7.5 M windows against a 15.4 M corpus; raising steps under
+  # `balanced` spends most of the increase re-reading the three smallest
+  # corpora. The two levers that are not this one:
+  #   * the policy -- see data.weights, which is why it is temperature:0.5
+  #   * EPOCHS, which at 2.1 h each is cheap: EPOCHS=20 is ~42 h, two jobs
+  #     with RESUME=auto, and doubles the data seen at no risk per kill.
+  steps_per_epoch: 768
   val_mask_seed: 1234            # fixes the validation mask across epochs
+  # HOW MUCH OF THE VALIDATION SET EACH EPOCH SWEEPS, per dataset.
+  #
+  # null is every window, which is what it has always done and is correct for a
+  # final number. It is also the second thing that does not fit a walltime: the
+  # sweep is proportional to corpus size, so it is mostly TUEG, and ten of them
+  # is hours of GPU time spent on a curve rather than on the model.
+  #
+  # A cap makes the per-epoch curve cheap and comparable -- the mask seed is
+  # fixed by window identity, so capping takes the SAME windows every epoch
+  # rather than a fresh sample. 100 batches is 100 x 2048 windows of TUEG and
+  # 100 x 384 of HBN per epoch at world 16, far more than a batch mean needs to
+  # be stable, and it keeps ten validations from eating the hours that 21 h of
+  # training leaves in a 24 h job.
+  #
+  # THE NUMBER IN metrics_epoch.jsonl IS THEN A CURVE, NOT A FINAL RESULT, and
+  # the startup banner says so. For a number to quote, re-run validation once
+  # against the finished checkpoint with this set back to null.
+  val_max_batches_per_dataset: 100
   # Token counts differ 6.7x across routes, so one batch size would either
   # waste E19_256 or exhaust memory on E128_512. A step's effective batch
   # therefore depends on the route it drew; the mixture table logs the window

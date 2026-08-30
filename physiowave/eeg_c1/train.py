@@ -411,6 +411,15 @@ class EEGC1Trainer:
         self.normalize_spec_target = bool(self.objective["normalize_spec_target"])
         self.mask_ratio = float(mcfg.get("mask_ratio", 0.5))
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
+        # How many validation batches per dataset each epoch sweeps. None is
+        # every one of them, which is what a final number needs and what ten
+        # epochs of it cannot afford: the sweep is proportional to corpus size,
+        # so it is mostly TUEG. Capping is safe for a CURVE because the mask
+        # seed is fixed by window identity -- a cap takes the same windows every
+        # epoch, so epoch 9 is comparable to epoch 0 rather than being a
+        # different sample of the validation set.
+        _vcap = tcfg.get("val_max_batches_per_dataset")
+        self.val_max_batches = int(_vcap) if _vcap else None
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
         # How many passes over one dataset per epoch is worth a line in the
         # banner. Configurable rather than hard-coded: `balanced` on a corpus
@@ -634,6 +643,10 @@ class EEGC1Trainer:
               f"   ({updates_per_epoch}/epoch x {self.epochs} epochs,"
               f" grad_accum {self.grad_accum})")
         print(f"    effective world size       {world}")
+        print(f"    validation per epoch       "
+              + ("every window" if self.val_max_batches is None
+                 else f"first {self.val_max_batches} batch(es) per dataset "
+                      f"-- a CURVE, not a final number"))
         print(f"    per-route batch size       " + "  ".join(
             f"{rid}={self.batch_by_route[rid]}" for rid in ROUTES
             if rid in self.batch_by_route))
@@ -1115,7 +1128,7 @@ class EEGC1Trainer:
         for epoch in range(start, self.epochs):
             self.epoch = epoch
             train_metrics = self.train_epoch()
-            val_metrics = self.validate()
+            val_metrics = self.validate(max_batches=self.val_max_batches)
             epochs_here += 1
             row = {"epoch": epoch, "global_step": self.global_step,
                    **{f"train/{k}": v for k, v in train_metrics.items()},

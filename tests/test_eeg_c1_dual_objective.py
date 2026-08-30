@@ -120,18 +120,90 @@ def test_a_the_downstream_configs_match_the_encoder():
                 f"{name}.{key} is {down[key]}, pretraining is {pre[key]}"
 
 
-def test_a_an_epoch_is_one_pass_over_the_corpus():
-    """proportional, and steps_per_epoch left null so it is derived from it.
+def test_a_the_epoch_is_a_sampled_budget_not_a_corpus_pass():
+    """An explicit step budget, because one pass over the corpus does not fit.
 
-    Pinning a step count here would make the epoch length a constant that the
-    corpus no longer decides, which is the opposite of what `proportional`
-    means.
+    `proportional` was measured on the cluster at 10,573 steps per epoch and
+    ~10 s/step at world size 16 -- 29 hours for one epoch against a 24 hour
+    walltime. steps_per_epoch is therefore set rather than derived, and these
+    numbers are asserted together because together they are the run's entire
+    compute budget.
     """
     cfg = _config()
-    assert cfg["data"]["weights"] == "proportional"
-    assert cfg["train"]["steps_per_epoch"] is None
-    assert cfg["train"]["epochs"] == 5
+    assert cfg["train"]["epochs"] == 60
+    assert cfg["train"]["steps_per_epoch"] == 768
+    assert cfg["train"]["warmup_epochs"] == 2
     assert cfg["train"]["grad_accumulation_steps"] == 1
+    # Above the 386 that `balanced` derives -- a floor the smallest corpus on
+    # its route imposes, not a budget.
+    assert cfg["train"]["steps_per_epoch"] > 386
+    # And bounded above by the WALLTIME, because latest.pth is written at epoch
+    # boundaries only: an epoch that does not fit one allocation never
+    # completes, however often the job is resubmitted. Ten seconds a step is
+    # what the cluster measured.
+    assert cfg["train"]["steps_per_epoch"] * 10 < 24 * 3600, \
+        "one epoch at the measured ~10 s/step no longer fits a 24 h job"
+    # And the RUN has to be long enough to be worth doing. 7,680 updates was
+    # the first attempt and left TUEG seen 0.3 times; the update count, not
+    # the epoch count, is what says whether a masked pretraining is short.
+    updates = cfg["train"]["epochs"] * cfg["train"]["steps_per_epoch"]
+    assert updates >= 40_000, f"{updates:,} updates is short for this model"
+    # warmup is a number of steps and does not scale with epochs, so a longer
+    # run must not leave it at an unreasonable fraction.
+    warm = cfg["train"]["warmup_epochs"] * cfg["train"]["steps_per_epoch"]
+    assert 0.01 <= warm / updates <= 0.10, f"warmup is {warm/updates:.1%} of the run"
+
+
+def test_a_the_mixture_is_temperature_half():
+    """Written WITHOUT a space after the colon, or it is not a policy at all.
+
+    `temperature: 0.5` is YAML for the mapping {temperature: 0.5}, which the
+    policy branch does not match -- it falls through to the explicit-mapping
+    case and dies on "no configured dataset is present". Only the unspaced
+    string reaches the branch that reads the exponent.
+    """
+    weights = _config()["data"]["weights"]
+    assert isinstance(weights, str), \
+        "written with a space after the colon; YAML made it a mapping"
+    assert weights == "temperature:0.5"
+
+
+def test_a_validation_is_capped_and_says_so():
+    """Ten full sweeps of a TUEG-heavy validation set do not fit the budget.
+
+    The cap is on by default, which makes val/* a CURVE rather than a final
+    number. That is only acceptable because two things are true, and this test
+    holds both:
+
+    * the cap reaches validate(), so it is the sweep that shrinks rather than
+      some other thing;
+    * every epoch row records val_batches, so the number in
+      metrics_epoch.jsonl carries the size of the sweep it came from and
+      cannot be quoted as a full-set result by accident.
+
+    The mask seed is fixed by window identity, so a cap takes the SAME windows
+    every epoch -- epoch 9 is comparable to epoch 0, which is what a curve
+    needs. For a number to quote, re-run with this set to null.
+    """
+    import inspect
+    cap = _config()["train"]["val_max_batches_per_dataset"]
+    assert isinstance(cap, int) and cap > 0
+
+    src = inspect.getsource(EEGC1Trainer.fit)
+    assert "max_batches=self.val_max_batches" in src, \
+        "fit() stopped passing the cap through to validate()"
+
+    # null must still mean the full sweep -- that is the escape hatch.
+    class _T:
+        pass
+    for value, expected in ((None, None), (0, None), (100, 100)):
+        t = _T()
+        _v = {"val_max_batches_per_dataset": value}.get(
+            "val_max_batches_per_dataset")
+        assert (int(_v) if _v else None) == expected
+
+    src = inspect.getsource(EEGC1Trainer.validate)
+    assert "max_batches_per_dataset=max_batches" in src
 
 
 def test_a_the_resolver_is_the_only_source():
