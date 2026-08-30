@@ -171,7 +171,31 @@ def resolve_progress(mode: str) -> str:
     return "bar" if sys.stderr.isatty() else "log"
 
 
-def progress(iterable, desc: str, mode: str, is_main: bool):
+#: One width for every bar's label, so the bars themselves line up in a column
+#: instead of stepping left and right as "train 9" becomes "train 10".
+DESC_WIDTH = 14
+#: ``{bar}`` and the counts, then elapsed<remaining, then whatever the postfix
+#: carries. tqdm's default puts the rate in the middle, which for a batch loop
+#: is the least interesting number on the line.
+#: No space before {postfix}: tqdm prefixes its own ", " when a postfix is set,
+#: and with one here an empty postfix leaves a trailing space and a set one
+#: renders "] , loss=...".
+BAR_FORMAT = ("{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} "
+              "[{elapsed}<{remaining}]{postfix}")
+#: green for the loop that changes weights, cyan for the ones that only read
+#: them, magenta for the outer epoch bar. Three colours so a glance at a
+#: half-drawn screen says which phase the run is in.
+BAR_COLOURS = {"train": "green", "val": "cyan", "eval": "cyan", "test": "cyan",
+               "epochs": "magenta"}
+
+
+def _bar_colour(desc: str) -> str:
+    return BAR_COLOURS.get(desc.split()[0] if desc else "", "white")
+
+
+def progress(iterable, desc: str, mode: str, is_main: bool, *,
+             total: Optional[int] = None, leave: bool = False,
+             unit: str = "batch"):
     """Wrap a loader in a tqdm bar on rank 0, or leave it alone."""
     if not is_main or mode != "bar":
         return iterable
@@ -179,12 +203,77 @@ def progress(iterable, desc: str, mode: str, is_main: bool):
         from tqdm.auto import tqdm
     except ImportError:
         return iterable
-    return tqdm(iterable, desc=desc, ncols=110, leave=False, mininterval=0.5)
+    return tqdm(iterable, desc=f"{desc:<{DESC_WIDTH}}", total=total,
+                leave=leave, unit=unit, mininterval=0.5,
+                dynamic_ncols=True, bar_format=BAR_FORMAT,
+                colour=_bar_colour(desc))
+
+
+def epoch_bar(total: int, mode: str, is_main: bool, desc: str = "epochs"):
+    """The outer bar: one tick per epoch, kept on screen under the inner bars.
+
+    The inner bars answer "how long is this epoch"; over a 40-epoch run the
+    question is "how long is the RUN", and tqdm's per-epoch ETA cannot answer
+    it. Returns None when bars are off, and every caller has to tolerate that.
+    """
+    if not is_main or mode != "bar" or total <= 0:
+        return None
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        return None
+    return tqdm(total=total, desc=f"{desc:<{DESC_WIDTH}}", unit="epoch",
+                leave=True, dynamic_ncols=True, bar_format=BAR_FORMAT,
+                colour=_bar_colour(desc), position=0)
+
+
+def bar_write(bar, message: str) -> None:
+    """Print above the bars instead of through them.
+
+    ``logging`` writes straight to the stream and tears a redrawing bar in
+    half; ``tqdm.write`` clears the bars, writes, and redraws them.
+    """
+    if bar is not None and hasattr(bar, "write"):
+        bar.write(message)
+        return
+    try:
+        from tqdm.auto import tqdm
+
+        tqdm.write(message)
+    except ImportError:
+        print(message)
+
+
+def close_bar(bar) -> None:
+    if bar is not None and hasattr(bar, "close"):
+        bar.close()
 
 
 def set_postfix(bar, **kw) -> None:
     if hasattr(bar, "set_postfix"):
         bar.set_postfix(**kw, refresh=False)
+
+
+def set_postfix_str(bar, text: str) -> None:
+    """A postfix we format ourselves; ``set_postfix`` inserts its own commas."""
+    if hasattr(bar, "set_postfix_str"):
+        bar.set_postfix_str(text, refresh=False)
+
+
+def sparkbar(value: float, width: int = 18, lo: float = 0.0, hi: float = 1.0) -> str:
+    """A fixed-width bar for a metric in ``[lo, hi]``, drawn in eighths.
+
+    Eighth-blocks rather than whole ones because the numbers being compared
+    here differ in the second decimal, and at 18 characters a whole-block bar
+    cannot show a 0.02 difference at all.
+    """
+    if value != value:                                  # NaN
+        return "?" * width
+    frac = min(max((value - lo) / (hi - lo or 1.0), 0.0), 1.0)
+    eighths = int(round(frac * width * 8))
+    full, rest = divmod(eighths, 8)
+    return ("\u2588" * full + (" \u258f\u258e\u258d\u258c\u258b\u258a\u2589"[rest] if rest else "")
+            ).ljust(width)
 
 
 def fmt_eta(seconds: float) -> str:

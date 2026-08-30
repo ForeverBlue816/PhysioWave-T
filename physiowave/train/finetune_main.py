@@ -57,18 +57,24 @@ from ..channels.tare import ChannelMeta
 from ..config import load_config
 from ..models.build import build_model
 from ..models.checkpoint import load_checkpoint, save_checkpoint
+from .published import CHANCE, EEGPT, PUBLISHED, TASK_METRICS, task_of
 from .utils import (
     AverageMeter,
     autocast_ctx,
+    bar_write,
     build_optimizer,
     build_scheduler,
     cleanup_distributed,
+    close_bar,
+    epoch_bar,
     fmt_eta,
     make_grad_scaler,
     PROGRESS_MODES,
     progress,
     resolve_progress,
     set_postfix,
+    set_postfix_str,
+    sparkbar,
     pick_device,
     resolve_precision,
     set_seed,
@@ -78,6 +84,59 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc")
+
+#: Command line, then the config's ``train:`` block, then these.
+#:
+#: The middle step is new and it was a real hole: nothing in this file ever read
+#: ``cfg["train"]``, so every value came from an argparse default and the
+#: ``lr: 1.0e-4`` in ``finetune/eeg_c1_p300.yaml`` and the ``batch_size: 32`` in
+#: ``finetune/eeg_c1_sleep.yaml`` described runs that never happened -- the
+#: sleep runs were at 64. A config block that is read by nobody is worse than
+#: no config block, because it is quoted in a paper as if it ran.
+HPARAM_FALLBACKS = {
+    "epochs": 60, "batch_size": 64, "lr": 3e-4, "weight_decay": 0.05,
+    "warmup_epochs": 5, "warmup_ratio": None, "grad_clip": 1.0,
+    "label_smoothing": 0.1, "min_lr_ratio": 0.01, "precision": "bf16",
+    "select_by": "balanced_acc",
+}
+HPARAM_TYPES = {
+    "epochs": int, "batch_size": int, "warmup_epochs": int, "lr": float,
+    "weight_decay": float, "warmup_ratio": float, "grad_clip": float,
+    "label_smoothing": float, "min_lr_ratio": float, "precision": str,
+    "select_by": str,
+}
+
+
+def resolve_hparams(args, cfg: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
+    """Fill the unset training hyper-parameters and say where each came from."""
+    tcfg = dict(cfg.get("train", {}) or {})
+    rows: List[Tuple[str, Any, str]] = []
+    for key, fallback in HPARAM_FALLBACKS.items():
+        value = getattr(args, key, None)
+        source = "cli"
+        if value is None:
+            if tcfg.get(key) is not None:
+                value, source = tcfg[key], f"config:{args.config}"
+            else:
+                value, source = fallback, "builtin"
+        if value is not None:
+            value = HPARAM_TYPES[key](value)
+        setattr(args, key, value)
+        rows.append((key, value, source))
+    if args.select_by not in SELECTION_METRICS:
+        raise SystemExit(f"--select-by must be one of {SELECTION_METRICS}, "
+                         f"got {args.select_by!r}")
+    return rows
+
+
+def say(message: str, progress_mode: str, is_main: bool = True) -> None:
+    """A line for a human, printed without tearing a redrawing bar in half."""
+    if not is_main:
+        return
+    if progress_mode == "bar":
+        bar_write(None, message)
+    else:
+        logger.info("%s", message)
 
 
 class LabelledWindows(Dataset):
@@ -276,6 +335,51 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
     return {"loss": loss_meter.avg, "acc": acc_meter.avg}
 
 
+RULE = "\u2500" * 78
+
+
+def render_test_block(metrics: Dict[str, float], args, run_name: str) -> str:
+    """The test row as something readable, with the published row beside it.
+
+    A bar per metric, drawn from the metric's own floor rather than from zero:
+    a kappa of 0.30 and an AUROC of 0.72 are similar results and look nothing
+    alike when both are drawn from 0. And the published row is printed with the
+    reason it is not directly comparable, every time, because a table that
+    shows the two side by side without that line is a table someone will quote.
+    """
+    task = task_of(args.config) or task_of(run_name)
+    shown = TASK_METRICS.get(task, (("balanced_acc", "BalAcc"), ("kappa", "Kappa"),
+                                    ("auroc", "AUROC"), ("weighted_f1", "W-F1")))
+    ref = PUBLISHED.get(task, {}).get(EEGPT, {})
+
+    mode = "linear probe" if args.freeze_encoder else "full fine-tune"
+    init = "pretrained" if getattr(args, "_pretrained", False) else "from scratch"
+    out = [RULE,
+           f"  {run_name}  \u00b7  TEST  \u00b7  {args.config}  \u00b7  {mode}  \u00b7  {init}",
+           RULE]
+    for key, label in shown:
+        value = metrics.get(key, float("nan"))
+        floor = CHANCE.get(key)
+        lo = floor if floor is not None else 0.0
+        line = f"  {label:<7} {value:>7.4f}  {sparkbar(value, 22, lo=lo)}"
+        line += f"  chance {floor:.2f}" if floor is not None else " " * 13
+        if key in ref:
+            line += f"   EEGPT {ref[key]:.4f}  {value - ref[key]:+.4f}"
+        out.append(line)
+    rest = [f"{k} {metrics[k]:.4f}" for k in ("acc", "weighted_f1", "loss")
+            if k in metrics and k not in dict(shown)]
+    if rest:
+        out.append("  " + "   ".join(rest))
+    if ref:
+        out += [RULE,
+                "  EEGPT's row is a fold-averaged score on the split it also monitors,",
+                "  with no held-out test set. This row is one subject-disjoint split,",
+                "  scored on a test set nothing selected on -- the harder of the two",
+                "  numbers. Say which is which wherever they appear together."]
+    out.append(RULE)
+    return "\n".join(out)
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -294,15 +398,28 @@ def parse_args(argv=None):
     p.add_argument("--channel-names", nargs="+", default=None)
     p.add_argument("--channel-xyz", default=None,
                    help=".npy of shape (C, 3); without it TARE sees unknown coordinates")
-    p.add_argument("--epochs", type=int, default=60)
-    p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--weight-decay", type=float, default=0.05)
-    p.add_argument("--warmup-epochs", type=int, default=5)
-    p.add_argument("--grad-clip", type=float, default=1.0)
-    p.add_argument("--label-smoothing", type=float, default=0.1)
+    # default=None on every one of these, so "not given" is distinguishable
+    # from "given the same value the default happened to have" and the
+    # config's train: block gets its turn. resolve_hparams applies the order.
+    p.add_argument("--epochs", type=int, default=None)
+    p.add_argument("--batch-size", type=int, default=None)
+    p.add_argument("--lr", type=float, default=None)
+    p.add_argument("--weight-decay", type=float, default=None)
+    p.add_argument("--warmup-epochs", type=int, default=None)
+    p.add_argument("--warmup-ratio", type=float, default=None,
+                   help="warmup as a fraction of the whole run, which is how "
+                        "OneCycle's pct_start is written; overrides "
+                        "--warmup-epochs. EEGPT uses 0.2 downstream.")
+    p.add_argument("--min-lr-ratio", type=float, default=None,
+                   help="floor of the cosine decay, as a fraction of --lr")
+    p.add_argument("--grad-clip", type=float, default=None)
+    p.add_argument("--label-smoothing", type=float, default=None,
+                   help="0.0 to match EEGPT, which trains a plain "
+                        "CrossEntropyLoss. Smoothing puts a floor under the "
+                        "loss (0.20 for 2 classes, 0.39 for 5) that reads as "
+                        "a run that stopped improving.")
     p.add_argument("--num-workers", type=int, default=8)
-    p.add_argument("--precision", default="bf16")
+    p.add_argument("--precision", default=None)
     p.add_argument("--device", default=None, choices=["cuda", "cpu", "mps"],
                    help="override the automatic pick; useful when the default "
                         "accelerator is the thing under suspicion")
@@ -314,9 +431,10 @@ def parse_args(argv=None):
                    help="'auto' shows a tqdm bar on a terminal and periodic log lines "
                         "with a percentage and an ETA when the stream is redirected, "
                         "where a redrawing bar would become one enormous line")
-    p.add_argument("--select-by", default="balanced_acc", choices=SELECTION_METRICS,
-                   help="validation metric that decides best.pth; balanced accuracy by "
-                        "default because downstream label sets are rarely balanced")
+    p.add_argument("--select-by", default=None, choices=SELECTION_METRICS,
+                   help="validation metric that decides best.pth. EEGPT monitors "
+                        "AUROC for binary tasks and Cohen's kappa for multi-class; "
+                        "the finetune configs set the matching one.")
     p.add_argument("--patience", type=int, default=0,
                    help="stop when --select-by has not improved for this many epochs")
     p.add_argument("--min-delta", type=float, default=0.0)
@@ -355,6 +473,11 @@ def main(argv=None) -> int:
 
     train_path, val_path, test_path = resolve_files(args)
     cfg = load_config(args.config, args.set)
+    hparams = resolve_hparams(args, cfg)
+    if info.is_main:
+        logger.info("hyper-parameters (cli > config train: > builtin):")
+        for key, value, source in hparams:
+            logger.info("    %-16s %-10s  [%s]", key, value, source)
     model_cfg = dict(cfg.get("model", {}) or {})
     model_cfg["num_classes"] = args.num_classes
     cfg["model"] = model_cfg
@@ -387,6 +510,12 @@ def main(argv=None) -> int:
         # config names them. They are facts about the data, and a second copy
         # in a config is one that can disagree with it silently.
         c1 = dict(model_cfg.get("eeg_c1", {}) or {})
+        # Through the model, not only through requires_grad. EEGC1Downstream
+        # overrides train() on this flag and holds the encoder in eval mode, so
+        # the probe reads the representation the encoder actually produces
+        # rather than a fresh dropout sample of it every step.
+        if args.freeze_encoder:
+            c1["freeze_encoder"] = True
         c1.setdefault("in_channels", C)
         c1.setdefault("window_samples", T)
         if train_set.channel_names and "channel_names" not in c1:
@@ -463,19 +592,34 @@ def main(argv=None) -> int:
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
     optimizer = build_optimizer(core, args.lr, args.weight_decay)
     steps = max(len(train_loader), 1)
-    warmup = args.warmup_epochs
-    if warmup >= args.epochs:
-        warmup = max(args.epochs // 10, 0)
+    total_steps = args.epochs * steps
+    if args.warmup_ratio is not None:
+        # OneCycle's pct_start, which is how EEGPT writes it (0.2 on every
+        # downstream task). Expressed in steps it survives a change of epoch
+        # count, where "2 warmup epochs" silently becomes 20% of a 10-epoch run
+        # and 5% of a 40-epoch one.
+        warmup_steps = int(round(args.warmup_ratio * total_steps))
+    else:
+        warmup_steps = args.warmup_epochs * steps
+    if warmup_steps >= total_steps:
+        warmup_steps = max(total_steps // 10, 0)
         if info.is_main:
-            logger.warning("warmup_epochs >= epochs; using %d so the cosine decay happens",
-                           warmup)
-    scheduler = build_scheduler(optimizer, warmup * steps, args.epochs * steps)
+            logger.warning("warmup covers the whole run; using %d steps (10%%) "
+                           "so the decay happens", warmup_steps)
+    if info.is_main:
+        logger.info("schedule: %d steps/epoch, %d total, %d warmup (%.0f%%), "
+                    "lr %.2e -> %.2e", steps, total_steps, warmup_steps,
+                    100.0 * warmup_steps / max(total_steps, 1), args.lr,
+                    args.lr * args.min_lr_ratio)
+    scheduler = build_scheduler(optimizer, warmup_steps, total_steps,
+                                args.min_lr_ratio)
 
     os.makedirs(args.output_dir, exist_ok=True)
     history: List[Dict[str, Any]] = []
     best_score, best_epoch, stale = float("-inf"), -1, 0
 
     run_started = time.monotonic()
+    outer = epoch_bar(args.epochs, args.progress, info.is_main)
     for epoch in range(args.epochs):
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
@@ -501,11 +645,16 @@ def main(argv=None) -> int:
             if info.is_main:
                 done = epoch + 1
                 eta = (time.monotonic() - run_started) / done * (args.epochs - done)
-                logger.info("epoch %d/%d train_loss %.4f val_loss %.4f val_acc %.4f "
-                            "val_bal %.4f val_auroc %.4f eta %s%s",
-                            epoch, args.epochs - 1, tr["loss"], va["loss"],
-                            va["acc"], va["balanced_acc"], va["auroc"], fmt_eta(eta),
-                            "  *" if improved else "")
+                say(f"epoch {epoch:>3}/{args.epochs - 1}  "
+                    f"train_loss {tr['loss']:.4f}  val_loss {va['loss']:.4f}  "
+                    f"acc {va['acc']:.4f}  bal {va['balanced_acc']:.4f}  "
+                    f"kappa {va['kappa']:.4f}  auroc {va['auroc']:.4f}  "
+                    f"eta {fmt_eta(eta)}" + ("  *best" if improved else ""),
+                    args.progress)
+                set_postfix_str(outer, f"best {args.select_by} {best_score:.4f} "
+                                       f"@ep{best_epoch}")
+        if outer is not None:
+            outer.update(1)
         history.append(row)
         if info.is_main:
             with open(os.path.join(args.output_dir, "history.json"), "w") as fh:
@@ -524,7 +673,14 @@ def main(argv=None) -> int:
             if flag.item() > 0:
                 break
 
-    results: Dict[str, Any] = {"best_epoch": best_epoch, "select_by": args.select_by}
+    close_bar(outer)
+    results: Dict[str, Any] = {"best_epoch": best_epoch, "select_by": args.select_by,
+                               "best_val": best_score if best_epoch >= 0 else None,
+                               "hparams": {k: v for k, v, _ in hparams},
+                               "frozen_encoder": bool(args.freeze_encoder),
+                               "pretrained": bool(
+                                   args.pretrained
+                                   or (model_cfg.get("eeg_c1") or {}).get("pretrained"))}
     if test_loader is not None:
         best = os.path.join(args.output_dir, "best.pth")
         if os.path.exists(best):
@@ -536,9 +692,15 @@ def main(argv=None) -> int:
                       args.num_classes, "test", args.progress, info.is_main)
         results["test"] = te
         if info.is_main:
+            # The grep target stays exactly as it was -- scripts and habits
+            # depend on a line starting with TEST -- and the block under it is
+            # for the human reading the tail of a log.
             logger.info("TEST acc %.4f bal %.4f kappa %.4f wf1 %.4f auroc %.4f",
                         te["acc"], te["balanced_acc"], te["kappa"], te["weighted_f1"],
                         te["auroc"])
+            args._pretrained = results["pretrained"]
+            print(render_test_block(te, args, os.path.basename(
+                os.path.normpath(args.output_dir))), flush=True)
     if info.is_main:
         with open(os.path.join(args.output_dir, "results.json"), "w") as fh:
             json.dump(results, fh, indent=2)

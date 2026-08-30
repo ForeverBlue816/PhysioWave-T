@@ -52,6 +52,13 @@ model:
   dropout: 0.1
 
   eeg_c1:
+    # pool stays `mean` here, unlike P300. A sleep stage is 30 s of spectral
+    # content and averaging over the 60 patches is a fair summary of it, where
+    # an ERP is a moment and averaging destroys it. Worth saying out loud that
+    # this makes our sleep probe WEAKER than EEGPT's: theirs is a 4-layer
+    # TransformerDecoder with a cls token over the time positions (~330k
+    # trainable parameters), which is not a linear probe by any reading.
+    # `--set model.eeg_c1.pool=time` is the closer shape if you want it.
     # No route_id: this montage gets its own frontend.
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
@@ -60,13 +67,23 @@ model:
     head_dropout: 0.1
     pretrained: null
 
+# EEGPT's downstream budget for this dataset, from finetune_EEGPT_SleepEDF.py:
+# 40 epochs, batch 8*4, AdamW weight_decay=0.01, OneCycleLR max_lr=4e-4
+# pct_start=0.2, plain CrossEntropyLoss, Cohen's kappa as the monitor.
+#
+# Their max_lr is taken as-is here rather than scaled down the way P300's is:
+# this montage gets a FRESH frontend and patcher, and a randomly initialised
+# filter bank needs the larger step.
 train:
-  epochs: 20
-  warmup_epochs: 2
-  lr: 3.0e-4                   # a fresh frontend needs more than P300's head
+  epochs: 40
+  warmup_ratio: 0.2
+  lr: 4.0e-4
   min_lr_ratio: 0.01
-  weight_decay: 0.05
-  batch_size: 32
+  weight_decay: 0.01
+  batch_size: 32               # theirs, and until now this line did nothing:
+                               # finetune_main read no train: block at all, so
+                               # every sleep run was at the argparse default 64
   precision: bf16
   grad_clip: 1.0
-  label_smoothing: 0.1
+  label_smoothing: 0.0
+  select_by: kappa             # their monitor score for a multi-class task

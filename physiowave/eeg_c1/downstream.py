@@ -136,7 +136,7 @@ class EEGC1Downstream(nn.Module):
                  channel_token_gate_init: float = 0.0,
                  channel_vocab_size: Optional[int] = None,
                  pool: str = "mean", head_dropout: float = 0.0,
-                 freeze_encoder: bool = False):
+                 probe_dim: int = 16, freeze_encoder: bool = False):
         super().__init__()
         # ON A ROUTE, IF IT FITS. P300 is 58 electrodes at 256 Hz and every one
         # of them is one of E64_256's 64 slots, so putting them in those slots
@@ -174,8 +174,16 @@ class EEGC1Downstream(nn.Module):
         self.num_classes = int(num_classes)
         self.embed_dim = int(embed_dim)
         self.pool = pool
-        if pool not in ("mean", "max", "cls_free_mean"):
-            raise ValueError(f"pool must be mean or max, got {pool!r}")
+        if pool not in ("mean", "max", "cls_free_mean", "time"):
+            raise ValueError(f"pool must be mean, max or time, got {pool!r}")
+        # ``time`` keeps the time axis and only averages over channels, which is
+        # what an ERP head needs and what EEGPT's linear probe does: theirs is a
+        # per-position Linear(2048, 16), a flatten over the 15 positions, then a
+        # Linear(240, 2). A mean over channels AND time hands the head one
+        # vector per window, and a P300 is a deflection 250-500 ms wide --
+        # averaging over four 500 ms patches averages it away before the head
+        # ever sees it.
+        self.n_patches = int(window_samples) // int(patch_samples)
 
         self.wavelet_frontend = WaveletFrontend(
             self.route, max_level=max_level, wave_kernel_size=wave_kernel_size,
@@ -203,13 +211,36 @@ class EEGC1Downstream(nn.Module):
 
         self.head_norm = nn.LayerNorm(embed_dim)
         self.head_drop = nn.Dropout(head_dropout)
-        self.head = nn.Linear(embed_dim, self.num_classes)
+        if pool == "time":
+            self.head_proj = nn.Linear(embed_dim, int(probe_dim))
+            self.head = nn.Linear(self.n_patches * int(probe_dim), self.num_classes)
+        else:
+            self.head_proj = None
+            self.head = nn.Linear(embed_dim, self.num_classes)
 
         self._frozen = bool(freeze_encoder)
         if self._frozen:
             for name, p in self.named_parameters():
                 if not name.startswith(("head", "head_norm", "head_drop")):
                     p.requires_grad_(False)
+
+    def train(self, mode: bool = True):
+        """Keep a frozen encoder in eval mode even inside ``model.train()``.
+
+        A linear probe measures the representation, so the features it is handed
+        have to be the ones the encoder actually produces. Left in train mode a
+        frozen encoder still applies its dropout, so every epoch shows the head a
+        different corrupted view of a fixed representation -- noise the head
+        cannot fit and the encoder cannot adapt to, which reads as a probe that
+        will not converge. ``--set model.dropout=0.0`` worked around it and had
+        to be remembered on every probe command.
+        """
+        super().train(mode)
+        if mode and self._frozen:
+            for name, module in self.named_children():
+                if not name.startswith("head"):
+                    module.eval()
+        return self
 
     # -- channel metadata ---------------------------------------------------- #
     def _meta_tensors(self, meta, device) -> Optional[Dict[str, torch.Tensor]]:
@@ -305,7 +336,17 @@ class EEGC1Downstream(nn.Module):
         return self.shared_transformer(tokens)
 
     def forward(self, x: torch.Tensor, meta=None) -> Dict[str, torch.Tensor]:
-        tokens = self.encode(x, meta)
+        tokens = self.encode(x, meta)                       # [B, C*P, D]
+        if self.pool == "time":
+            B, L, D = tokens.shape
+            # The patcher emits tokens channel-major, [C, P] flattened, which is
+            # the order `encode` adds the channel code and the 2-D position in.
+            # Axis 1 of the reshape is electrodes and is averaged; axis 2 is
+            # time and is kept.
+            h = tokens.reshape(B, L // self.n_patches, self.n_patches, D).mean(dim=1)
+            h = self.head_proj(self.head_drop(self.head_norm(h)))   # [B, P, probe]
+            pooled = h.flatten(1)
+            return {"logits": self.head(pooled), "features": pooled}
         pooled = tokens.max(dim=1).values if self.pool == "max" else tokens.mean(dim=1)
         return {"logits": self.head(self.head_drop(self.head_norm(pooled))),
                 "features": pooled}

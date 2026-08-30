@@ -27,16 +27,17 @@ import os
 import statistics
 import sys
 
-# EEGPT Table 4, PhysioP300 row. Binary task, so the shared "Weighted F1 /
-# AUROC" column is AUROC.
-EEGPT = "EEGPT (NeurIPS'24)"
-PUBLISHED = {
-    EEGPT:  {"balanced_acc": 0.6502, "kappa": 0.2999, "auroc": 0.7168},
-    "LaBraM (ICLR'24)":    {"balanced_acc": 0.6477, "kappa": 0.2935, "auroc": 0.7068},
-    "BENDR":               {"balanced_acc": 0.6114, "kappa": 0.2227, "auroc": 0.6588},
-    "BIOT (NeurIPS'23)":   {"balanced_acc": 0.5485, "kappa": 0.0968, "auroc": 0.5308},
-}
-METRICS = [("auroc", "AUROC"), ("balanced_acc", "BalAcc"), ("kappa", "Kappa")]
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# EEGPT Table 4, PhysioP300 row -- one copy, in physiowave/train/published.py,
+# shared with finetune_main's test block and scripts/report_finetune.py. The
+# module is stdlib-only, so importing it does not cost this script the property
+# that it runs in whichever environment happens to be active.
+from physiowave.train.published import (EEGPT, PUBLISHED as ALL_PUBLISHED,  # noqa: E402
+                                        TASK_METRICS)
+
+PUBLISHED = ALL_PUBLISHED["p300"]
+METRICS = list(TASK_METRICS["p300"])
 N_FOLDS = 9
 
 

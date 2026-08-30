@@ -51,17 +51,36 @@ model:
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
     patch_samples: 128
-    pool: mean
+    # NOT mean. Mean pools over electrodes AND the four 500 ms patches, which
+    # hands the head one vector per 2 s window -- and a P300 is a 250-500 ms
+    # deflection, so that average is the ERP divided by four plus three patches
+    # of everything else. `time` averages over electrodes only and keeps the
+    # time axis, which is the shape EEGPT's probe has: a per-position
+    # Linear(2048, 16), a flatten over the positions, then a Linear to logits.
+    pool: time
+    probe_dim: 16              # their linear_probe1 width
     head_dropout: 0.1
     pretrained: null           # set it, or leave it for the control
 
+# EEGPT's downstream budget, because the point of this run is to sit next to
+# their row. Their linear_probe_EEGPT_PhysioP300.py: 100 epochs, batch 64,
+# AdamW weight_decay=0.01, OneCycleLR max_lr=8e-4 pct_start=0.2, a plain
+# CrossEntropyLoss, AUROC as the monitor.
 train:
-  epochs: 30
-  warmup_epochs: 2
-  lr: 1.0e-4                   # a pretrained encoder, not a fresh one
+  epochs: 100
+  warmup_ratio: 0.2            # OneCycle's pct_start, in steps not epochs, so
+                               # it survives a change of epoch count
+  lr: 5.0e-4                   # their 8e-4 trains ~33k probe parameters on a
+                               # frozen encoder; this figure updates all 15M,
+                               # so it is scaled down. The probe command passes
+                               # --lr 1e-3 and is the one comparable to theirs.
   min_lr_ratio: 0.01
-  weight_decay: 0.05
+  weight_decay: 0.01           # theirs. 0.05 was ours and nothing chose it.
   batch_size: 64
   precision: bf16
   grad_clip: 1.0
-  label_smoothing: 0.1
+  label_smoothing: 0.0         # EEGPT trains a plain CrossEntropyLoss. At 0.1
+                               # the binary loss cannot go below 0.199 however
+                               # well the model does, which reads in a log as a
+                               # run that stopped learning.
+  select_by: auroc             # their monitor score for a binary task
