@@ -35,13 +35,17 @@
 # number. `bash EEG/finetune_p300.sh` runs FOLD; loop it 0..8 and average.
 #
 # Architecture notes:
-#   in_channels 58   the electrodes EEGPT's encoder consumes, in their order
+#   in_channels 62   the converter's default montage: every electrode erpbci
+#                    records that E64_256 has a slot for. It MUST match the
+#                    split -- finetune.py checks it against the file's channel
+#                    metadata and refuses a mismatch. A split built with
+#                    --channels 58 needs IN_CHANNELS=58 here.
 #   patch_size 64    250 ms at 256 Hz, matching their d=64. The window is 512
 #                    samples, so 8 time patches; the fold collapses the 4
-#                    wavelet scales back onto 58 rows, giving 58 x 8 = 464
-#                    tokens. WITHOUT the fold it would be (3+1) x 58 = 232 rows
-#                    and 1856 tokens, which is the argument for scale_fold on
-#                    a 58-channel montage rather than a 2-channel one.
+#                    wavelet scales back onto 62 rows, giving 62 x 8 = 496
+#                    tokens. WITHOUT the fold it would be (3+1) x 62 = 248 rows
+#                    and 1984 tokens, which is the argument for scale_fold on
+#                    a 62-channel montage rather than a 2-channel one.
 #   class_weight     balanced. A Donchin speller flashes 6 rows and 6 columns
 #                    and 2 contain the target, so the positive rate is exactly
 #                    1/6. Unweighted, argmax at 0.5 collapses onto the majority
@@ -56,10 +60,14 @@
 #                    saturates no later. warmup is 2, not 3: at 15 epochs a
 #                    3-epoch warmup is a fifth of the budget.
 #
-# Fold 0 baseline at the previous defaults (30 epochs), for anything compared
-# against it later:
+# Fold 0 baseline at the previous defaults (30 epochs, 58 channels), for
+# anything compared against it later:
 #
 #   AUROC 0.7463   BalAcc 0.6604   Kappa 0.2837
+#
+# That row is 58 electrodes. A 62-channel split is a different input and is not
+# a drop-in comparison with it -- to reproduce the row exactly, build the split
+# with --channels 58 and pass IN_CHANNELS=58.
 #
 # against EEGPT's 0.7168 / 0.6502 / 0.2999. Ahead on the two threshold-free
 # metrics and behind on kappa, which is the signature of a good ranking read at
@@ -115,11 +123,11 @@ mkdir -p "${OUTPUT_DIR}"
 # Channel embedding. Off by default: none/none is the run that existed before
 # the feature, and every ablation row is measured against it.
 #
-# This montage is MONOPOLAR -- 58 electrodes against a common reference, not 58
-# derivations. The `signed` encoder sees both endpoint indices pointing at the
-# same electrode, so its direction term is exactly zero and what remains is the
-# electrode's position, marked as monopolar. Nothing here claims a direction
-# that the montage does not have.
+# This montage is MONOPOLAR -- each channel is one electrode against a common
+# reference, not a derivation. The `signed` encoder sees both endpoint indices
+# pointing at the same electrode, so its direction term is exactly zero and what
+# remains is the electrode's position, marked as monopolar. Nothing here claims
+# a direction that the montage does not have.
 #
 # These are VALUES, passed straight through, not `${VAR:+--flag}` presence
 # tests: FOO=0 is a non-empty string and that idiom would read it as "on".
@@ -170,7 +178,7 @@ fi
   --val_file "${VAL_FILE}" \
   --test_file "${TEST_FILE}" \
   ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
-  --in_channels "${IN_CHANNELS:-58}" \
+  --in_channels "${IN_CHANNELS:-62}" \
   --max_level "${MAX_LEVEL:-3}" \
   --wave_kernel_size "${WAVE_KERNEL_SIZE:-16}" \
   --wavelet_names ${WAVELET_NAMES:-sym4 sym5 db6 sym8 db8} \

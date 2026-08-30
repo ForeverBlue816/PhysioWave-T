@@ -8,7 +8,11 @@ so the result sits next to their published row rather than beside it:
 
     * source        PhysioNet erpbci 1.0.0, EDF, 2048 Hz, 64 EEG channels
                     (+ 6 ocular/ear channels, dropped)
-    * channels      the 58 EEGPT's model actually consumes, in their order
+    * channels      62 by default -- every electrode the EDF records that
+                    E64_256, the route this encoder pretrained on, has a slot
+                    for, in the ROUTE's order. `--channels 58` writes EEGPT's
+                    own set instead, in their order, for a
+                    preprocessing-identical row.
     * epochs        tmin=-0.1 s, tmax=2.0 s around each flash, aligned to the
                     EDF's own annotations
     * filtering     IIR 0-120 Hz, applied after epoching, as they do
@@ -67,9 +71,9 @@ Usage:
         --edf-dir $PW_DATA_EEG/erpbci --out-dir $PW_DATA_EEG/p300_f0 --fold 0
 
 Output, matching what finetune.py reads:
-    data          (N, 58, 512) float32
-    label         (N,)         int64      0=non-target 1=target
-    channel_names (58,)        bytes
+    data          (N, C, 512) float32   C = --channels, 62 by default
+    label         (N,)        int64      0=non-target 1=target
+    channel_names (C,)        bytes      the montage, by name and in order
     subject       (N,)         int64      provenance; unused by the trainer
 """
 
@@ -95,8 +99,8 @@ CLASS_NAMES = ["nontarget", "target"]
 # --------------------------------------------------------------------------- #
 # Channel metadata, written into every HDF5 so the trainer never parses a name.
 #
-# This montage is MONOPOLAR: 58 electrodes against one common reference, not 58
-# differences of electrode pairs. That is the opposite of Sleep-EDF and it is
+# This montage is MONOPOLAR: every channel is one electrode against one common
+# reference, not a difference of an electrode pair. That is the opposite of Sleep-EDF and it is
 # the reason the encoder needs to be told which it is looking at -- "Cz" the
 # electrode and "Fz-Cz" the derivation are different measurements, and a code
 # that labelled them alike would be telling the model something false.
@@ -114,7 +118,9 @@ COORDINATE_TYPE = "template_not_subject_digitized"
 COORDINATE_SYSTEM = "RAS"
 COORDINATE_UNIT = "m"
 DERIVATION_TYPE = "monopolar_common_reference"
-MONTAGE_TYPE = "erpbci_58"
+# No MONTAGE_TYPE constant: the montage is whatever --channels asked for, and
+# build_channel_metadata writes f"erpbci_{len(channels)}" from the list it is
+# given. A constant here would be a second copy that says 58 forever.
 
 # The 64 EEG channels in the EDF, in EDF order. The remaining six -- EARL,
 # EARR, VEOGL, VEOGR, HEOGL, HEOGR -- are ocular and reference and are dropped.

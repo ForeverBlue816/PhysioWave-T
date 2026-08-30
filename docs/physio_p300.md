@@ -244,7 +244,7 @@ Between-subject variance is the dominant term on ERP tasks — EEGPT's own
 
 | variable | default | why |
 |---|---|---|
-| `IN_CHANNELS` | `58` | must match what the preprocessing wrote |
+| `IN_CHANNELS` | `62` | must match what the preprocessing wrote — `--channels 62` is the converter's default; a split made with `--channels 58` needs `IN_CHANNELS=58` |
 | `PATCH_SIZE` | `64` | 250 ms at 256 Hz, EEGPT's `d`; 512/64 = 8 time patches |
 | `NUM_CLASSES` | `2` | binary |
 | `CLASS_WEIGHT` | `balanced` | see below — **do not turn this off** |

@@ -22,8 +22,9 @@ says which of them a downstream task can reuse:
                         parameters, so nothing to transfer.
     transformer         bound to nothing. THE thing pretraining produced.
 
-So a task whose montage and rate match a pretraining route (P300 is 58
-channels at 256 Hz, which is E64_256's slots and rate) reuses everything,
+So a task whose montage and rate match a pretraining route (P300 is 62
+channels at 256 Hz, all of them E64_256 slots, at that route's rate) reuses
+everything,
 and a task that does not (Sleep-EDF is two bipolar derivations at 100 Hz)
 builds a fresh frontend and patcher and reuses the rest. Both are the same
 class; the difference is which keys the checkpoint supplies.
@@ -131,7 +132,7 @@ def downstream_route(in_channels: int, sampling_rate: float,
 
     Route is a description, not a registry entry: the model reads n_channels,
     patch_t and rate_key off it and nothing looks the id up. Sleep-EDF is
-    2 x 3000 at 100 Hz with a 50-sample patch; P300 is 58 x 512 at 256 Hz with
+    2 x 3000 at 100 Hz with a 50-sample patch; P300 is 62 x 512 at 256 Hz with
     128. Neither is a route and both are describable.
     """
     if window_samples % patch_samples:
@@ -187,11 +188,12 @@ class EEGC1Downstream(nn.Module):
                 channel_names = list(self.spatial_filter.out_names)
                 in_channels = self.spatial_filter.out_channels
         self.model_channel_names = list(channel_names) if channel_names else None
-        # ON A ROUTE, IF IT FITS. P300 is 58 electrodes at 256 Hz and every one
+        # ON A ROUTE, IF IT FITS. P300 is 62 electrodes at 256 Hz and every one
         # of them is one of E64_256's 64 slots, so putting them in those slots
-        # and masking the six that are absent makes the pretrained FRONTEND and
-        # PATCHER transferable too, not just the transformer. That is a much
-        # stronger transfer than a fresh 58-channel frontend, and it is what
+        # and masking the two that are absent (TP9, TP10 -- the EDF records
+        # P9/P10 instead) makes the pretrained FRONTEND and PATCHER
+        # transferable too, not just the transformer. That is a much stronger
+        # transfer than a fresh 62-channel frontend, and it is what
         # valid_channel_mask exists for -- pretraining itself runs with padded
         # slots on every corpus that does not fill its route.
         if route_id is not None:

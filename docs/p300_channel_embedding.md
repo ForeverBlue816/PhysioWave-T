@@ -10,13 +10,20 @@ existing 2-D position embedding already distinguishes two rows. It is the least
 favourable place a channel code could be tested — which was the point of
 running it there first, but it cannot answer whether channel identity matters.
 
-erpbci has **58 electrodes**. That is enough for an identity to be worth
-learning and enough for a geometry to be worth having.
+erpbci has **58 electrodes** in the montage this ablation ran on. That is
+enough for an identity to be worth learning and enough for a geometry to be
+worth having.
+
+> **The default montage is now 62**, not 58 — every electrode erpbci records
+> that `E64_256` has a slot for, so a C1 pretrained frontend transfers into it
+> whole. Every number on this page was measured at 58 (`--channels 58`,
+> `IN_CHANNELS=58`) and is left at 58 rather than restated, because the rows
+> are a record of runs that happened. A re-run at 62 is a different input.
 
 ## Monopolar, and what that changes
 
-This montage is 58 electrodes against **one common reference**, not 58
-differences of electrode pairs. That is the opposite of Sleep-EDF, and the
+This montage is monopolar: each channel is one electrode against **one common
+reference**, not a difference of an electrode pair. That is the opposite of Sleep-EDF, and the
 encoder has to describe both without pretending either is the other.
 
 A monopolar channel has a position and **no direction**. Both endpoint indices

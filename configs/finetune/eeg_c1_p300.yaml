@@ -7,6 +7,16 @@
 # the absent ones are masked, exactly as pretraining ran on every corpus that
 # did not fill its route.
 #
+# THE MONTAGE IS 62, and that is the converter's default:
+#
+#     python EEG/physio_p300_finetune.py --edf-dir $PW_DATA_EEG/erpbci \
+#         --out-dir $PW_DATA_EEG/p300_f0 --fold 0 --channels 62
+#
+# Nothing in this file names the electrodes. in_channels and channel_names come
+# out of the HDF5, so the split decides the montage and the model follows it --
+# which is why a 58-channel split built before this default still trains, and
+# still leaves four pretrained filter banks being handed zeros.
+#
 # 62 and not 64: the EDF has P9/P10 where the route has TP9/TP10, one position
 # higher in the same inferior chain. To put those two in as well, re-read them
 # as the route's pair -- a modelling assumption, so it is stated and never
@@ -15,15 +25,15 @@
 #     --set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"
 #
 # 58 is EEGPT's own set and is what to write for a preprocessing-identical row;
-# it leaves AF7, AF8, AFz and Iz -- four slots whose filter banks pretraining
-# trained -- being handed zeros. `--channels {58,62,64}` on the converter picks
-# between them and costs a split, not a re-decode.
+# it gives up AF7, AF8, AFz and Iz -- four slots whose filter banks pretraining
+# trained. `--channels {58,62,64}` on the converter picks between them and
+# costs a split, not a re-decode.
 #
 # The window is 512 samples, 2 s, against the route's 4 s. Nothing on the
 # encoder path has a length baked in.
 #
 #   python -m physiowave.train.finetune_main --config finetune/eeg_c1_p300 \
-#       --data-dir $PW_DATA_EEG/erpbci --num-classes 2 \
+#       --data-dir $PW_DATA_EEG/p300_f0 --num-classes 2 \
 #       --set model.eeg_c1.pretrained=<exported.pth>
 #
 # THE CONTROL is the same command with that --set left off. Run both.
@@ -59,7 +69,8 @@ model:
   dropout: 0.1
 
   eeg_c1:
-    route_id: E64_256          # 58 of its 64 slots, 256 Hz, 128-sample patches
+    route_id: E64_256          # 62 of its 64 slots, 256 Hz, 128-sample patches
+                               # (TP9/TP10 are the two the EDF does not record)
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
     patch_samples: 128

@@ -1,7 +1,7 @@
-"""The channel embedding on a monopolar 58-electrode montage.
+"""The channel embedding on erpbci's monopolar montage.
 
-Sleep-EDF is two bipolar derivations; erpbci is 58 electrodes against a common
-reference. The same encoder has to describe both without pretending either is
+Sleep-EDF is two bipolar derivations; erpbci is 62 electrodes against a common
+reference (the converter's default; --channels 58 writes EEGPT's set instead). The same encoder has to describe both without pretending either is
 the other, and the property that separates them is the one tested hardest here:
 a monopolar channel has a position and NO direction, and the code must say so
 rather than invent a reference electrode to subtract.
@@ -41,15 +41,19 @@ VARIANTS = [("C0", "none", "none"), ("C1", "id", "token"),
 # --------------------------------------------------------------------------- #
 # 1-3: the vocabulary
 # --------------------------------------------------------------------------- #
-def test_every_p300_channel_has_its_own_id():
-    """58 distinct ids, none of them UNK.
+@pytest.mark.parametrize("attr", ["CHANNELS_58", "CHANNELS_62", "CHANNELS_64"])
+def test_every_p300_channel_has_its_own_id(attr):
+    """One distinct id per electrode, none of them UNK.
 
     Left as UNK they would all share one embedding row, and `id` would encode
-    "some channel" 58 times over -- a null result that looked like a measurement.
+    "some channel" 62 times over -- a null result that looked like a
+    measurement. Every set the converter can write is checked, not just the
+    default: --channels picks between them at prep time.
     """
-    ids = [channel_id(c) for c in p300.CHANNELS_58]
-    assert UNK_ID not in ids, [c for c, i in zip(p300.CHANNELS_58, ids) if i == UNK_ID]
-    assert len(set(ids)) == 58
+    chans = getattr(p300, attr)
+    ids = [channel_id(c) for c in chans]
+    assert UNK_ID not in ids, [c for c, i in zip(chans, ids) if i == UNK_ID]
+    assert len(set(ids)) == len(chans)
 
 
 def test_sleep_ids_did_not_move_when_p300_was_appended():
@@ -77,29 +81,37 @@ def test_an_electrode_and_a_derivation_are_different_words():
 # 4-7: the metadata the preparation writes
 # --------------------------------------------------------------------------- #
 def test_metadata_describes_a_monopolar_montage():
-    b = p300.build_channel_metadata(p300.CHANNELS_58)
+    chans = p300.CHANNELS_62
+    n = len(chans)
+    b = p300.build_channel_metadata(chans)
     d, a = b["datasets"], b["attrs"]
     assert a["derivation_type"] == "monopolar_common_reference"
-    assert d["electrode_xyz"].shape == (58, 3)
+    # Derived from the montage it was handed, not from a constant that would
+    # go on saying 58 after --channels changed.
+    assert a["montage_type"] == f"erpbci_{n}"
+    assert d["electrode_xyz"].shape == (n, 3)
     # Every channel is its own electrode: the encoder reads equal endpoints as
     # "position, no direction".
     assert (d["positive_electrode_index"] == d["negative_electrode_index"]).all()
-    assert (d["positive_electrode_index"] == np.arange(58)).all()
-    assert np.array_equal(d["derivation_matrix"], np.eye(58, dtype=np.float32))
-    assert [c.decode() for c in d["channel_names"]] == p300.CHANNELS_58
+    assert (d["positive_electrode_index"] == np.arange(n)).all()
+    assert np.array_equal(d["derivation_matrix"], np.eye(n, dtype=np.float32))
+    assert [c.decode() for c in d["channel_names"]] == chans
 
 
 def test_metadata_carries_no_bipolar_endpoints():
     """Absence is the honest value for a montage that has no electrode pairs."""
-    b = p300.build_channel_metadata(p300.CHANNELS_58)
+    b = p300.build_channel_metadata(p300.CHANNELS_62)
     assert "bipolar_endpoints" not in b["datasets"]
 
 
 def test_metadata_hash_is_deterministic_and_montage_specific():
-    a = p300.build_channel_metadata(p300.CHANNELS_58)["attrs"]["metadata_hash"]
-    b = p300.build_channel_metadata(p300.CHANNELS_58)["attrs"]["metadata_hash"]
+    a = p300.build_channel_metadata(p300.CHANNELS_62)["attrs"]["metadata_hash"]
+    b = p300.build_channel_metadata(p300.CHANNELS_62)["attrs"]["metadata_hash"]
     assert a == b
-    shuffled = list(p300.CHANNELS_58)
+    # A different montage is a different file, so it must hash differently.
+    assert p300.build_channel_metadata(
+        p300.CHANNELS_58)["attrs"]["metadata_hash"] != a
+    shuffled = list(p300.CHANNELS_62)
     shuffled[0], shuffled[1] = shuffled[1], shuffled[0]
     c = p300.build_channel_metadata(shuffled)["attrs"]["metadata_hash"]
     assert c != a, "swapping two rows must change the hash, or a reordered file passes"
@@ -113,8 +125,11 @@ def test_an_unknown_channel_is_refused_not_silently_unked():
 # --------------------------------------------------------------------------- #
 # 8-11: the encoder on this montage
 # --------------------------------------------------------------------------- #
-def _meta(n=58):
-    b = p300.build_channel_metadata(p300.CHANNELS_58[:n])["datasets"]
+N_DEFAULT = 62          # p300.CHANNELS_62, the converter's default montage
+
+
+def _meta(n=N_DEFAULT):
+    b = p300.build_channel_metadata(p300.CHANNELS_62[:n])["datasets"]
     return {
         "channel_ids": torch.as_tensor(b["channel_ids"]).long(),
         "electrode_xyz": torch.as_tensor(b["electrode_xyz"]).float(),
@@ -172,15 +187,16 @@ def test_distinct_electrodes_get_distinct_codes():
     enc.reset_channel_parameters()
     code = enc(_meta())
     pair = code @ code.T
-    off = pair - torch.eye(58) * pair.diag()
+    off = pair - torch.eye(N_DEFAULT) * pair.diag()
     assert not torch.isclose(code[0], code[1], atol=1e-6).all()
     assert torch.isfinite(off).all()
 
 
 # --------------------------------------------------------------------------- #
-# 12-13: the model, at 58 channels
+# 12-13: the model. n=12, not the montage's 62: this is a forward/backward
+# smoke test and the code path does not depend on the count.
 # --------------------------------------------------------------------------- #
-def _model(encoding, injection, seed=0, n=58):
+def _model(encoding, injection, seed=0, n=12):
     torch.manual_seed(seed)
     return BERTWaveletTransformer(
         in_channels=n, max_level=2, wave_kernel_size=16,
@@ -197,8 +213,8 @@ def _model(encoding, injection, seed=0, n=58):
 
 
 @pytest.mark.parametrize("name,enc,inj", VARIANTS)
-def test_forward_and_backward_at_58_channels(name, enc, inj):
-    n = 12                                        # 58 is slow; the path is the same
+def test_forward_and_backward_on_a_monopolar_montage(name, enc, inj):
+    n = 12                                # the real montage is slow and no different
     model = _model(enc, inj, n=n)
     meta = None if enc == "none" else _meta(n)
     x = torch.randn(2, n, 256)
@@ -242,7 +258,7 @@ def test_written_hdf5_is_readable_by_the_trainer(tmp_path):
     sys.modules.setdefault("finetune", ft)
     _spec.loader.exec_module(ft)
 
-    channels = p300.CHANNELS_58
+    channels = p300.CHANNELS_62
     bundle = p300.build_channel_metadata(channels)
     path = tmp_path / "train.h5"
     with h5py.File(path, "w") as f:

@@ -6,7 +6,8 @@
 # The same six variants as the Sleep-EDF ablation, on the montage the question
 # was actually about. Sleep-EDF has two bipolar derivations and the existing 2-D
 # position embedding already tells them apart, so it is the least favourable
-# place a channel code could be tested. erpbci has 58 electrodes.
+# place a channel code could be tested. erpbci has 62 electrodes in the
+# converter's default montage (58 with --channels 58).
 #
 #   C0  none    none    the baseline this is measured against
 #   C1  id      token   EEGPT-style learned channel-name embedding (their Eq. 11)
@@ -15,8 +16,8 @@
 #   C4  signed  dual    both injection sites
 #   C5  hybrid  dual    whether a name and a position say different things
 #
-# WHAT `signed` MEANS HERE. This montage is monopolar: 58 electrodes against a
-# common reference, not 58 differences of pairs. Both endpoint indices of a
+# WHAT `signed` MEANS HERE. This montage is monopolar: each channel is one
+# electrode against a common reference, not a difference of a pair. Both endpoint indices of a
 # channel point at the same electrode, so the encoder's direction term is
 # exactly zero and what survives is the electrode's position on the sphere,
 # marked as monopolar. C2 is therefore "position" on this dataset and "signed
@@ -81,7 +82,7 @@ HEAD_DROPOUT="${HEAD_DROPOUT:-0.1}"
 LABEL_SMOOTHING="${LABEL_SMOOTHING:-0.1}"
 FOLD_KL="${FOLD_KL:-1e-3}"
 SELECT_BY="${SELECT_BY:-auroc}"
-IN_CHANNELS="${IN_CHANNELS:-58}"
+IN_CHANNELS="${IN_CHANNELS:-62}"
 
 _SWEEP_VARS=(EPOCHS WARMUP_EPOCHS BATCH_SIZE LR MIN_LR WEIGHT_DECAY
              DROPOUT HEAD_DROPOUT LABEL_SMOOTHING FOLD_KL SELECT_BY IN_CHANNELS)

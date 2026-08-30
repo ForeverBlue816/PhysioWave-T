@@ -38,10 +38,18 @@ SMALL = dict(embed_dim=64, depth=2, num_heads=4, channel_embed_dim=16,
              dropout=0.0, wavelet_names=list(DEFAULT_WAVELETS))
 
 
-def p300_channels():
+def _channel_set(name):
     src = open(os.path.join(ROOT, "EEG", "physio_p300_finetune.py")).read()
-    body = re.search(r"^CHANNELS_58 = \[(.*?)\]", src, re.S | re.M).group(1)
+    body = re.search(rf"^{name} = \[(.*?)\]", src, re.S | re.M).group(1)
     return re.findall(r"['\"]([^'\"]+)['\"]", body)
+
+
+def p300_channels():
+    # CHANNELS_62, not CHANNELS_58: 62 is the converter's default and is the
+    # montage these runs are actually handed. It is also the stronger test --
+    # it fills every E64_256 slot the EDF can fill, so a placement bug has
+    # only TP9/TP10 left to hide in.
+    return _channel_set("CHANNELS_62")
 
 
 class _Meta:
@@ -73,6 +81,25 @@ def exported(tmp_path_factory):
 
 
 # --- placement -------------------------------------------------------------- #
+def test_the_default_p300_montage_is_62_slots_of_e64_256():
+    """Every electrode erpbci records that the route has a slot for.
+
+    The two it leaves empty are TP9 and TP10, and that is not an oversight:
+    the EDF has P9/P10, one position higher in the same inferior chain. If
+    this list ever drifts off the route the placement below stops meaning
+    anything, because a name that is not a slot is refused, not dropped.
+    """
+    ch = p300_channels()
+    slots = list(ROUTES["E64_256"].slots)
+    assert len(ch) == 62
+    assert [c for c in ch if c not in slots] == []
+    assert [c for c in slots if c not in ch] == ["TP9", "TP10"]
+    # In the ROUTE's order, so the HDF5 and the slot array read alike.
+    assert [c for c in slots if c in ch] == ch
+    # And all 62 are electrodes the EDF actually records.
+    assert [c for c in ch if c not in _channel_set("EEG_64")] == []
+
+
 def test_a_montage_that_is_a_subset_of_a_route_goes_in_its_slots():
     ch = p300_channels()
     m = EEGC1Downstream(in_channels=len(ch), window_samples=512,
