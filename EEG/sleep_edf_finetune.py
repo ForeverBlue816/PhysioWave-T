@@ -411,6 +411,13 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
             subj.resize(total + n, axis=0); subj[total:total + n] = s
             counts += np.bincount(y, minlength=len(CLASS_NAMES))
             total += n
+        # Unconditional, and before the bundle. These describe the array that
+        # was just written, so they are not the channel metadata's to carry --
+        # a file built without --channel-metadata still has a sampling rate,
+        # and finetune_main refusing to run without one is the failure this
+        # placement caused.
+        f.attrs["sampling_rate"] = float(FS)
+        f.attrs["window_samples"] = int(WINDOW_SAMPLES)
         if meta_bundle is None:
             f.create_dataset("channel_names",
                              data=np.array([c.encode() for c in CHANNELS], dtype="S32"))

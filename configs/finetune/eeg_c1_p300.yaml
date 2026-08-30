@@ -1,11 +1,23 @@
 # P300 (ERP-BCI) on a C1 pretrained encoder.
 #
-# THE STRONGEST TRANSFER THE CORPUS ALLOWS. The 58-channel montage
-# EEG/physio_p300_finetune.py writes is 58 of E64_256's 64 slots, at 256 Hz,
-# which is that route's sampling rate. So the pretrained WAVELET FRONTEND and
-# PATCHER transfer as well as the transformer -- the montage goes in the
-# route's slots by name and the six absent ones are masked, exactly as
-# pretraining ran on every corpus that did not fill its route.
+# THE STRONGEST TRANSFER THE CORPUS ALLOWS. erpbci records 64 EEG electrodes
+# and 62 of them are slots of E64_256, at 256 Hz, which is that route's
+# sampling rate. So the pretrained WAVELET FRONTEND and PATCHER transfer as
+# well as the transformer -- the montage goes in the route's slots by name and
+# the absent ones are masked, exactly as pretraining ran on every corpus that
+# did not fill its route.
+#
+# 62 and not 64: the EDF has P9/P10 where the route has TP9/TP10, one position
+# higher in the same inferior chain. To put those two in as well, re-read them
+# as the route's pair -- a modelling assumption, so it is stated and never
+# assumed:
+#
+#     --set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"
+#
+# 58 is EEGPT's own set and is what to write for a preprocessing-identical row;
+# it leaves AF7, AF8, AFz and Iz -- four slots whose filter banks pretraining
+# trained -- being handed zeros. `--channels {58,62,64}` on the converter picks
+# between them and costs a split, not a re-decode.
 #
 # The window is 512 samples, 2 s, against the route's 4 s. Nothing on the
 # encoder path has a length baked in.

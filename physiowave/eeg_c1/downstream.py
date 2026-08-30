@@ -77,7 +77,8 @@ ROUTE_BOUND = ("wavelet_frontend.", "patch_embed.")
 TRAINABLE_WHEN_FROZEN = ("head", "spatial_filter")
 
 
-def _slots_for(route: Route, channel_names: Sequence[str]) -> torch.Tensor:
+def _slots_for(route: Route, channel_names: Sequence[str],
+               aliases: Optional[Dict[str, str]] = None) -> torch.Tensor:
     """``[route.n_channels]`` index into the incoming montage, -1 where absent.
 
     Matched by NAME through the same normalisation the vocabulary uses, so
@@ -85,14 +86,31 @@ def _slots_for(route: Route, channel_names: Sequence[str]) -> torch.Tensor:
     is not one of the route's slots is refused rather than dropped: silently
     discarding a measured electrode is how a montage mismatch becomes a quiet
     accuracy loss.
+
+    ``aliases`` reads one electrode as another, ``{"P9": "TP9"}``. It exists
+    because erpbci records P9/P10 where E64_256 has TP9/TP10 -- one position
+    apart in the same inferior lateral chain, close but not the same site. That
+    substitution is a modelling assumption, so it is something a config states
+    out loud and never a default: an alias that were applied automatically
+    would put a P9 signal through a filter bank trained on TP9 with nothing
+    anywhere recording that it happened.
     """
     from channel_embedding import normalize_channel_name
 
     want = {normalize_channel_name(s): i for i, s in enumerate(route.slots)}
+    alias = {normalize_channel_name(k): normalize_channel_name(v)
+             for k, v in (aliases or {}).items()}
+    bad = {k: v for k, v in alias.items() if v not in want}
+    if bad:
+        raise ValueError(
+            f"slot_aliases maps onto {sorted(bad.values())}, which are not "
+            f"slots of {route.route_id}. An alias has to name a slot that "
+            f"exists; its whole purpose is to reach one.")
     idx = torch.full((route.n_channels,), -1, dtype=torch.long)
     unplaced = []
     for j, name in enumerate(channel_names):
-        slot = want.get(normalize_channel_name(name))
+        key = normalize_channel_name(name)
+        slot = want.get(alias.get(key, key))
         if slot is None:
             unplaced.append(name)
             continue
@@ -100,8 +118,9 @@ def _slots_for(route: Route, channel_names: Sequence[str]) -> torch.Tensor:
     if unplaced:
         raise ValueError(
             f"{len(unplaced)} channel(s) are not slots of {route.route_id}: "
-            f"{unplaced[:8]}. Build the model without route_id to give this "
-            f"montage its own frontend instead.")
+            f"{unplaced[:8]}. Either alias them onto slots that exist "
+            f"(model.eeg_c1.slot_aliases) or build the model without route_id "
+            f"to give this montage its own frontend instead.")
     return idx
 
 
@@ -151,6 +170,7 @@ class EEGC1Downstream(nn.Module):
                  spatial_filter: str = "none",
                  spatial_channels: Optional[Sequence[str]] = None,
                  spatial_max_norm: float = 1.0,
+                 slot_aliases: Optional[Dict[str, str]] = None,
                  freeze_encoder: bool = False):
         super().__init__()
         # THE SPATIAL FILTER COMES FIRST, because with `mix` it decides what
@@ -187,8 +207,10 @@ class EEGC1Downstream(nn.Module):
             if not channel_names:
                 raise ValueError(f"route_id={route_id} needs channel_names to "
                                  f"place the montage in its slots")
+            self.slot_aliases = dict(slot_aliases or {})
             self.register_buffer("slot_index",
-                                 _slots_for(self.route, channel_names),
+                                 _slots_for(self.route, channel_names,
+                                            self.slot_aliases),
                                  persistent=False)
             self.in_channels = int(in_channels)
         else:
@@ -199,6 +221,12 @@ class EEGC1Downstream(nn.Module):
             # Registered either way, so `self.slot_index is None` is the test
             # for "this montage is not on a route" and not for "the attribute
             # happens not to exist".
+            self.slot_aliases = {}
+            if slot_aliases:
+                raise ValueError(
+                    "slot_aliases only means something on a route; without one "
+                    "this montage gets its own frontend and every channel it "
+                    "has is already its own slot.")
             self.register_buffer("slot_index", None, persistent=False)
         self.num_classes = int(num_classes)
         self.embed_dim = int(embed_dim)

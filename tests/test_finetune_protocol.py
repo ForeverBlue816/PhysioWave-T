@@ -257,3 +257,97 @@ def test_channel_attention_pooling_is_not_a_mean():
 def test_a_mix_without_output_names_is_refused():
     with pytest.raises(ValueError):
         build_free(spatial_filter="mix")
+
+
+# --------------------------------------------------------------------------- #
+# how much of the recorded montage reaches a pretrained route
+# --------------------------------------------------------------------------- #
+def _p300_module():
+    import importlib.util
+    import os
+
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "EEG", "physio_p300_finetune.py")
+    spec = importlib.util.spec_from_file_location("p300_conv", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def on_route(names, aliases=None):
+    return EEGC1Downstream(
+        in_channels=len(names), window_samples=512, sampling_rate=256,
+        patch_samples=128, num_classes=2, channel_names=names,
+        route_id="E64_256", embed_dim=32, depth=1, num_heads=2,
+        channel_embed_dim=8, pool="time", slot_aliases=aliases)
+
+
+def test_the_62_set_is_exactly_the_recorded_electrodes_the_route_has():
+    conv = _p300_module()
+    from channel_embedding import normalize_channel_name as norm
+
+    slots = {norm(s) for s in ROUTES["E64_256"].slots}
+    recorded = {norm(c) for c in conv.EEG_64}
+    assert {norm(c) for c in conv.CHANNELS_62} == slots & recorded
+    assert len(conv.CHANNELS_62) == 62
+
+
+def test_58_leaves_four_pretrained_slots_empty():
+    conv = _p300_module()
+    a, b = on_route(conv.CHANNELS_58), on_route(conv.CHANNELS_62)
+    assert int((a.slot_index >= 0).sum()) == 58
+    assert int((b.slot_index >= 0).sum()) == 62
+
+
+def test_all_64_is_refused_without_an_explicit_alias():
+    """P9 is not TP9, and reading it as one has to be someone's decision."""
+    conv = _p300_module()
+    with pytest.raises(ValueError, match="P9"):
+        on_route(conv.CHANNELS_64)
+
+
+def test_an_alias_fills_the_route():
+    conv = _p300_module()
+    model = on_route(conv.CHANNELS_64, {"P9": "TP9", "P10": "TP10"})
+    assert int((model.slot_index >= 0).sum()) == 64
+    out = model(torch.randn(2, 64, 512),
+                {"channel_ids": torch.arange(1, 65),
+                 "valid_channel_mask": torch.ones(64, dtype=torch.bool)})
+    assert out["logits"].shape == (2, 2)
+
+
+def test_an_alias_onto_a_slot_that_does_not_exist_is_refused():
+    conv = _p300_module()
+    with pytest.raises(ValueError, match="not.*slots"):
+        on_route(conv.CHANNELS_64, {"P9": "Nz", "P10": "TP10"})
+
+
+def test_aliases_mean_nothing_off_a_route():
+    with pytest.raises(ValueError, match="only means something on a route"):
+        EEGC1Downstream(
+            in_channels=2, window_samples=600, sampling_rate=100,
+            patch_samples=50, num_classes=5, channel_names=["Fpz-Cz", "Pz-Oz"],
+            embed_dim=32, depth=1, num_heads=2, channel_embed_dim=8,
+            slot_aliases={"Fpz-Cz": "Fpz"})
+
+
+def test_the_split_stage_subsets_the_cache_by_name():
+    """58 vs 62 is a split, not another pass over 245 runs of EDF."""
+    import numpy as np
+
+    conv = _p300_module()
+    cached = conv.EEG_64
+    X = np.arange(len(cached) * 4, dtype=np.float32).reshape(1, len(cached), 4)
+    out = conv._take_channels(X, cached, conv.CHANNELS_58, "test")
+    assert out.shape == (1, 58, 4)
+    for j, name in enumerate(conv.CHANNELS_58):
+        assert np.array_equal(out[0, j], X[0, cached.index(name)])
+
+
+def test_asking_the_cache_for_a_channel_it_lacks_is_refused():
+    import numpy as np
+
+    conv = _p300_module()
+    X = np.zeros((1, 3, 4), dtype=np.float32)
+    with pytest.raises(SystemExit, match="Cz"):
+        conv._take_channels(X, ["Fp1", "Fp2", "Oz"], ["Fp1", "Cz"], "test")

@@ -524,12 +524,29 @@ def main(argv=None) -> int:
             c1["channel_names"] = train_set.channel_names
         if train_set.sampling_rate and "sampling_rate" not in c1:
             c1["sampling_rate"] = train_set.sampling_rate
+        elif train_set.sampling_rate and "sampling_rate" in c1:
+            # Both have one. The config wins by construction above, so a
+            # disagreement would be silent -- and a rate that is wrong by a
+            # factor of 2.56 makes every patch a different duration than the
+            # config claims while nothing anywhere fails.
+            if abs(float(c1["sampling_rate"]) - train_set.sampling_rate) > 1e-6:
+                raise SystemExit(
+                    f"the config says model.eeg_c1.sampling_rate="
+                    f"{c1['sampling_rate']} and {train_path} says "
+                    f"{train_set.sampling_rate}. One of them is wrong and "
+                    f"guessing which would change the duration of every patch.")
         missing = [k for k in ("sampling_rate", "patch_samples") if k not in c1]
         if missing:
             raise SystemExit(
                 f"model.eeg_c1 needs {missing} and neither the config nor "
-                f"{train_path} supplies them. A patch length is a modelling "
-                f"choice; a sampling rate should be an attribute of the file.")
+                f"{train_path} supplies them.\n"
+                f"  A patch length is a modelling choice and belongs in the "
+                f"config. A sampling rate should be an attribute of the file, "
+                f"and is written by the converters -- but only since the fix "
+                f"that made it unconditional, so a file built before that has "
+                f"none.\n"
+                f"  Either re-run the converter's --stage split, or state it: "
+                f"--set model.eeg_c1.sampling_rate=<Hz>")
         model_cfg["eeg_c1"] = c1
         cfg["model"] = model_cfg
         if info.is_main:

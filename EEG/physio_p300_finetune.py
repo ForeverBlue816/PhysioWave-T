@@ -142,6 +142,34 @@ CHANNELS_58 = [
     "O1", "Oz", "O2",
 ]
 
+# Every recorded electrode that E64_256 -- the route this encoder was
+# pretrained on -- has a slot for, in the ROUTE's order. 62, not 64: the EDF
+# records P9 and P10, and the route's inferior pair is TP9 and TP10, which are
+# one position higher in the same lateral chain and are not the same electrode.
+#
+# This is the default because it is what "use our data, matched to our
+# pretrained model" resolves to. The four the 58 gives up -- AF7, AF8, AFz, Iz
+# -- are slots whose filter banks pretraining trained, being handed zeros.
+CHANNELS_62 = [
+    "Fp1", "Fpz", "Fp2", "AF7", "AF3", "AFz", "AF4", "AF8", "F7", "F5",
+    "F3", "F1", "Fz", "F2", "F4", "F6", "F8", "FT7", "FC5", "FC3",
+    "FC1", "FCz", "FC2", "FC4", "FC6", "FT8", "T7", "C5", "C3", "C1",
+    "Cz", "C2", "C4", "C6", "T8", "TP7", "CP5", "CP3", "CP1", "CPz",
+    "CP2", "CP4", "CP6", "TP8", "P7", "P5", "P3", "P1", "Pz", "P2",
+    "P4", "P6", "P8", "PO7", "PO3", "POz", "PO4", "PO8", "O1", "Oz",
+    "O2", "Iz",
+]
+
+#: All 64, which needs P9 and P10 to be READ AS the route's TP9 and TP10.
+#: That substitution is a modelling assumption, not a fact, so it does not
+#: happen here: the HDF5 keeps the true names and the model is told to alias
+#: them, with `--set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"`.
+#: Without that the model refuses the montage rather than dropping two
+#: electrodes it was handed.
+CHANNELS_64 = CHANNELS_62 + ["P9", "P10"]
+
+CHANNEL_SETS = {58: CHANNELS_58, 62: CHANNELS_62, 64: CHANNELS_64}
+
 # The nine the paper keeps (8, 10 and 12 dropped, following BENDR).
 PAPER_SUBJECTS = [1, 2, 3, 4, 5, 6, 7, 9, 11]
 # What EEGPT's preparation script actually writes.
@@ -259,7 +287,15 @@ def cache_subject(subject: int, edf_dir: str, cache_dir: str,
 
     X = np.concatenate(Xs, axis=0)
     y = np.concatenate(ys, axis=0)
-    np.savez_compressed(out, data=X, label=y, n_runs=len(Xs), n_skipped=len(skipped))
+    # The channel names go in the cache. The cache holds every EEG channel the
+    # EDF has and the split stage takes the subset it wants by NAME, so
+    # choosing 58 against 62 costs a split and not another pass over 245 runs
+    # of EDF through MNE. Without the names in here that subsetting would be
+    # by position against a list held somewhere else, which is the same
+    # montage bug this file exists to avoid.
+    np.savez_compressed(out, data=X, label=y, n_runs=len(Xs),
+                        n_skipped=len(skipped),
+                        channel_names=np.array(channels, dtype="U32"))
     return out
 
 
@@ -404,6 +440,21 @@ def readable_metadata(bundle: dict) -> dict:
     }
 
 
+def _take_channels(X, cached: list[str], wanted: list[str], where: str):
+    """Reorder a cached array onto ``wanted``, by name."""
+    index = {c.lower(): i for i, c in enumerate(cached)}
+    missing = [c for c in wanted if c.lower() not in index]
+    if missing:
+        raise SystemExit(
+            f"{where} holds {len(cached)} channels and {missing} are not among "
+            f"them.\n  The cache is the superset the EDF has; asking for a "
+            f"channel it does not carry is a channel the recording does not "
+            f"have.")
+    if list(wanted) == list(cached):
+        return X
+    return X[:, [index[c.lower()] for c in wanted], :]
+
+
 def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
                 channels: list[str], meta_bundle: dict | None = None) -> dict:
     """Concatenate cached subjects into one HDF5, growing it incrementally."""
@@ -424,12 +475,26 @@ def write_split(name: str, subjects: list[int], cache_dir: str, out_dir: str,
                 continue
             with np.load(npz) as z:
                 X, y = z["data"], z["label"]
+                cached = ([str(c) for c in z["channel_names"]]
+                          if "channel_names" in z.files else None)
+            if cached is None:
+                raise SystemExit(
+                    f"{npz} was written before the cache recorded its channel "
+                    f"names, so the subset cannot be taken by name and taking "
+                    f"it by position would be a guess.\n"
+                    f"  Re-run --stage cache --overwrite.")
+            X = _take_channels(X, cached, channels, npz)
             n = len(y)
             data.resize(total + n, axis=0); data[total:total + n] = X
             label.resize(total + n, axis=0); label[total:total + n] = y
             subj.resize(total + n, axis=0); subj[total:total + n] = s
             counts += np.bincount(y, minlength=len(CLASS_NAMES))
             total += n
+        # Unconditional: see the note in sleep_edf_finetune.py. A file written
+        # without --channel-metadata still has a sampling rate, and the trainer
+        # needs it whether or not the montage was recorded.
+        f.attrs["sampling_rate"] = float(FS_OUT)
+        f.attrs["window_samples"] = int(WINDOW_SAMPLES)
         f.create_dataset("channel_names",
                          data=np.array([c.encode() for c in channels], dtype="S32"))
         if meta_bundle is not None:
@@ -483,8 +548,14 @@ def main() -> None:
                         "reproducing a file made before the metadata existed; "
                         "any --channel_encoding other than none then refuses "
                         "to train on it.")
+    p.add_argument("--channels", type=int, default=62, choices=sorted(CHANNEL_SETS),
+                   help="electrodes to write. 62 (default) is every recorded "
+                        "electrode E64_256 has a slot for; 58 is EEGPT's set, "
+                        "for a preprocessing-identical row; 64 adds P9 and P10, "
+                        "which the model will refuse unless it is also given "
+                        "model.eeg_c1.slot_aliases mapping them onto TP9/TP10.")
     p.add_argument("--all-channels", action="store_true",
-                   help="keep all 64 EEG channels instead of the 58 EEGPT uses")
+                   help="deprecated spelling of --channels 64")
     p.add_argument("--allow-missing", action="store_true",
                    help="write the split even though some subjects have no cache. "
                         "Only right for a pipeline smoke test -- otherwise every "
@@ -514,11 +585,13 @@ def main() -> None:
                 f"      source scripts/cineca_env.sh\n"
             )
 
-    channels = EEG_64 if args.all_channels else CHANNELS_58
+    channels = CHANNEL_SETS[64 if args.all_channels else args.channels]
     cache_dir = args.cache_dir or os.path.join(args.edf_dir, "cache")
-    # The channel set changes what is in the cache, so it cannot be shared
-    # between the two; keeping them apart avoids a silent shape mismatch.
-    cache_dir = os.path.join(cache_dir, f"c{len(channels)}")
+    # ONE cache, holding every EEG channel the EDF has. It used to be keyed by
+    # the channel count, which meant changing the set cost a full re-decode --
+    # 245 runs through MNE per subject -- for a choice the split stage can make
+    # by name in seconds.
+    cache_dir = os.path.join(cache_dir, f"c{len(EEG_64)}")
     os.makedirs(cache_dir, exist_ok=True)
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -532,7 +605,8 @@ def main() -> None:
     if args.stage in ("cache", "all"):
         preflight()
         print(f"Decoding {len(subjects)} subjects into {cache_dir}")
-        print(f"  {len(channels)} channels, {TMIN}..{TMAX} s, IIR 0-{LOWPASS_HZ:.0f} Hz, "
+        print(f"  caching all {len(EEG_64)} EEG channels ({len(channels)} of them "
+              f"go into the split), {TMIN}..{TMAX} s, IIR 0-{LOWPASS_HZ:.0f} Hz, "
               f"{FS_OUT:.0f} Hz, cropped to {WINDOW_SAMPLES} samples")
         import traceback
 
@@ -555,7 +629,7 @@ def main() -> None:
             for i, s in enumerate(subjects, 1):
                 print(f"  [{i}/{todo}] subject {s} ...", flush=True)
                 try:
-                    cache_subject(s, args.edf_dir, cache_dir, channels,
+                    cache_subject(s, args.edf_dir, cache_dir, EEG_64,
                                   args.overwrite, VERBOSE)
                 except Exception as exc:                       # noqa: BLE001
                     _note(s, exc)
@@ -583,7 +657,7 @@ def main() -> None:
             done = 0
             with ProcessPoolExecutor(max_workers=args.jobs, mp_context=ctx) as pool:
                 futures = {pool.submit(cache_subject, s, args.edf_dir, cache_dir,
-                                       channels, args.overwrite, VERBOSE): s
+                                       EEG_64, args.overwrite, VERBOSE): s
                            for s in subjects}
                 for fut in as_completed(futures):
                     s = futures[fut]
@@ -607,7 +681,7 @@ def main() -> None:
             for i, s in enumerate(retry, 1):
                 print(f"  [{i}/{len(retry)}] subject {s} ...", flush=True)
                 try:
-                    cache_subject(s, args.edf_dir, cache_dir, channels,
+                    cache_subject(s, args.edf_dir, cache_dir, EEG_64,
                                   args.overwrite, VERBOSE)
                 except Exception as exc:                       # noqa: BLE001
                     still.append((s, repr(exc)))
