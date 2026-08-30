@@ -127,9 +127,16 @@ done
 
 # The decode cache is the expensive part and this script does not build it.
 # Say so once, rather than as nine identical split-stage failures.
-CACHE_DIR="${EDF_DIR}/cache/c${IN_CHANNELS}"
-if [[ ! -d "${CACHE_DIR}" && "${DRY_RUN}" != "1" ]]; then
-    echo "ERROR: no decode cache at ${CACHE_DIR}" >&2
+CACHE_DIR="$(pw_p300_cache_dir "${EDF_DIR}" || true)"
+if [[ -n "${CACHE_DIR}" && "$(basename "${CACHE_DIR}")" == "c58" \
+      && "${IN_CHANNELS}" != "58" && "${DRY_RUN}" != "1" ]]; then
+    echo "ERROR: ${CACHE_DIR} is the legacy cache and holds only EEGPT's 58" >&2
+    echo "       electrodes, so no ${IN_CHANNELS}-channel split can come out" >&2
+    echo "       of it. Re-decode once, or set IN_CHANNELS=58." >&2
+    exit 1
+fi
+if [[ -z "${CACHE_DIR}" && "${DRY_RUN}" != "1" ]]; then
+    echo "ERROR: no decode cache under ${EDF_DIR}/cache (looked for c64, c58)" >&2
     echo "       Build it first, where mne is available:" >&2
     echo "         source \$HOME/pwprep/bin/activate" >&2
     echo "         PW_VARS_ONLY=1 source scripts/cineca_env.sh" >&2
@@ -185,7 +192,8 @@ for k in "${_folds[@]}"; do
       # hold a train.h5 from a DIFFERENT fold, and nothing downstream notices --
       # the trainer would happily test on subjects it trained on.
       if ! python EEG/physio_p300_finetune.py --edf-dir "${EDF_DIR}" \
-               --out-dir "${d}" --stage split --fold "${k}"; then
+               --out-dir "${d}" --stage split --fold "${k}" \
+               --channels "${IN_CHANNELS}"; then
           echo "fold ${k}: split failed, every variant skipped" >&2
           for v in "${_variants[@]}"; do for s in "${_seeds[@]}"; do
               failed+=("fold${k}/${v}/seed${s}"); total=$((total + 1))

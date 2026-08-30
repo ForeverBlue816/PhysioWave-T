@@ -53,9 +53,14 @@ mkdir -p "${SWEEP_ROOT}"
 
 # The cache is the expensive part and this job does not build it. Say so here
 # rather than nine times over, each as a split-stage failure.
-CACHE_DIR="${EDF_DIR}/cache/c${IN_CHANNELS:-58}"
-if [[ ! -d "${CACHE_DIR}" ]]; then
-    echo "ERROR: no decode cache at ${CACHE_DIR}" >&2
+# The montage. One variable, so the split that is written and the model that
+# reads it cannot disagree -- IN_CHANNELS reaches the split as --channels and
+# EEG/finetune_p300.sh as itself.
+IN_CHANNELS="${IN_CHANNELS:-62}"
+export IN_CHANNELS
+
+if ! CACHE_DIR="$(pw_p300_cache_dir "${EDF_DIR}")"; then
+    echo "ERROR: no decode cache under ${EDF_DIR}/cache (looked for c64, c58)" >&2
     echo "       Build it first, on a node with mne available:" >&2
     echo "         source \$HOME/pwprep/bin/activate" >&2
     echo "         PW_VARS_ONLY=1 source scripts/cineca_env.sh" >&2
@@ -63,11 +68,24 @@ if [[ ! -d "${CACHE_DIR}" ]]; then
     echo "             --out-dir ${PW_DATA_EEG}/p300_f0 --stage cache --jobs 1" >&2
     exit 1
 fi
+if [[ "$(basename "${CACHE_DIR}")" == "c58" && "${IN_CHANNELS}" != "58" ]]; then
+    # Not a warning: the split stage would fail nine times over, once per fold,
+    # and the reason is the same each time.
+    echo "ERROR: ${CACHE_DIR} is the legacy cache and holds only EEGPT's 58" >&2
+    echo "       electrodes, so no ${IN_CHANNELS}-channel split can come out" >&2
+    echo "       of it -- AF7, AF8, AFz and Iz were never decoded." >&2
+    echo "       Re-decode once and every channel set becomes a split:" >&2
+    echo "         python EEG/physio_p300_finetune.py --edf-dir ${EDF_DIR} \\" >&2
+    echo "             --out-dir ${PW_DATA_EEG}/p300_f0 --stage cache --jobs 2" >&2
+    echo "       Or run this job at the montage that is on disk: IN_CHANNELS=58" >&2
+    exit 1
+fi
 _n_cached="$(find "${CACHE_DIR}" -maxdepth 1 -name 'sub*.npz' | wc -l)"
 echo "Decode cache: ${CACHE_DIR} (${_n_cached} subjects)"
 
 echo "============================================================"
 echo "  PhysioP300 -- 9 LOSO folds"
+echo "  montage=${IN_CHANNELS} channels"
 echo "  epochs=${EPOCHS:-<script default>}  select_by=${SELECT_BY:-<default>}"
 echo "  dropout=${DROPOUT:-<default>} head_dropout=${HEAD_DROPOUT:-<default>}"
 echo "  weight_decay=${WEIGHT_DECAY:-<default>}"
@@ -88,7 +106,8 @@ for k in $(seq 0 8); do
     # directory left by an interrupted run can hold a train.h5 from a different
     # fold, and nothing downstream would notice.
     if ! python EEG/physio_p300_finetune.py --edf-dir "${EDF_DIR}" \
-             --out-dir "${DATA_DIR}" --stage split --fold "${k}"; then
+             --out-dir "${DATA_DIR}" --stage split --fold "${k}" \
+             --channels "${IN_CHANNELS}"; then
         echo "fold ${k}: split failed, skipped" >&2
         failed+=("${k}")
         continue

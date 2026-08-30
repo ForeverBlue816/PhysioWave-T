@@ -515,3 +515,28 @@ pw_print_layout() {
   data        ${PW_DATA_EEG} , ${PW_DATA_ECG} , ${PW_DATA_EMG}
 LAYOUT
 }
+
+# Echo the erpbci decode cache that actually exists, or nothing.
+#
+# The cache directory is named for what was DECODED, not for what a run wants:
+# the current preparation writes every EEG channel the EDF has into c64 and the
+# split stage takes its subset by name, so one decode serves --channels 58, 62
+# and 64 alike. c58 is the legacy layout, written before that, and it holds
+# only EEGPT's set -- so a 62-channel split cannot be built from it.
+#
+# Callers used to spell this "cache/c${IN_CHANNELS}", which agreed with the
+# only cache that existed at the time and stopped agreeing the moment the
+# montage became a choice: IN_CHANNELS=62 asked for a c62 that is never
+# written. The search order here is find_subject_cache's in
+# EEG/physio_p300_finetune.py, and the two must stay the same.
+pw_p300_cache_dir() {
+    local edf_dir="${1:?usage: pw_p300_cache_dir <edf-dir>}"
+    local d
+    for d in c64 c58; do
+        if [[ -d "${edf_dir}/cache/${d}" ]]; then
+            echo "${edf_dir}/cache/${d}"
+            return 0
+        fi
+    done
+    return 1
+}

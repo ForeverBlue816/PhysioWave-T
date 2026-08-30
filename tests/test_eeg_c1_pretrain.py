@@ -1329,6 +1329,67 @@ def test_24d_env_sh_has_no_python_docstrings():
 
 
 # --- 25 --------------------------------------------------------------------- #
+def test_24e_the_p300_cache_is_found_by_what_was_decoded(tmp_path):
+    """Not by what a run wants. `cache/c${IN_CHANNELS}` was the old spelling.
+
+    It agreed with the only cache that existed and stopped agreeing the moment
+    the montage became a choice: the preparation writes ONE superset cache,
+    c64, and the split takes its subset by name -- so IN_CHANNELS=62 asked for
+    a c62 that is never written, and the runner refused a cache that was there.
+    """
+    edf = tmp_path / "erpbci"
+    (edf / "cache").mkdir(parents=True)
+    none = _env_sh(f'pw_p300_cache_dir "{edf}"; echo "rc=$?"')
+    assert "rc=1" in none.stdout, "an empty cache directory is not a cache"
+
+    (edf / "cache" / "c58").mkdir()
+    legacy = _env_sh(f'pw_p300_cache_dir "{edf}"; echo "rc=$?"')
+    assert str(edf / "cache" / "c58") in legacy.stdout
+    assert "rc=0" in legacy.stdout
+
+    # The superset wins when both are on disk: it is the one every channel set
+    # can be cut from, and find_subject_cache searches in this order too.
+    (edf / "cache" / "c64").mkdir()
+    both = _env_sh(f'pw_p300_cache_dir "{edf}"; echo "rc=$?"')
+    assert str(edf / "cache" / "c64") in both.stdout
+    # Nothing is ever named for a channel count a run asked for.
+    assert "c62" not in both.stdout
+
+
+def test_24f_the_p300_runners_agree_with_find_subject_cache():
+    """One search order, in two languages. They drift silently if uncoupled."""
+    import re
+    sh = open(ENV_SH).read()
+    body = re.search(r"pw_p300_cache_dir\(\)\s*\{(.*?)\n\}", sh, re.S).group(1)
+    shell_order = re.search(r"for d in ([^;]+);", body).group(1).split()
+
+    py = open(os.path.join(ROOT, "EEG", "physio_p300_finetune.py")).read()
+    py_order = re.findall(
+        r'"([^"]+)"', re.search(r"^CACHE_DIRS = \((.*?)\)", py, re.M | re.S).group(1))
+    assert shell_order == py_order, (shell_order, py_order)
+
+    # And no runner may rebuild the name from a channel count.
+    for rel in ("scripts/slurm/cineca_p300_folds.sbatch",
+                "EEG/run_p300_channel_ablation.sh"):
+        src = open(os.path.join(ROOT, rel)).read()
+        assert "cache/c${IN_CHANNELS" not in src, rel
+        assert "pw_p300_cache_dir" in src, rel
+
+
+def test_24g_the_p300_split_is_written_at_the_montage_that_is_trained():
+    """IN_CHANNELS reaches the split as --channels, or the two can disagree.
+
+    finetune.py checks in_channels against the file's channel metadata and
+    refuses a mismatch, so the failure is loud -- but it happens after the
+    allocation, once per fold.
+    """
+    for rel in ("scripts/slurm/cineca_p300_folds.sbatch",
+                "EEG/run_p300_channel_ablation.sh"):
+        src = open(os.path.join(ROOT, rel)).read()
+        assert "--stage split" in src, rel
+        assert '--channels "${IN_CHANNELS}"' in src, rel
+
+
 def test_25_a_run_path_under_the_filesystem_root_is_refused():
     """`$PW_CKPT_ROOT/run` with PW_CKPT_ROOT empty is `/run`.
 
