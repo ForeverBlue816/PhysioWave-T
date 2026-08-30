@@ -28,7 +28,6 @@
 #   GRAD_ACCUMULATION                                         (the config's)
 #   LR / WEIGHT_DECAY / MASK_RATIO / SEED                     (the config's)
 #   WEIGHTS               balanced | proportional | temperature:0.5
-#   VIS_EVERY_EPOCHS      snapshot cadence for the figures        (the config's)
 #   DATA_ROOT             holds merged/manifest_{train,val}.jsonl
 #   OUTPUT_DIR            checkpoints and figures
 #   RESUME                'auto' to continue OUTPUT_DIR/latest.pth
@@ -81,7 +80,6 @@ LR="${LR:-}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-}"
 MASK_RATIO="${MASK_RATIO:-}"
 SEED="${SEED:-}"
-VIS_EVERY_EPOCHS="${VIS_EVERY_EPOCHS:-}"
 # balanced | proportional | temperature:A -- WITHOUT a space after the
 # colon, which YAML would read as a mapping rather than the string the
 # policy branch matches on.
@@ -97,20 +95,26 @@ RESUME="${RESUME:-}"
 # units: 384-step epochs restored into 954-step ones leave the cosine
 # a fifth short of annealed.
 INIT_FROM="${INIT_FROM:-}"
-# steps_per_epoch is DERIVED from the mixture when the config leaves it
-# null -- 384 under balanced. Setting it is how you buy more optimizer
-# steps per epoch without changing what the mixture is.
+# steps_per_epoch is DERIVED when the config leaves it null. Under the config's
+# `proportional` policy that derivation is the EXACT ONE-PASS LENGTH over the
+# corpus -- every dataset seen once, nothing revisited -- which on ~15.4 M
+# windows is a large number. The banner prints what it resolved; do not carry
+# the old `balanced` figure of 384 in your head, it is from a different policy.
 #
-# A RECOMMENDED FINAL ANNEALING RUN, from an existing checkpoint's weights:
+# SETTING IT CAPS THE EPOCH. That is the point of the override: it turns "one
+# pass over everything" back into a fixed budget, which is what you want for a
+# short annealing run or for fitting an epoch inside a walltime:
 #
 #   EPOCHS=15 STEPS_PER_EPOCH=768 GRAD_ACCUMULATION=1 LR=1e-4 \
 #   SET="train.warmup_epochs=0" \
-#   INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth \
+#   INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/latest.pth \
 #   bash EEG/pretrain_eeg_c1_moe.sh
 #
-# 768 x 15 = 11,520 optimizer updates at grad_accum 1, twice what the derived
-# 384-step epoch gives, and the point of the budget is updates and sample
-# exposure rather than a wider model -- 384/6/6 is not changed for this.
+# 768 x 15 = 11,520 optimizer updates at grad_accum 1. Note this is FAR SHORT
+# of one pass over the corpus -- it is a deliberate cap, and under proportional
+# it means most of TUEG goes unseen in those fifteen epochs. Use it to anneal a
+# model that has already had its full passes, not to train one from scratch.
+#
 # INIT_FROM and not RESUME: a change of epoch length is a change of the unit
 # the cosine counts in, and a change of objective weights is a different loss;
 # --resume refuses both by design and says so.
@@ -119,7 +123,8 @@ INIT_FROM="${INIT_FROM:-}"
 # this corpus; the trainer's banner prints the steps/epoch, the total optimizer
 # updates, the world size, the per-route batch and the passes/epoch it actually
 # resolved, and warns when an epoch reads one dataset more than
-# train.max_passes_per_epoch_warn (5) times.
+# train.max_passes_per_epoch_warn (5) times -- which under proportional it
+# never should, since every row is 1.00x by construction.
 STEPS_PER_EPOCH="${STEPS_PER_EPOCH:-}"
 # Anything else, space separated: SET="model.embed_dim=512 model.depth=8".
 # For the architecture, which has no business having an environment
@@ -154,7 +159,6 @@ OVERRIDES=(
 [[ -n "${GRAD_ACCUMULATION}" ]] && OVERRIDES+=("train.grad_accumulation_steps=${GRAD_ACCUMULATION}")
 [[ -n "${LR}" ]]               && OVERRIDES+=("train.lr=${LR}")
 [[ -n "${WEIGHT_DECAY}" ]]     && OVERRIDES+=("train.weight_decay=${WEIGHT_DECAY}")
-[[ -n "${VIS_EVERY_EPOCHS}" ]] && OVERRIDES+=("train.vis_every_epochs=${VIS_EVERY_EPOCHS}")
 [[ -n "${MASK_RATIO}" ]]       && OVERRIDES+=("model.mask_ratio=${MASK_RATIO}")
 [[ -n "${SEED}" ]]             && OVERRIDES+=("seed=${SEED}")
 [[ -n "${WEIGHTS}" ]]          && OVERRIDES+=("data.weights=${WEIGHTS}")

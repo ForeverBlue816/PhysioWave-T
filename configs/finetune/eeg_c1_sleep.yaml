@@ -33,9 +33,13 @@ data:
 
 model:
   name: eeg_c1
-  embed_dim: 384
-  depth: 6
-  num_heads: 6
+  # 512/8/8, matching configs/pretrain/eeg_c1_moe.yaml as of 2026-08-30. These
+  # three numbers are not a choice here: the exported encoder's weights have
+  # these shapes, and a mismatch is a shape error at load time. They move
+  # together with the pretraining config or the transfer does not happen.
+  embed_dim: 512
+  depth: 8
+  num_heads: 8
   mlp_ratio: 4.0
   norm: rmsnorm
   ffn: swiglu

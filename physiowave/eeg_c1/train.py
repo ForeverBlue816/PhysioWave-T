@@ -412,7 +412,6 @@ class EEGC1Trainer:
         self.mask_ratio = float(mcfg.get("mask_ratio", 0.5))
         self.val_mask_seed = int(tcfg.get("val_mask_seed", 1234))
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
-        self.vis_every = int(tcfg.get("vis_every_epochs", 5))
         # How many passes over one dataset per epoch is worth a line in the
         # banner. Configurable rather than hard-coded: `balanced` on a corpus
         # with a 30x size spread reaches 20x on the small ones by design.

@@ -39,13 +39,26 @@ data:
   # micro-batch is route-specific -- see batch_size_by_route below. Both are
   # logged every epoch, with passes/epoch beside them.
   #
-  # A CONSEQUENCE OF `balanced` WORTH KNOWING: it does not merely moderate the
-  # largest corpus, it squeezes HBN too. HBN is 24% of all windows but shares
-  # E128_512 with HGD, and that route draws the fewest windows per step, so
-  # balanced leaves it at about 4% of the windows seen -- less than FACED,
-  # which is a thirtieth of its size. temperature:0.5 keeps TUEG off 74% while
-  # leaving HBN near 30%.
-  weights: balanced
+  # PROPORTIONAL, as of 2026-08-30. An epoch is now ONE PASS OVER THE CORPUS
+  # and nothing is revisited to fill a quota.
+  #
+  # What this buys: under `balanced` a step was drawn from a route with
+  # probability 1/4 regardless of size, so the five small corpora were shown
+  # 20 to 50 times per epoch while most of TUEG went unseen. The model saw the
+  # same windows over and over. Proportional shows every window once.
+  #
+  # WHAT IT COSTS, said plainly: TUEG is ~13.7 M of ~15.4 M windows, so it now
+  # carries about three quarters of every epoch, and the five small corpora
+  # carry a few percent between them. If the reason for `balanced` was to stop
+  # TUEG dominating the representation, that reason has not gone away -- it has
+  # been traded for coverage. temperature:0.5 is the dial between the two and
+  # is one `WEIGHTS=temperature:0.5` away at submission.
+  #
+  # steps_per_epoch is left null and therefore DERIVED from this: the exact
+  # one-pass length, which under proportional every dataset hits at once. It
+  # will be far larger than the 384 that `balanced` produced; the startup
+  # banner prints the number it resolved.
+  weights: proportional
 
 # ---------------------------------------------------------------------------
 # The self-supervised objective
@@ -65,10 +78,11 @@ data:
 # from their loss values; the comparable numbers are masked_{spec,raw}_corr and
 # masked_{spec,raw}_nmse, which the trainer reports per route and per dataset.
 #
-# The budget went into STEPS, not into width. 384/6/6 is unchanged, and the
-# annealing runs buy optimizer updates and sample exposure instead -- see
-# EEG/pretrain_eeg_c1_moe.sh's STEPS_PER_EPOCH note. A larger model that has
-# seen less of the corpus reconstructs better and transfers no further.
+# THE WIDTH CHANGED ON 2026-08-30, and with it every earlier checkpoint. The
+# transformer is 512/8/8 rather than 384/6/6 -- 25.2 M parameters against
+# 10.6 M -- and no checkpoint written before that date can be resumed from or
+# initialised from, because the state dict shapes do not match. The runs at
+# 384/6/6 are a separate series and their numbers are not comparable to these.
 #
 # Both targets are stop-gradient: they are produced by the frontend being
 # trained, so an attached target could be moved toward the prediction instead.
@@ -134,9 +148,27 @@ model:
   scale_fold: dynamic
   fold_synthesis: 3
   fold_gamma: 0.1
-  embed_dim: 384
-  depth: 6
-  num_heads: 6
+  # 512/8/8, not the 384/6/6 that produced the Sleep-EDF numbers. head_dim is
+  # 512/8 = 64 either way, so nothing about the attention geometry changes;
+  # what changes is that the shared transformer goes from 10.6 M parameters to
+  # 25.2 M and the whole model from 15.1 M to 30.3 M.
+  #
+  # TWO CONSEQUENCES THAT ARE NOT OPTIONAL:
+  #   * every checkpoint from before this is dead. Not resumable, not
+  #     init-from-able -- the state dict shapes differ. This series starts from
+  #     random initialisation.
+  #   * configs/finetune/eeg_c1_{sleep,p300}.yaml carry the same three numbers
+  #     and were changed with it. An exported encoder does not load into a
+  #     downstream model of a different width, and the failure is a shape error
+  #     at load time rather than a wrong number at the end.
+  #
+  # Activation memory grows with both: E128_512 is 1024 tokens a window, and at
+  # 8 layers of 512 it is roughly 1.8x what 6 layers of 384 cost. If it runs
+  # out of memory, BATCH_SIZE_BY_ROUTE halves E128_512 at submission without
+  # editing this file.
+  embed_dim: 512
+  depth: 8
+  num_heads: 8
   mlp_ratio: 4.0
   # NO DROPOUT. Masked reconstruction already corrupts its input -- three
   # quarters of the patches are zeroed before the frontend sees them -- and a
@@ -170,8 +202,26 @@ model:
   channel_token_gate_init: 0.0
 
 train:
-  epochs: 50
-  warmup_epochs: 2
+  # 5, against 50 before. An epoch is now a full pass over 15.4 M windows
+  # rather than 384 sampled steps, so five of them is more total exposure than
+  # fifty of the old ones, not less.
+  epochs: 5
+  # ONE EPOCH, which under `proportional` is a fifth of the run by epochs and
+  # tens of thousands of steps in absolute terms -- against 768 under the old
+  # 50x384 schedule. 2 was right when an epoch was 384 sampled steps (768 of
+  # 19,200, about 4%); at five full passes it would have put 40% of the run on
+  # the warmup ramp. The banner prints the resolved step count, which is what
+  # turns this fraction into a number.
+  warmup_epochs: 1
+  # UNCHANGED, deliberately, across a doubled model and an eight-fold longer
+  # run. 3e-4 is the linear-scaling value for this effective batch (MAE's
+  # blr 1.5e-4 x batch/256), and that scaling depends on the batch, not on the
+  # parameter count -- so widening the transformer is not a reason to move it.
+  # More steps is not one either: the cosine already stretches to fit. Lowering
+  # it for a bigger model is a hunch, and a hunch written into a config is
+  # indistinguishable from a measurement six months later. If it diverges, the
+  # gradient-norm columns in metrics_step.jsonl are the evidence to change it
+  # on, and LR=1e-4 at submission is the change.
   lr: 3.0e-4
   min_lr_ratio: 0.01
   weight_decay: 0.05
@@ -181,17 +231,17 @@ train:
   # looking exactly like the value in force.
   clip_grad_norm: 1.0
   precision: bf16
-  # 1, not 4. 769 scheduled steps at grad_accum 4 is 192 OPTIMIZER steps
-  # per epoch and 9,600 over the run -- an order of magnitude short of
-  # what masked pretraining takes, and no learning rate fixes a step
-  # count. At 1 the same epoch is 769 optimizer steps and the run is
-  # 38,450. The effective batch halves (4096 -> 2048 windows on
-  # E19_256) even with the per-GPU batch doubled below, which is the
-  # trade: fewer windows per update, four times as many updates.
+  # 1, so a scheduled step IS an optimizer step and the banner's two step
+  # counts agree. The arithmetic that settled this was done under the old
+  # `balanced` 384-step epoch, where grad_accum 4 left the run at 9,600
+  # optimizer steps -- an order of magnitude short of what masked pretraining
+  # takes, and no learning rate fixes a step count. Under `proportional` the
+  # epoch is the corpus and the step count is no longer the scarce thing, but
+  # 1 is still right: accumulation buys a bigger effective batch at the price
+  # of updates, and updates are what this objective needs.
   grad_accumulation_steps: 1
   steps_per_epoch: null          # null -> one pass over the corpus in expectation
   val_mask_seed: 1234            # fixes the validation mask across epochs
-  vis_every_epochs: 5
   # Token counts differ 6.7x across routes, so one batch size would either
   # waste E19_256 or exhaust memory on E128_512. A step's effective batch
   # therefore depends on the route it drew; the mixture table logs the window

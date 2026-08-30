@@ -83,16 +83,55 @@ def test_a_the_config_is_the_final_objective():
     assert o["normalize_spec_target"] is True
 
 
-def test_a_the_architecture_did_not_grow():
-    """384/6/6. The budget went into steps, not into width; a config that
-    quietly widened would make every reconstruction figure incomparable to the
-    runs before it."""
+def test_a_the_architecture_is_512_8_8():
+    """The width is pinned because changing it kills every checkpoint.
+
+    Not a tunable: the state dict shapes follow from these three numbers, so a
+    change here means no earlier run can be resumed or initialised from, and
+    the downstream configs stop loading the exported encoder. It is asserted so
+    that moving it is a deliberate act with a failing test attached, not a
+    one-line edit that surfaces as a shape error on a cluster.
+    """
     m = _config()["model"]
-    assert m["embed_dim"] == 384
-    assert m["depth"] == 6
-    assert m["num_heads"] == 6
+    assert m["embed_dim"] == 512
+    assert m["depth"] == 8
+    assert m["num_heads"] == 8
+    assert m["embed_dim"] % m["num_heads"] == 0, "head_dim is not an integer"
     assert m["mask_ratio"] == 0.70
     assert m["dropout"] == 0.0
+
+
+def test_a_the_downstream_configs_match_the_encoder():
+    """An exported encoder does not load into a model of a different width.
+
+    The failure mode this prevents is silent right up to the point it is not:
+    pretraining finishes, the export succeeds, and the finetune dies on a shape
+    mismatch hours later -- or worse, loads loosely and reports a number for an
+    encoder that was never pretrained.
+    """
+    import yaml
+    pre = _config()["model"]
+    for name in ("sleep", "p300"):
+        path = os.path.join(ROOT, "configs", "finetune", f"eeg_c1_{name}.yaml")
+        with open(path) as f:
+            down = yaml.safe_load(f)["model"]
+        for key in ("embed_dim", "depth", "num_heads", "channel_embed_dim"):
+            assert down[key] == pre[key], \
+                f"{name}.{key} is {down[key]}, pretraining is {pre[key]}"
+
+
+def test_a_an_epoch_is_one_pass_over_the_corpus():
+    """proportional, and steps_per_epoch left null so it is derived from it.
+
+    Pinning a step count here would make the epoch length a constant that the
+    corpus no longer decides, which is the opposite of what `proportional`
+    means.
+    """
+    cfg = _config()
+    assert cfg["data"]["weights"] == "proportional"
+    assert cfg["train"]["steps_per_epoch"] is None
+    assert cfg["train"]["epochs"] == 5
+    assert cfg["train"]["grad_accumulation_steps"] == 1
 
 
 def test_a_the_resolver_is_the_only_source():
