@@ -210,6 +210,65 @@ class ChannelPool(nn.Module):
         return (tokens * weights).sum(dim=1)
 
 
+class AttentiveStatsPool(nn.Module):
+    """``[B, N, D] -> [B, H*2D]``: attention-weighted mean AND standard deviation.
+
+    NOT EEGPT's head, and not a transformer. Attentive statistics pooling comes
+    from speaker verification (Okabe et al., Interspeech 2018), where the
+    problem has this exact shape: turn a variable-length sequence of frame
+    embeddings into one fixed vector, cheaply, without a sequence model on top.
+
+    Two things a mean cannot do, and both are the task talking:
+
+    THE SECOND MOMENT. A sleep stage is largely defined by how much the signal
+    fluctuates over its 30 s -- delta power in N3, spindle bursts in N2 -- and
+    a mean over the 60 time positions is exactly the operation that removes
+    that. Sigma costs no parameters at all and puts it back. It is the
+    difference between "what did the encoder see on average" and "how much did
+    what it saw vary".
+
+    THE ATTENTION. A P300 is a deflection at a time (250-500 ms) and a place
+    (centro-parietal), and a flat mean over 62x8 cells weights the other ~490
+    equally with the ones carrying it. H learned queries score each cell, so
+    the head can hold several such templates -- an early frontal one and a late
+    parietal one are different queries, not a compromise between them.
+
+    The queries are initialised to ZERO, so the attention is exactly uniform on
+    the first forward: mu is the plain mean and sigma the plain standard
+    deviation. This head therefore starts as a strict superset of the mean head
+    it replaces, and anything it learns after that it had to earn.
+    """
+
+    def __init__(self, dim: int, heads: int = 4) -> None:
+        super().__init__()
+        self.heads = int(heads)
+        self.dim = int(dim)
+        self.norm = nn.LayerNorm(dim)
+        self.query = nn.Parameter(torch.zeros(self.heads, dim))
+        self.scale = dim ** -0.5
+
+    @property
+    def out_features(self) -> int:
+        return self.heads * 2 * self.dim
+
+    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+        # fp32 for the pooling itself. sigma is computed as E[h^2] - mu^2, and
+        # that subtraction is where bf16 loses its digits: the two terms agree
+        # to several places precisely when the variance is small, which is the
+        # regime the metric is being asked about.
+        h = self.norm(tokens).float()                        # [B, N, D]
+        logits = torch.einsum("bnd,hd->bhn", h, self.query.float()) * self.scale
+        alpha = logits.softmax(-1).unsqueeze(-1)             # [B, H, N, 1]
+        h = h.unsqueeze(1)                                   # [B, 1, N, D]
+        mu = (alpha * h).sum(2)                              # [B, H, D]
+        var = (alpha * h.pow(2)).sum(2) - mu.pow(2)
+        sigma = var.clamp_min(1e-8).sqrt()
+        return torch.cat([mu, sigma], dim=-1).flatten(1).to(tokens.dtype)
+
+    def extra_repr(self) -> str:
+        return f"dim={self.dim}, heads={self.heads}, out={self.out_features}"
+
+
 class TemporalHead(nn.Module):
     """``[B, C, P, D] -> [B, K]``, keeping the time axis until the last step.
 

@@ -47,7 +47,7 @@ from channel_embedding import (CHANNEL_VOCAB, ChannelEncoder, PAD_ID,
                                channel_ids_for, vocab_payload)
 from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
 
-from .heads import AdaptiveSpatialFilter, TemporalHead
+from .heads import AdaptiveSpatialFilter, AttentiveStatsPool, TemporalHead
 from .model import WaveletFrontend
 from .routes import ROUTES, Route
 
@@ -167,6 +167,7 @@ class EEGC1Downstream(nn.Module):
                  channel_vocab_size: Optional[int] = None,
                  pool: str = "mean", head_dropout: float = 0.0,
                  probe_dim: int = 16, head_depth: int = 4, head_heads: int = 4,
+                 pool_heads: int = 4,
                  head_max_norm: float = 0.0, channel_pool: str = "mean",
                  spatial_filter: str = "none",
                  spatial_channels: Optional[Sequence[str]] = None,
@@ -233,9 +234,9 @@ class EEGC1Downstream(nn.Module):
         self.num_classes = int(num_classes)
         self.embed_dim = int(embed_dim)
         self.pool = pool
-        if pool not in ("mean", "max", "cls_free_mean", "time", "attn"):
+        if pool not in ("mean", "max", "cls_free_mean", "stat", "time", "attn"):
             raise ValueError(
-                f"pool must be mean, max, time or attn, got {pool!r}")
+                f"pool must be mean, max, stat, time or attn, got {pool!r}")
         # ``time`` keeps the time axis and only averages over channels, which is
         # what an ERP head needs and what EEGPT's linear probe does: theirs is a
         # per-position Linear(2048, 16), a flatten over the 15 positions, then a
@@ -269,7 +270,21 @@ class EEGC1Downstream(nn.Module):
             mlp_ratio=mlp_ratio, dropout=dropout, rope_dim=rope_dim,
             norm=norm, ffn=ffn, qk_norm=qk_norm)
 
-        if pool in ("time", "attn"):
+        if pool == "stat":
+            # Attention-weighted mean and standard deviation over the whole
+            # token grid. The queries start at zero, so the first forward is
+            # the mean head plus a standard deviation -- a strict superset of
+            # what this replaces.
+            self.head_norm = None
+            self.head_drop = nn.Dropout(head_dropout)
+            # `head_pool`, not `stat_pool`: TRAINABLE_WHEN_FROZEN is a prefix
+            # tuple, and the pooling IS part of the head -- its queries are
+            # most of what a probe has to learn. Named outside the convention
+            # it was frozen along with the encoder, and the probe trained a
+            # bare Linear on a fixed mean.
+            self.head_pool = AttentiveStatsPool(embed_dim, heads=pool_heads)
+            self.head = nn.Linear(self.head_pool.out_features, self.num_classes)
+        elif pool in ("time", "attn"):
             # `time` flattens the projected positions (EEGPT's PhysioP300 head);
             # `attn` reads them with a cls token and a small transformer (their
             # Sleep-EDFx head). Both keep the time axis, which is the property
@@ -437,6 +452,10 @@ class EEGC1Downstream(nn.Module):
 
     def forward(self, x: torch.Tensor, meta=None) -> Dict[str, torch.Tensor]:
         tokens = self.encode(x, meta)                       # [B, C*P, D]
+        if self.pool == "stat":
+            pooled = self.head_pool(tokens)
+            return {"logits": self.head(self.head_drop(pooled)),
+                    "features": pooled}
         if isinstance(self.head, TemporalHead):
             # The patcher emits tokens channel-major, [C, P] flattened, which is
             # the order `encode` adds the channel code and the 2-D position in,

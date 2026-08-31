@@ -502,3 +502,92 @@ def test_a_frozen_probe_cannot_recover_a_dead_gate():
     model = _on_route_64(freeze_encoder=True)
     gate = dict(model.named_parameters())["channel_token_gate"]
     assert not gate.requires_grad
+
+
+# --------------------------------------------------------------------------- #
+# attentive statistics pooling
+# --------------------------------------------------------------------------- #
+def test_zero_queries_reproduce_the_plain_mean_and_std():
+    """The property that makes this a safe replacement for the mean head."""
+    from physiowave.eeg_c1.heads import AttentiveStatsPool
+
+    pool = AttentiveStatsPool(8, heads=3).eval()
+    t = torch.randn(4, 21, 8)
+    out = pool(t)
+    h = torch.nn.functional.layer_norm(t, (8,))
+    mu, sd = h.mean(1), h.std(1, unbiased=False)
+    for k in range(3):
+        head = out[:, k * 16:(k + 1) * 16]
+        assert torch.allclose(head[:, :8], mu, atol=1e-5)
+        assert torch.allclose(head[:, 8:], sd, atol=1e-4)
+
+
+def test_a_trained_query_stops_being_a_mean():
+    from physiowave.eeg_c1.heads import AttentiveStatsPool
+
+    pool = AttentiveStatsPool(8, heads=1).eval()
+    t = torch.randn(2, 21, 8)
+    flat = pool(t)
+    with torch.no_grad():
+        pool.query.copy_(t[0, 0] * 8.0)          # a query that picks one cell out
+    assert not torch.allclose(pool(t), flat, atol=1e-3)
+
+
+def test_sigma_sees_variation_a_mean_cannot():
+    """Zero spread across tokens vs real spread, at the same token norm.
+
+    The comparison has to be made AFTER the LayerNorm the pool applies, which
+    is per token across D -- so a token set that differs only by a constant
+    offset is identical to it, and would test nothing.
+    """
+    from physiowave.eeg_c1.heads import AttentiveStatsPool
+
+    pool = AttentiveStatsPool(4, heads=1).eval()
+    v = torch.tensor([1.0, -1.0, 2.0, -2.0])
+    still = v.repeat(1, 12, 1)                   # every token the same
+    moving = torch.randn(1, 12, 4)
+    assert pool(still)[:, 4:].abs().max() < 1e-3          # no spread, no sigma
+    assert pool(moving)[:, 4:].abs().max() > 0.1          # spread, sigma
+
+
+def test_the_stat_head_runs_on_both_task_shapes():
+    p300 = build(pool="stat", pool_heads=4)                   # 8 ch x 4 patches
+    out = p300(torch.randn(2, 8, 512),
+               {"channel_ids": torch.arange(1, 9),
+                "valid_channel_mask": torch.ones(8, dtype=torch.bool)})
+    assert out["logits"].shape == (2, 2)
+    assert out["features"].shape == (2, 4 * 2 * 32)
+
+    sleep = build_free(pool="stat", pool_heads=4)              # 2 ch x 12 patches
+    out = sleep(torch.randn(2, 2, 600),
+                {"channel_ids": torch.tensor([2, 3]),
+                 "valid_channel_mask": torch.ones(2, dtype=torch.bool)})
+    assert out["logits"].shape == (2, 5)
+
+
+def test_the_stat_head_is_the_only_thing_a_probe_trains():
+    model = build(pool="stat", pool_heads=4, freeze=True)
+    trainable = {n for n, p in model.named_parameters() if p.requires_grad}
+    assert trainable == {"head_pool.norm.weight", "head_pool.norm.bias",
+                         "head_pool.query", "head.weight", "head.bias"}
+
+
+def test_pooling_survives_bf16_tokens():
+    """sigma is E[h^2] - mu^2, which is where bf16 loses its digits."""
+    from physiowave.eeg_c1.heads import AttentiveStatsPool
+
+    pool = AttentiveStatsPool(16, heads=2).eval()
+    t = torch.randn(2, 30, 16)
+    ref = pool(t)
+    got = pool(t.to(torch.bfloat16))
+    assert got.dtype == torch.bfloat16
+    assert torch.allclose(got.float(), ref, atol=2e-2)
+
+
+def test_the_shipped_configs_use_it():
+    import yaml
+
+    for name in ("eeg_c1_p300", "eeg_c1_sleep"):
+        with open(f"configs/finetune/{name}.yaml") as fh:
+            c1 = yaml.safe_load(fh)["model"]["eeg_c1"]
+        assert c1["pool"] == "stat" and c1["pool_heads"] == 4
