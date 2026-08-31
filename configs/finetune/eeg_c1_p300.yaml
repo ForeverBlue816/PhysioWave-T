@@ -1,42 +1,32 @@
 # P300 (ERP-BCI) on a C1 pretrained encoder.
 #
-# THE STRONGEST TRANSFER THE CORPUS ALLOWS. erpbci records 64 EEG electrodes
-# and 62 of them are slots of E64_256, at 256 Hz, which is that route's
-# sampling rate. So the pretrained WAVELET FRONTEND and PATCHER transfer as
-# well as the transformer -- the montage goes in the route's slots by name and
-# the absent ones are masked, exactly as pretraining ran on every corpus that
-# did not fill its route.
+# WHAT TRANSFERS IS THE TRANSFORMER, AND THAT IS THE QUESTION -- the same
+# arrangement as Sleep-EDF, on purpose. This montage gets its OWN wavelet
+# frontend and patcher, freshly initialised, and what comes from pretraining is
+# the channel-name embedding, its gate, and the shared transformer.
 #
-# THE MONTAGE IS 62, and that is the converter's default:
+# It could be otherwise: erpbci's electrodes are 62 of E64_256's 64 slots, and
+# putting them there would carry the pretrained frontend and patcher across as
+# well. That is a stronger transfer and a weaker experiment. With a fresh
+# frontend both downstream tasks ask the same one question -- does the shared
+# transformer carry anything -- and neither can answer it with a filter bank
+# that came along for the ride.
 #
-#     python EEG/physio_p300_finetune.py --edf-dir $PW_DATA_EEG/erpbci \
-#         --out-dir $PW_DATA_EEG/p300_f0 --fold 0 --channels 62
+# The consequences, none of them subtle:
 #
-# Nothing in this file names the electrodes. in_channels and channel_names come
-# out of the HDF5, so the split decides the montage and the model follows it --
-# which is why a 58-channel split built before this default still trains, and
-# still leaves four pretrained filter banks being handed zeros.
-#
-# 62 and not 64: the EDF has P9/P10 where the route has TP9/TP10, one position
-# higher in the same inferior chain. To put those two in as well, re-read them
-# as the route's pair -- a modelling assumption, so it is stated and never
-# assumed:
-#
-#     --set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"
-#
-# 58 is EEGPT's own set and is what to write for a preprocessing-identical row;
-# it gives up AF7, AF8, AFz and Iz -- four slots whose filter banks pretraining
-# trained. `--channels {58,62,64}` on the converter picks between them and
-# costs a split, not a re-decode.
-#
-# The window is 512 samples, 2 s, against the route's 4 s. Nothing on the
-# encoder path has a length baked in.
+#   * ALL 64 recorded electrodes are used. Nothing is placed in slots, so
+#     P9/P10 need no alias and TP9/TP10 are not missing: the route's montage
+#     stops being a constraint. Build the split with --channels 64.
+#   * patch_samples is a free choice again rather than the route's 128.
+#   * the frontend is 64 electrodes' worth of fresh filter banks, and so is the
+#     from-scratch control's. The comparison is between the same architectures.
 #
 #   python -m physiowave.train.finetune_main --config finetune/eeg_c1_p300 \
 #       --data-dir $PW_DATA_EEG/p300_f0 --num-classes 2 \
 #       --set model.eeg_c1.pretrained=<exported.pth>
 #
 # THE CONTROL is the same command with that --set left off. Run both.
+
 trainer: finetune
 run_name: finetune_eeg_c1_p300
 
@@ -73,33 +63,23 @@ model:
   dropout: 0.1
 
   eeg_c1:
-    route_id: E64_256          # 62 of its 64 slots, 256 Hz, 128-sample patches
-                               # (TP9/TP10 are the two the EDF does not record)
+    # No route_id: this montage gets its own frontend, as Sleep-EDF does.
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
-    patch_samples: 128
-    # NOT mean. Mean pools over electrodes AND the four 500 ms patches, which
-    # hands the head one vector per 2 s window -- and a P300 is a 250-500 ms
-    # deflection, so that average is the ERP divided by four plus three patches
-    # of everything else. `time` averages over electrodes only and keeps the
-    # time axis, which is the shape EEGPT's probe has: a per-position
-    # Linear(2048, 16), a flatten over the positions, then a Linear to logits.
-    pool: time                 # project each position, then flatten
-    probe_dim: 16              # their linear_probe1 width
-    channel_pool: attn         # a learned query over electrodes, 384 parameters,
-                               # instead of a flat mean. EEGPT's encoder hands
-                               # its head channel-agnostic summary tokens and
-                               # ours does not, so this is the cheapest way to
-                               # let the head say WHERE as well as when.
-    head_dropout: 0.5          # theirs, on both the probe and the fine-tune
-    head_max_norm: 0.25        # LinearWithConstraint(240, 2, max_norm=0.25).
-                               # An EEGNet-style row renorm, which on a few
-                               # thousand labelled windows does the work weight
-                               # decay on a 7k-parameter head cannot.
-    spatial_filter: scale      # their chan_scale: one learnable gain per
-                               # electrode, trained even under --freeze-encoder
-                               # because it adapts the montage rather than
-                               # representing it (their Table 8 ablates it)
+    patch_samples: 64           # 250 ms at 256 Hz -- EEGPT's patch duration at
+                                # this rate, and the timescale a P300 lives on.
+                                # 512/64 = 8 positions. Costs 64 x 8 = 512
+                                # tokens against the route's 62 x 4, so
+                                # --set model.eeg_c1.patch_samples=128 halves
+                                # the sequence if the run is too slow.
+
+    # The head this evaluation had before the EEGPT-shaped one: mean over the
+    # tokens, LayerNorm, dropout, one Linear. physiowave/eeg_c1/heads.py still
+    # carries the other shapes and each is one --set away -- pool=time|attn,
+    # channel_pool, head_max_norm, spatial_filter -- but they are off, so what
+    # is measured here is the encoder plus 2,050 parameters (3,589 on sleep).
+    pool: mean
+    head_dropout: 0.1
     pretrained: null           # set it, or leave it for the control
 
 # EEGPT's downstream budget, because the point of this run is to sit next to

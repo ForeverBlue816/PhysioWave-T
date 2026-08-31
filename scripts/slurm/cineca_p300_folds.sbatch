@@ -56,7 +56,7 @@ mkdir -p "${SWEEP_ROOT}"
 # The montage. One variable, so the split that is written and the model that
 # reads it cannot disagree -- IN_CHANNELS reaches the split as --channels and
 # EEG/finetune_p300.sh as itself.
-IN_CHANNELS="${IN_CHANNELS:-62}"
+IN_CHANNELS="${IN_CHANNELS:-64}"
 export IN_CHANNELS
 
 if ! CACHE_DIR="$(pw_p300_cache_dir "${EDF_DIR}")"; then

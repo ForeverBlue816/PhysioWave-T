@@ -8,11 +8,13 @@ so the result sits next to their published row rather than beside it:
 
     * source        PhysioNet erpbci 1.0.0, EDF, 2048 Hz, 64 EEG channels
                     (+ 6 ocular/ear channels, dropped)
-    * channels      62 by default -- every electrode the EDF records that
-                    E64_256, the route this encoder pretrained on, has a slot
-                    for, in the ROUTE's order. `--channels 58` writes EEGPT's
-                    own set instead, in their order, for a
-                    preprocessing-identical row.
+    * channels      all 64 EEG channels by default. The shipped
+                    finetune/eeg_c1_p300 config builds its own wavelet frontend
+                    rather than placing the montage in E64_256's slots, so
+                    nothing constrains the set to the route's names.
+                    `--channels 62` is what a route-placed model can hold
+                    without an alias; `--channels 58` is EEGPT's own set, in
+                    their order, for a preprocessing-identical row.
     * epochs        tmin=-0.1 s, tmax=2.0 s around each flash, aligned to the
                     EDF's own annotations
     * filtering     IIR 0-120 Hz, applied after epoching, as they do
@@ -71,7 +73,7 @@ Usage:
         --edf-dir $PW_DATA_EEG/erpbci --out-dir $PW_DATA_EEG/p300_f0 --fold 0
 
 Output, matching what finetune.py reads:
-    data          (N, C, 512) float32   C = --channels, 62 by default
+    data          (N, C, 512) float32   C = --channels, 64 by default
     label         (N,)        int64      0=non-target 1=target
     channel_names (C,)        bytes      the montage, by name and in order
     subject       (N,)         int64      provenance; unused by the trainer
@@ -166,12 +168,16 @@ CHANNELS_62 = [
     "O2", "Iz",
 ]
 
-#: All 64, which needs P9 and P10 to be READ AS the route's TP9 and TP10.
-#: That substitution is a modelling assumption, not a fact, so it does not
-#: happen here: the HDF5 keeps the true names and the model is told to alias
-#: them, with `--set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"`.
-#: Without that the model refuses the montage rather than dropping two
-#: electrodes it was handed.
+#: Every EEG electrode the recording has, and the default: the shipped config
+#: builds its own frontend, so nothing constrains the set to a route's names
+#: and there is no reason to write away two measured electrodes.
+#:
+#: ON A ROUTE it is different. P9 and P10 are not slots of E64_256, whose
+#: inferior pair is TP9/TP10 -- one position higher in the same lateral chain.
+#: Putting them there means reading one electrode as another, which is a
+#: modelling assumption and so is stated rather than assumed:
+#: `--set model.eeg_c1.slot_aliases="{P9: TP9, P10: TP10}"`. `--channels 62`
+#: builds a split a route-placed model holds without needing it.
 CHANNELS_64 = CHANNELS_62 + ["P9", "P10"]
 
 CHANNEL_SETS = {58: CHANNELS_58, 62: CHANNELS_62, 64: CHANNELS_64}
@@ -640,12 +646,12 @@ def main() -> None:
                         "reproducing a file made before the metadata existed; "
                         "any --channel_encoding other than none then refuses "
                         "to train on it.")
-    p.add_argument("--channels", type=int, default=62, choices=sorted(CHANNEL_SETS),
-                   help="electrodes to write. 62 (default) is every recorded "
-                        "electrode E64_256 has a slot for; 58 is EEGPT's set, "
-                        "for a preprocessing-identical row; 64 adds P9 and P10, "
-                        "which the model will refuse unless it is also given "
-                        "model.eeg_c1.slot_aliases mapping them onto TP9/TP10.")
+    p.add_argument("--channels", type=int, default=64, choices=sorted(CHANNEL_SETS),
+                   help="electrodes to write. 64 (default) is every EEG channel "
+                        "the recording has, which the shipped config takes "
+                        "because it builds its own frontend; 62 is what a "
+                        "route-placed model holds without an alias; 58 is "
+                        "EEGPT's set, for a preprocessing-identical row.")
     p.add_argument("--all-channels", action="store_true",
                    help="deprecated spelling of --channels 64")
     p.add_argument("--allow-missing", action="store_true",

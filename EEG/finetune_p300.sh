@@ -35,11 +35,11 @@
 # number. `bash EEG/finetune_p300.sh` runs FOLD; loop it 0..8 and average.
 #
 # Architecture notes:
-#   in_channels 62   the converter's default montage: every electrode erpbci
-#                    records that E64_256 has a slot for. It MUST match the
-#                    split -- finetune.py checks it against the file's channel
-#                    metadata and refuses a mismatch. A split built with
-#                    --channels 58 needs IN_CHANNELS=58 here.
+#   in_channels 64   the converter's default montage: every EEG electrode
+#                    erpbci records. It MUST match the split -- finetune.py
+#                    checks it against the file's channel metadata and refuses
+#                    a mismatch -- so a split built with --channels 62 or 58
+#                    needs the matching IN_CHANNELS here.
 #   patch_size 64    250 ms at 256 Hz, matching their d=64. The window is 512
 #                    samples, so 8 time patches; the fold collapses the 4
 #                    wavelet scales back onto 62 rows, giving 62 x 8 = 496
@@ -178,7 +178,7 @@ fi
   --val_file "${VAL_FILE}" \
   --test_file "${TEST_FILE}" \
   ${PRETRAINED_ARG[@]+"${PRETRAINED_ARG[@]}"} \
-  --in_channels "${IN_CHANNELS:-62}" \
+  --in_channels "${IN_CHANNELS:-64}" \
   --max_level "${MAX_LEVEL:-3}" \
   --wave_kernel_size "${WAVE_KERNEL_SIZE:-16}" \
   --wavelet_names ${WAVELET_NAMES:-sym4 sym5 db6 sym8 db8} \

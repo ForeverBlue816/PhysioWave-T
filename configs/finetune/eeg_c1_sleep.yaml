@@ -59,44 +59,13 @@ model:
     # No route_id: this montage gets its own frontend.
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
-    patch_samples: 50           # 60 positions over the 30 s window
-
-    # A 30 s window is sixty 0.5 s positions, which is too many to flatten and
-    # exactly what EEGPT reads with a sequence model: their Sleep-EDFx head is
-    # Linear(2048, 64), a sinusoidal position code, a cls token, a 4-layer
-    # transformer over the positions, then Linear(64, 5). Ours is the same
-    # shape. `mean` was the old setting and it threw the time axis away, which
-    # for staging is throwing away the transitions -- N1 is defined partly by
-    # what it is between.
-    pool: attn
-    probe_dim: 64               # their linear_probe1 width here
-    head_depth: 4               # their num_layers
-    head_heads: 4
-    channel_pool: attn
-    head_dropout: 0.5
-    head_max_norm: 0.25
-
-    # TWO CHANNELS, because that is what was recorded.
-    #
-    # EEGPT maps them onto thirteen named 10-20 electrodes with a 1x1 conv
-    # (their chan_conv) so that their channel embeddings have pretrained rows
-    # to look up -- Fpz-Cz and Pz-Oz are bipolar derivations, and every
-    # pretraining corpus here is monopolar, so those two vocabulary rows (ids
-    # 2 and 3) are still near their initialisation.
-    #
-    # That is a real mechanism and it is available:
-    #
-    #     --set model.eeg_c1.spatial_filter=mix     #           model.eeg_c1.spatial_channels="[F3, F4, C3, C4, P3, P4, Fpz,     #                                           Fz, Cz, CPz, Pz, POz, Oz]"
-    #
-    # It is not the default, for a reason worth writing down: thirteen outputs
-    # of a linear map from two inputs span a two-dimensional space. The montage
-    # gets thirteen names and the recording still has two degrees of freedom --
-    # no information is added, only an addressing scheme for the channel
-    # embedding. Whether that addressing is worth anything is measurable, and
-    # until it has been measured on this dataset the default should be the
-    # montage that was recorded. Run it as an ablation against this config;
-    # the delta is the answer.
-    spatial_filter: none
+    patch_samples: 50
+    # Mean over the tokens, LayerNorm, dropout, one Linear -- the head this
+    # evaluation had before. The sequence head (pool=attn, a cls token and
+    # head_depth layers over the 60 positions, which is the shape EEGPT's
+    # Sleep-EDF head has) is still in heads.py and is one --set away.
+    pool: mean
+    head_dropout: 0.1
     pretrained: null
 
 # EEGPT's downstream budget for this dataset, from finetune_EEGPT_SleepEDF.py:
