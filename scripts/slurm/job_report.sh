@@ -13,6 +13,10 @@
 # how an OUT_OF_MEMORY array got read as sixteen successful completions.
 #
 # LINES controls how much of each log is shown (default 25).
+#
+# For the other question a maintenance notice raises -- will a pending job
+# start before the window, or is it held until after -- see
+# scripts/slurm/cluster_status.sh.
 # ============================================================================
 
 set -uo pipefail
