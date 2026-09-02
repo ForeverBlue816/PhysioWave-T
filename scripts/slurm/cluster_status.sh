@@ -260,9 +260,15 @@ else
             else
                 echo "      -> 想用掉这个空档：--time=${hhmm}。"
             fi
-            echo "           scancel ${jid}"
-            echo "           sbatch --time=${hhmm} --export=ALL,RESUME=auto \\"
-            echo "                  scripts/slurm/cineca_eeg_c1_moe_pretrain.sbatch"
+            # Lowering a pending job's limit in place, NOT scancel+sbatch.
+            # SLURM lets a user decrease their own job's TimeLimit, and doing
+            # it in place keeps the job id, the submit time and the priority
+            # the job has been accruing since it queued. Cancelling and
+            # resubmitting throws all three away and puts the job at the back
+            # of a queue it had been climbing.
+            echo "           scontrol update JobId=${jid} TimeLimit=${hhmm}"
+            echo "         （改完再看一次 squeue --me，REASON 应该不再是 Reserved"
+            echo "           for maintenance；仍然不行才用 scancel + sbatch 重提）"
         fi
     done < <(squeue --me -h -t PD -o "%i %l %S" 2>/dev/null)
     [[ "${pending}" -eq 0 ]] && echo "  没有 pending 的作业要检查。"
