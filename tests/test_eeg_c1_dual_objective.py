@@ -1110,6 +1110,94 @@ def test_h_the_dual_objective_figure_reports_the_resolved_weights(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
+# H2. surveying more than one window, and saying that a figure was picked
+# --------------------------------------------------------------------------- #
+
+class _FakeDataset:
+    def __init__(self, n):
+        self._n = n
+
+    def __len__(self):
+        return self._n
+
+
+def test_h2_survey_indices_span_the_dataset_rather_than_one_recording():
+    """range(n) would draw n consecutive windows of ONE recording.
+
+    The corpus is one shard per recording with windows consecutive inside it,
+    so "the first four windows" is four windows of one subject's one episode.
+    Picking the best of those selects over the mask draw, not over the corpus.
+    """
+    viz = _viz()
+    idx = viz._survey_indices(_FakeDataset(10000), 4)
+    assert idx == [0, 3333, 6666, 9999]
+    # Degenerate inputs still name a drawable window.
+    assert viz._survey_indices(_FakeDataset(10000), 1) == [0]
+    assert viz._survey_indices(_FakeDataset(1), 8) == [0]
+    assert viz._survey_indices(_FakeDataset(0), 8) == []
+    # Asking for more windows than exist yields each of them once, not
+    # duplicates that would render the same figure twice under two names.
+    assert viz._survey_indices(_FakeDataset(3), 8) == [0, 1, 2]
+
+
+def test_h2_the_first_survey_figure_keeps_its_historical_name():
+    """A paper script, a reference or a test written before --recon-windows
+    existed points at fig_mask_reconstruction. Renaming every figure to
+    _w00 would break all of them to no purpose."""
+    viz = _viz()
+    assert viz._recon_name("fig_mask_reconstruction", 0) == \
+        "fig_mask_reconstruction"
+    assert viz._recon_name("fig_mask_reconstruction", 1) == \
+        "fig_mask_reconstruction_w01"
+
+
+def test_h2_rank_one_is_the_best_window_and_a_diverged_one_ranks_last():
+    """Rank 1 must be the LOWEST masked NMSE, and a NaN must never take it.
+
+    A window whose decoder produced NaN compares false against everything, so
+    an unguarded sort can leave it in first place -- and first place is exactly
+    what someone reading the survey for a figure will reach for.
+    """
+    viz = _viz()
+
+    def ex(raw, spec):
+        return {"metrics": {"masked_raw_nmse": raw, "masked_spec_nmse": spec}}
+
+    rows = [("E19_256", "tueg"), ("E128_512", "hbn")]
+    grid = [[ex(0.9, 0.5), ex(0.1, 0.1)],
+            [ex(float("nan"), 0.2), ex(0.2, 0.2)],
+            [ex(0.3, 0.8), ex(0.3, 0.3)]]
+    ranks = viz._rank_windows(rows, grid)
+
+    # 0.3 < 0.9 < NaN
+    assert ranks[("E19_256", 2)]["raw"] == 1
+    assert ranks[("E19_256", 0)]["raw"] == 2
+    assert ranks[("E19_256", 1)]["raw"] == 3
+    # The two heads rank independently: window 1 is worst on raw, best on spec.
+    assert ranks[("E19_256", 1)]["spec"] == 1
+    assert all(r["n"] == 3 for r in ranks.values())
+    # Ranked WITHIN a route. E128_512's window 0 is its own best despite being
+    # numerically worse than nothing in E19_256; a pooled ranking would report
+    # "the best window" as "the window from the easiest route".
+    assert ranks[("E128_512", 0)]["raw"] == 1
+
+
+def test_h2_a_route_absent_from_a_survey_column_does_not_take_first_place():
+    """A route whose dataset ran out of windows has None in the later columns.
+
+    float(None["metrics"]) is not the failure mode to worry about -- the
+    failure mode is a missing row silently sorting to rank 1.
+    """
+    viz = _viz()
+    rows = [("E19_256", "tueg")]
+    grid = [[{"metrics": {"masked_raw_nmse": 0.4, "masked_spec_nmse": 0.4}}],
+            [None]]
+    ranks = viz._rank_windows(rows, grid)
+    assert ranks[("E19_256", 0)]["raw"] == 1
+    assert ranks[("E19_256", 1)]["raw"] == 2
+
+
+# --------------------------------------------------------------------------- #
 # End to end: a smoke run, its checkpoints, and its figures
 # --------------------------------------------------------------------------- #
 
@@ -1270,6 +1358,45 @@ def test_end_to_end_checkpoints_figures_and_refusals(tmp_path):
         for key in ("raw_corr", "raw_nmse", "raw_mae", "raw_rmse"):
             assert key in r_, key
     assert "not raw EDF values" in raw_meta["note"]
+
+    # -- surveying several windows so a figure can be chosen -------------- #
+    survey = subprocess.run(
+        [sys.executable, "scripts/visualize_eeg_pretraining.py",
+         "--run-dir", str(run), "--checkpoint", "best.pth", "--split", "val",
+         "--format", "png", "--threads", "2", "--recon-windows", "3",
+         "--only", "fig_mask_reconstruction",
+         "fig_raw_waveform_reconstruction"],
+        cwd=ROOT, capture_output=True, text=True)
+    assert survey.returncode == 0, survey.stderr[-3000:]
+    for name in ("fig_mask_reconstruction", "fig_mask_reconstruction_w01",
+                 "fig_mask_reconstruction_w02",
+                 "14_raw_waveform_reconstruction",
+                 "14_raw_waveform_reconstruction_w01",
+                 "14_raw_waveform_reconstruction_w02"):
+        assert (run / "figures" / f"{name}.png").is_file(), name
+
+    table = json.loads(
+        (run / "figure_metadata" / "reconstruction_survey.json").read_text())
+    assert table["n_windows"] == 3
+    assert len(table["windows"]) == 3 * len(ROUTES)
+    # Different windows, not the same one drawn three times under three names.
+    for rid in ROUTES:
+        got = sorted(r["window_index"] for r in table["windows"]
+                     if r["route_id"] == rid)
+        assert len(set(got)) == 3, f"{rid} surveyed the same window {got}"
+    for rid in ROUTES:
+        assert sorted(r["raw_nmse_rank"] for r in table["windows"]
+                      if r["route_id"] == rid) == [1, 2, 3]
+
+    # A figure that was picked out of a survey says so in its own metadata.
+    picked = json.loads(
+        (run / "figure_metadata"
+         / "fig_mask_reconstruction_w02.json").read_text())
+    assert picked["survey_index"] == 2
+    assert picked["n_windows_surveyed"] == 3
+    for e in picked["examples"]:
+        assert e["raw_nmse_rank"] in (1, 2, 3)
+        assert e["n_windows_surveyed"] == 3
 
     dual = json.loads(
         (run / "figure_metadata" / "10_dual_objective.json").read_text())

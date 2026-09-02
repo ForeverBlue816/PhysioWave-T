@@ -6,6 +6,12 @@ Paper figures for an EEG C1 pretraining run.
     python scripts/visualize_eeg_pretraining.py \
         --run-dir /path/to/run --checkpoint best.pth --split val --format svg
 
+``--recon-windows N`` draws the two reconstruction figures on N different
+validation windows per route instead of one, ranks them by masked NMSE and
+writes the ranking to figure_metadata/reconstruction_survey.json. Choosing the
+best of several is a normal way to pick a figure; the rank exists so the chosen
+one can be captioned as chosen rather than as the window that came up.
+
 Every figure is drawn from the run's own artefacts -- the checkpoint, the
 metrics files and the corpus the run trained on. Nothing is illustrative: the
 masks drawn are the masks the model was given, the reconstructions are that
@@ -491,6 +497,176 @@ def _route_rows(datasets) -> List:
     return rows
 
 
+def _survey_indices(ds, n: int) -> List[int]:
+    """``n`` window indices spread across the dataset, deterministically.
+
+    NOT ``range(n)``. The corpus is one shard per recording and windows sit
+    consecutively inside it, so the first n indices are n consecutive windows
+    of ONE recording -- often one minute of one subject. A survey drawn from
+    those varies the mask and almost nothing else, and picking "the best of
+    eight" out of it selects over noise. linspace spans the dataset, so the
+    candidates come from different recordings and the spread between them is a
+    spread over the corpus.
+    """
+    n_total = len(ds)
+    if n_total <= 0:
+        return []
+    if n <= 1 or n_total == 1:
+        return [0]
+    return sorted({int(round(float(i)))
+                   for i in np.linspace(0, n_total - 1, min(n, n_total))})
+
+
+def survey_reconstruction_windows(model, datasets, mask_seed, device,
+                                  objective, n_windows: int = 1):
+    """Every window the two reconstruction figures draw, modelled once.
+
+    Returns ``(rows, grid, ranks)``:
+
+    * ``rows``      -- ``(route_id, dataset_id)``, one per route;
+    * ``grid[k][i]``-- the example for ``rows[i]``'s k-th surveyed window;
+    * ``ranks[(route_id, k)]`` -- ``{"raw": r, "spec": s, "n": K}``, where 1 is
+      the LOWEST masked NMSE among the windows surveyed for that route.
+
+    The rank is the point of surveying at all. Drawing eight windows and
+    publishing the one that came out best is a legitimate way to choose a
+    figure; publishing it as though it were simply the window that came up is
+    not. The rank travels in the figure's caption and its metadata so the two
+    stay distinguishable after the figure leaves this directory.
+
+    One pass, shared by both figures. They show the same windows from two
+    sides; computing them separately would run the model twice and let the two
+    drift onto different samples the moment either index rule is edited.
+    """
+    rows = _route_rows(datasets)
+    if not rows:
+        return [], [], {}
+    n_windows = max(1, int(n_windows))
+    picks = {rid: _survey_indices(datasets[dsid], n_windows)
+             for rid, dsid in rows}
+    n_drawn = max((len(v) for v in picks.values()), default=0)
+
+    grid: List[List[Optional[Dict]]] = []
+    for k in range(n_drawn):
+        col: List[Optional[Dict]] = []
+        for rid, dsid in rows:
+            if not picks[rid]:
+                col.append(None)
+                continue
+            # A dataset with fewer windows than the survey repeats its last one
+            # rather than dropping out of the later figures. A four-row figure
+            # that silently becomes three rows reads as "this route failed".
+            wi = picks[rid][min(k, len(picks[rid]) - 1)]
+            col.append(_fixed_example(model, datasets[dsid], ROUTES[rid],
+                                      mask_seed, window_index=wi,
+                                      device=device, objective=objective))
+        grid.append(col)
+
+    return rows, grid, _rank_windows(rows, grid)
+
+
+def _rank_windows(rows, grid) -> Dict:
+    """``{(route_id, k): {"raw": r, "spec": s, "n": K}}``, 1 = lowest NMSE.
+
+    Per route, because the routes are not comparable to each other: E19_256's
+    NMSE and E128_512's are computed on different numbers of channels at
+    different sampling rates, and a single pooled ranking would report "the
+    best window" as "the window from the easiest route".
+
+    The two heads rank independently. They are separately weighted halves of
+    the objective and a window can be the best on one and the worst on the
+    other; collapsing them into one score would hide exactly that.
+    """
+    n_drawn = len(grid)
+    ranks: Dict = {}
+    for i, (rid, _ds) in enumerate(rows):
+        for tag, key in (("raw", "masked_raw_nmse"),
+                         ("spec", "masked_spec_nmse")):
+            scored = []
+            for k in range(n_drawn):
+                ex = grid[k][i]
+                v = float(ex["metrics"][key]) if ex else float("nan")
+                # NaN compares false against everything, so an unguarded sort
+                # can leave a diverged window in first place -- and first place
+                # is what someone reading the survey for a figure reaches for.
+                scored.append((v if math.isfinite(v) else math.inf, k))
+            scored.sort(key=lambda t: t[0])
+            for pos, (_v, k) in enumerate(scored, start=1):
+                ranks.setdefault((rid, k), {})[tag] = pos
+    for key in ranks:
+        ranks[key]["n"] = n_drawn
+    return ranks
+
+
+def write_reconstruction_survey(w: FigureWriter, rows, grid, ranks,
+                                mask_seed: int) -> List[Dict]:
+    """The table a figure gets picked from, printed and written next to them.
+
+    Written, not only printed: "we showed window 431 of TUEG" is not a
+    reproducible statement unless the windows it was chosen over are recorded
+    too. The file is what a caption's "best of 8" can be checked against.
+    """
+    out: List[Dict] = []
+    for k, col in enumerate(grid):
+        for i, (rid, dsid) in enumerate(rows):
+            ex = col[i]
+            if ex is None:
+                continue
+            mt, rk = ex["metrics"], ranks.get((rid, k), {})
+            out.append({
+                "figure_index": k,
+                "figure": _recon_name("fig_mask_reconstruction", k),
+                "waveform_figure": _recon_name(
+                    "14_raw_waveform_reconstruction", k),
+                "route_id": rid, "dataset_id": dsid,
+                "window_index": ex["window_index"],
+                "subject_id": ex["subject_id"],
+                "recording_id": ex["recording_id"],
+                "mask_seed": mask_seed,
+                "raw_corr": float(mt["masked_raw_corr"]),
+                "raw_nmse": float(mt["masked_raw_nmse"]),
+                "spec_corr": float(mt["masked_spec_corr"]),
+                "spec_nmse": float(mt["masked_spec_nmse"]),
+                "raw_nmse_rank": rk.get("raw"),
+                "spec_nmse_rank": rk.get("spec"),
+                "n_windows_surveyed": rk.get("n"),
+            })
+    if not out:
+        return out
+
+    n_drawn = len(grid)
+    print(f"\n  reconstruction survey: {n_drawn} window(s) per route "
+          f"(rank 1 = lowest masked NMSE for that route)")
+    print(f"  {'fig':>3}  {'route':<10} {'dataset':<10} {'win':>7}  "
+          f"{'raw r':>7} {'raw NMSE':>9} {'spec r':>7} {'spec NMSE':>10}  "
+          f"{'rank raw/spec':>13}")
+    for r in out:
+        print(f"  {r['figure_index']:>3}  {r['route_id']:<10} "
+              f"{r['dataset_id']:<10} {r['window_index']:>7}  "
+              f"{r['raw_corr']:>7.3f} {r['raw_nmse']:>9.3f} "
+              f"{r['spec_corr']:>7.3f} {r['spec_nmse']:>10.3f}  "
+              f"{str(r['raw_nmse_rank']) + '/' + str(r['spec_nmse_rank']):>13}")
+    path = os.path.join(w.meta_dir, "reconstruction_survey.json")
+    with open(path, "w") as f:
+        json.dump({"mask_seed": mask_seed, "n_windows": n_drawn,
+                   "note": "one row per drawn window. rank 1 is the lowest "
+                           "masked NMSE among the windows surveyed for that "
+                           "route; a figure chosen by this table is a SELECTED "
+                           "example and its caption should say so",
+                   "windows": out}, f, indent=2)
+    print(f"  wrote {path}")
+    return out
+
+
+def _recon_name(base: str, k: int) -> str:
+    """``base`` for the first window, ``base_wNN`` after it.
+
+    The first keeps the historical name so a paper script, a test or a figure
+    reference written before the survey existed still resolves.
+    """
+    return base if k == 0 else f"{base}_w{k:02d}"
+
+
 #: Panel titles, in order. The figure and the tests read the same list.
 RECONSTRUCTION_PANEL_TITLES = (
     "raw EEG target", "raw EEG, mask applied", "raw composite reconstruction",
@@ -542,13 +718,18 @@ def reconstruction_panels(ex: Dict, route: Route) -> List:
     ]
 
 
-def fig_mask_reconstruction(w: FigureWriter, model, datasets, mask_seed, device,
+def fig_mask_reconstruction(w: FigureWriter, rows, grid, ranks, mask_seed,
                             objective: Optional[Dict] = None):
-    """Both heads, one row per route, on one fixed window under one fixed mask.
+    """Both heads, one row per route, on fixed windows under fixed masks.
 
     Eight panels, in two groups of four that read the same way: target, what
     the model was handed, the composite reconstruction, and the error on the
     masked patches alone.
+
+    One figure per surveyed window. With ``--recon-windows 1`` that is the
+    single window this figure always showed; above 1 the later figures are
+    ``fig_mask_reconstruction_w01`` and so on, each carrying its rank among the
+    survey so a chosen one can be captioned as chosen.
 
     Four things the previous version of this figure got wrong, each of which
     flattered the model:
@@ -564,86 +745,109 @@ def fig_mask_reconstruction(w: FigureWriter, model, datasets, mask_seed, device,
       not supervised: their error is small because the encoder passes the token
       through, not because anything reconstructed them.
     """
-    rows = _route_rows(datasets)
-    if not rows:
+    if not rows or not grid:
         return
-    fig, axes = plt.subplots(len(rows), 8, figsize=(21, 2.6 * len(rows)),
-                             squeeze=False)
-    data, meta_rows = {}, []
-    for r, (rid, dsid) in enumerate(rows):
-        route = ROUTES[rid]
-        ex = _fixed_example(model, datasets[dsid], route, mask_seed,
-                            device=device, objective=objective)
-        pt = route.patch_t
-        P = route.patches_per_channel
-        m = _expand(ex["mask"], pt)
-        valid_rows = _expand(ex["valid"], pt)
-        raw_t, raw_p = ex["target_raw"], ex["pred_raw"]
-        spec_t, spec_p = ex["target_spec"], ex["pred_spec"]
-        raw_err = _masked_error(raw_p, raw_t, m, valid_rows)
-        spec_err = _masked_error(spec_p, spec_t, m, valid_rows)
-        raw_lim = _sym_limits(raw_t, valid_rows)
-        spec_lim = _sym_limits(spec_t, valid_rows)
+    n_drawn = len(grid)
+    for k, col in enumerate(grid):
+        drawn = [(i, rid, dsid) for i, (rid, dsid) in enumerate(rows)
+                 if col[i] is not None]
+        if not drawn:
+            continue
+        fig, axes = plt.subplots(len(drawn), 8,
+                                 figsize=(21, 2.6 * len(drawn)), squeeze=False)
+        data, meta_rows = {}, []
+        for r, (i, rid, dsid) in enumerate(drawn):
+            ex = col[i]
+            route = ROUTES[rid]
+            pt = route.patch_t
+            n_patches = route.patches_per_channel
+            m = _expand(ex["mask"], pt)
+            valid_rows = _expand(ex["valid"], pt)
+            raw_t, raw_p = ex["target_raw"], ex["pred_raw"]
+            spec_t, spec_p = ex["target_spec"], ex["pred_spec"]
+            raw_err = _masked_error(raw_p, raw_t, m, valid_rows)
+            spec_err = _masked_error(spec_p, spec_t, m, valid_rows)
+            raw_lim = _sym_limits(raw_t, valid_rows)
+            spec_lim = _sym_limits(spec_t, valid_rows)
 
-        panels = reconstruction_panels(ex, route)
-        for c, (arr, title, cmap, vmin, vmax) in enumerate(panels):
-            ax = axes[r][c]
-            ax.imshow(arr, aspect="auto", cmap=cmap, interpolation="nearest",
-                      vmin=vmin, vmax=vmax)
-            if r == 0:
-                ax.set_title(title)
-            if c == 0:
-                ax.set_ylabel(f"{rid}\n{dsid}\n{route.n_channels} ch")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            # The columns any channel has a masked patch in, marked on the
-            # panels whose x axis is samples.
-            for pi in range(P):
-                if ex["mask"][:, pi].any():
-                    ax.axvspan(pi * pt, (pi + 1) * pt, color="0.5",
-                               alpha=0.10, lw=0)
-        mt = ex["metrics"]
-        ratio = ex["mask"].sum() / max(1, ex["valid"].sum())
-        axes[r][3].set_xlabel(
-            f"SmoothL1 {mt['loss_masked_raw_smoothl1']:.4f}  "
-            f"r {mt['masked_raw_corr']:.3f}  NMSE {mt['masked_raw_nmse']:.3f}")
-        axes[r][7].set_xlabel(
-            f"MSE {mt['loss_masked_spec_mse']:.4f}  "
-            f"r {mt['masked_spec_corr']:.3f}  NMSE {mt['masked_spec_nmse']:.3f}")
-        # The realised ratio, not the requested one: the budget is per sample
-        # over the VALID tokens, so a route with padded slots masks fewer.
-        axes[r][0].set_xlabel(f"masked {ratio * 100:.1f}% of valid patches")
-        data[f"{rid}_target_raw"] = raw_t
-        data[f"{rid}_pred_raw"] = raw_p
-        data[f"{rid}_target_spec"] = spec_t
-        data[f"{rid}_pred_spec"] = spec_p
-        data[f"{rid}_masked_error_raw"] = raw_err
-        data[f"{rid}_masked_error_spec"] = spec_err
-        data[f"{rid}_mask"] = ex["mask"]
-        data[f"{rid}_valid"] = ex["valid"]
-        # Compatibility with the pre-dual arrays, which meant the spec pair.
-        data[f"{rid}_target"] = spec_t
-        data[f"{rid}_pred"] = spec_p
-        meta_rows.append({"route_id": rid, "dataset_id": dsid,
-                          "subject_id": ex["subject_id"],
-                          "recording_id": ex["recording_id"],
-                          "window_index": ex["window_index"],
-                          "mask_seed": mask_seed,
-                          "actual_mask_ratio": float(ratio),
-                          "raw_color_limit": raw_lim,
-                          "spec_color_limit": spec_lim,
-                          "spec_target_is_normalised": ex["normalize_spec_target"],
-                          **mt})
-    fig.suptitle(
-        "Fixed validation windows under their fixed masks. Composite = target "
-        "on visible patches, prediction on masked ones; the error maps are "
-        "masked patches only, because visible patches are not supervised. "
-        "Target and composite share colour limits.", y=1.005)
-    w.save(fig, "fig_mask_reconstruction", data,
-           {"examples": meta_rows,
-            "panels": list(RECONSTRUCTION_PANEL_TITLES),
-            "note": "spec panels use target_spec -- the per-patch normalised "
-                    "target the loss is computed against -- not clean_spec"})
+            panels = reconstruction_panels(ex, route)
+            for c, (arr, title, cmap, vmin, vmax) in enumerate(panels):
+                ax = axes[r][c]
+                ax.imshow(arr, aspect="auto", cmap=cmap,
+                          interpolation="nearest", vmin=vmin, vmax=vmax)
+                if r == 0:
+                    ax.set_title(title)
+                if c == 0:
+                    ax.set_ylabel(f"{rid}\n{dsid}\n{route.n_channels} ch")
+                ax.set_xticks([])
+                ax.set_yticks([])
+                # The columns any channel has a masked patch in, marked on the
+                # panels whose x axis is samples.
+                for pi in range(n_patches):
+                    if ex["mask"][:, pi].any():
+                        ax.axvspan(pi * pt, (pi + 1) * pt, color="0.5",
+                                   alpha=0.10, lw=0)
+            mt = ex["metrics"]
+            rk = ranks.get((rid, k), {})
+            ratio = ex["mask"].sum() / max(1, ex["valid"].sum())
+            axes[r][3].set_xlabel(
+                f"SmoothL1 {mt['loss_masked_raw_smoothl1']:.4f}  "
+                f"r {mt['masked_raw_corr']:.3f}  "
+                f"NMSE {mt['masked_raw_nmse']:.3f}")
+            axes[r][7].set_xlabel(
+                f"MSE {mt['loss_masked_spec_mse']:.4f}  "
+                f"r {mt['masked_spec_corr']:.3f}  "
+                f"NMSE {mt['masked_spec_nmse']:.3f}")
+            # The realised ratio, not the requested one: the budget is per
+            # sample over the VALID tokens, so a route with padded slots masks
+            # fewer. The rank rides along whenever there was a choice to make.
+            label = f"window {ex['window_index']}   " \
+                    f"masked {ratio * 100:.1f}% of valid patches"
+            if n_drawn > 1 and rk:
+                label += (f"\nNMSE rank raw {rk.get('raw')}/{rk.get('n')}, "
+                          f"spec {rk.get('spec')}/{rk.get('n')}")
+            axes[r][0].set_xlabel(label)
+            data[f"{rid}_target_raw"] = raw_t
+            data[f"{rid}_pred_raw"] = raw_p
+            data[f"{rid}_target_spec"] = spec_t
+            data[f"{rid}_pred_spec"] = spec_p
+            data[f"{rid}_masked_error_raw"] = raw_err
+            data[f"{rid}_masked_error_spec"] = spec_err
+            data[f"{rid}_mask"] = ex["mask"]
+            data[f"{rid}_valid"] = ex["valid"]
+            # Compatibility with the pre-dual arrays, which meant the spec pair.
+            data[f"{rid}_target"] = spec_t
+            data[f"{rid}_pred"] = spec_p
+            meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                              "subject_id": ex["subject_id"],
+                              "recording_id": ex["recording_id"],
+                              "window_index": ex["window_index"],
+                              "mask_seed": mask_seed,
+                              "actual_mask_ratio": float(ratio),
+                              "raw_color_limit": raw_lim,
+                              "spec_color_limit": spec_lim,
+                              "spec_target_is_normalised":
+                                  ex["normalize_spec_target"],
+                              "raw_nmse_rank": rk.get("raw"),
+                              "spec_nmse_rank": rk.get("spec"),
+                              "n_windows_surveyed": rk.get("n"),
+                              **mt})
+        title = ("Fixed validation windows under their fixed masks. Composite "
+                 "= target on visible patches, prediction on masked ones; the "
+                 "error maps are masked patches only, because visible patches "
+                 "are not supervised. Target and composite share colour "
+                 "limits.")
+        if n_drawn > 1:
+            title += (f"  Window {k + 1} of {n_drawn} surveyed per route -- a "
+                      f"figure picked from this set is a SELECTED example.")
+        fig.suptitle(title, y=1.005)
+        w.save(fig, _recon_name("fig_mask_reconstruction", k), data,
+               {"examples": meta_rows,
+                "panels": list(RECONSTRUCTION_PANEL_TITLES),
+                "survey_index": k, "n_windows_surveyed": n_drawn,
+                "note": "spec panels use target_spec -- the per-patch "
+                        "normalised target the loss is computed against -- not "
+                        "clean_spec"})
 
 
 def fig_mask_examples_by_dataset(w: FigureWriter, model, datasets, mask_seed,
@@ -1176,15 +1380,18 @@ def fig_route_cost(w: FigureWriter, epoch_rows):
 # 14. the raw decoder's output, as a waveform
 # --------------------------------------------------------------------------- #
 
-def fig_raw_waveform_reconstruction(w: FigureWriter, model, datasets,
-                                    mask_seed, device,
-                                    objective: Optional[Dict] = None):
+def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
+                                    mask_seed, mask_ratio: float):
     """The second head's prediction against the EEG it was asked to predict.
 
     One row per route, so E19_256's reconstruction can be read against
     E128_512's rather than against nothing. The previous version showed the
     first dataset the iteration happened to yield and one channel of it, which
     is a sample, not a comparison.
+
+    One figure per surveyed window, on the SAME windows as
+    fig_mask_reconstruction, so the two figures at index k describe one sample
+    from two sides.
 
     This is the only figure in the set showing a WAVEFORM in the units the
     recording was preprocessed into. The spec figures show folded wavelet
@@ -1195,146 +1402,158 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, model, datasets,
     continuous orange line across the whole window would be read as a
     reconstruction of the whole window.
     """
-    rows = _route_rows(datasets)
-    if not rows:
+    if not rows or not grid:
         return
+    n_drawn = len(grid)
+    for k, col in enumerate(grid):
+        present = [(i, rid, dsid) for i, (rid, dsid) in enumerate(rows)
+                   if col[i] is not None]
+        if not present:
+            continue
+        fig, axes = plt.subplots(
+            2 * len(present), 1, figsize=(9.4, 2.3 * len(present)),
+            gridspec_kw={"height_ratios": [3, 1] * len(present)})
+        axes = np.atleast_1d(axes).reshape(-1)
+        data, meta_rows = {}, []
 
-    fig, axes = plt.subplots(
-        2 * len(rows), 1, figsize=(9.4, 2.3 * len(rows)),
-        gridspec_kw={"height_ratios": [3, 1] * len(rows)})
-    axes = np.atleast_1d(axes).reshape(-1)
-    data, meta_rows = {}, []
+        for i_row, (i, rid, dsid) in enumerate(present):
+            route = ROUTES[rid]
+            ex = col[i]
+            pt, n_patches = route.patch_t, route.patches_per_channel
+            mask, valid = ex["mask"], ex["valid"]
+            n_masked = mask.sum(axis=1)
+            # A VALID channel with SOME masked patches and some visible ones.
+            # Not simply the most-masked channel: at mask_ratio 0.70 a good
+            # many channels have all their patches hidden, and a row with no
+            # visible stretch shows neither the context the model had nor the
+            # boundary between the two -- the shading covers the whole window
+            # and the composite is the prediction everywhere.
+            ok = valid.all(axis=1)
+            mixed = np.where(ok & (n_masked > 0)
+                             & (n_masked < n_patches))[0]
+            if mixed.size:
+                want = max(1, min(n_patches - 1,
+                                  int(round(mask_ratio * n_patches))))
+                ch = int(mixed[np.argmin(np.abs(n_masked[mixed] - want))])
+            else:
+                fallback = np.where(n_masked > 0)[0]
+                if fallback.size == 0:
+                    continue
+                ch = int(fallback[np.argmax(n_masked[fallback])])
 
-    for i, (rid, dsid) in enumerate(rows):
-        route = ROUTES[rid]
-        ds = datasets[dsid]
-        ex = _fixed_example(model, ds, route, mask_seed, window_index=0,
-                            device=device, objective=objective)
-        pt, P = route.patch_t, route.patches_per_channel
-        mask, valid = ex["mask"], ex["valid"]
-        n_masked = mask.sum(axis=1)
-        # A VALID channel with SOME masked patches and some visible ones. Not
-        # simply the most-masked channel: at mask_ratio 0.70 a good many
-        # channels have all P patches hidden, and a row with no visible stretch
-        # shows neither the context the model had nor the boundary between the
-        # two -- the shading covers the whole window and the composite is the
-        # prediction everywhere.
-        ok = valid.all(axis=1)
-        mixed = np.where(ok & (n_masked > 0) & (n_masked < P))[0]
-        if mixed.size:
-            want = max(1, min(P - 1, int(round(model.mask_ratio * P))))
-            ch = int(mixed[np.argmin(np.abs(n_masked[mixed] - want))])
-        else:
-            fallback = np.where(n_masked > 0)[0]
-            if fallback.size == 0:
-                continue
-            ch = int(fallback[np.argmax(n_masked[fallback])])
+            target = ex["target_raw"][ch]
+            pred = ex["pred_raw"][ch]
+            m = _expand(mask[ch:ch + 1], pt)[0]
+            composite = np.where(m, pred, target)
+            t = np.arange(target.size) / route.sampling_rate
 
-        target = ex["target_raw"][ch]
-        pred = ex["pred_raw"][ch]
-        m = _expand(mask[ch:ch + 1], pt)[0]
-        composite = np.where(m, pred, target)
-        t = np.arange(target.size) / route.sampling_rate
+            # Dimensionless, and computed on the masked samples of THIS
+            # channel, so the numbers under the row are the numbers the row
+            # shows. float64 throughout. In float32 the sums of squares behind
+            # a correlation over a few thousand samples overflow to inf on a
+            # route whose decoder has not converged, and numpy reports it as
+            # "overflow encountered in matmul" rather than as a number.
+            pm = pred[m].astype(np.float64)
+            tm = target[m].astype(np.float64)
+            if tm.size:
+                resid = float(np.mean((pm - tm) ** 2))
+                base = float(np.mean(tm ** 2))
+                nmse = resid / max(base, 1e-12)
+                pc, tc = pm - pm.mean(), tm - tm.mean()
+                den = float(np.linalg.norm(pc) * np.linalg.norm(tc))
+                corr = (float(np.dot(pc, tc) / den)
+                        if den > 0 and np.isfinite(den) else float("nan"))
+                mae = float(np.mean(np.abs(pm - tm)))
+                rmse = math.sqrt(resid)
+            else:
+                nmse = corr = mae = rmse = float("nan")
 
-        # Dimensionless, and computed on the masked samples of THIS channel,
-        # so the numbers under the row are the numbers the row shows.
-        # float64 throughout. In float32 the sums of squares behind a
-        # correlation over a few thousand samples overflow to inf on a route
-        # whose decoder has not converged, and numpy reports it as
-        # "overflow encountered in matmul" rather than as a number.
-        pm = pred[m].astype(np.float64)
-        tm = target[m].astype(np.float64)
-        if tm.size:
-            resid = float(np.mean((pm - tm) ** 2))
-            base = float(np.mean(tm ** 2))
-            nmse = resid / max(base, 1e-12)
-            pc, tc = pm - pm.mean(), tm - tm.mean()
-            den = float(np.linalg.norm(pc) * np.linalg.norm(tc))
-            corr = float(np.dot(pc, tc) / den) if den > 0 and np.isfinite(den) \
-                else float("nan")
-            mae = float(np.mean(np.abs(pm - tm)))
-            rmse = math.sqrt(resid)
-        else:
-            nmse = corr = mae = rmse = float("nan")
+            ax, ax_err = axes[2 * i_row], axes[2 * i_row + 1]
+            ax.plot(t, target, color="0.25", lw=0.9,
+                    label="preprocessed EEG (target)")
+            ax.plot(t, np.where(m, composite, np.nan), color=OKABE_ITO[1],
+                    lw=1.1, label="raw head, masked patches only")
+            ax.plot(t, composite, color=OKABE_ITO[0], lw=0.6, alpha=0.55,
+                    label="composite (target visible + prediction masked)")
+            for pi in range(n_patches):
+                if mask[ch, pi]:
+                    ax.axvspan(pi * pt / route.sampling_rate,
+                               (pi + 1) * pt / route.sampling_rate,
+                               color=OKABE_ITO[4], alpha=0.16, lw=0)
+            ax.set_ylabel("amplitude\n(z-scored)")
+            ax.set_title(
+                f"{rid}  {dsid}  channel {route.slots[ch]}  "
+                f"window {ex['window_index']}   "
+                f"r {corr:.3f}   NMSE {nmse:.3f}   MAE {mae:.3f}   "
+                f"RMSE {rmse:.3f}   masked {mask[ch].sum()}/{n_patches} "
+                f"patches", loc="left")
+            ax.grid(alpha=0.2, lw=0.5)
+            ax.set_xticklabels([])
+            if i_row == 0:
+                ax.legend(frameon=False, ncol=3, fontsize=6.5,
+                          loc="upper right")
 
-        ax, ax_err = axes[2 * i], axes[2 * i + 1]
-        ax.plot(t, target, color="0.25", lw=0.9,
-                label="preprocessed EEG (target)")
-        ax.plot(t, np.where(m, composite, np.nan), color=OKABE_ITO[1], lw=1.1,
-                label="raw head, masked patches only")
-        ax.plot(t, composite, color=OKABE_ITO[0], lw=0.6, alpha=0.55,
-                label="composite (target visible + prediction masked)")
-        for pi in range(P):
-            if mask[ch, pi]:
-                ax.axvspan(pi * pt / route.sampling_rate,
-                           (pi + 1) * pt / route.sampling_rate,
-                           color=OKABE_ITO[4], alpha=0.16, lw=0)
-        ax.set_ylabel("amplitude\n(z-scored)")
-        ax.set_title(
-            f"{rid}  {dsid}  channel {route.slots[ch]}   "
-            f"r {corr:.3f}   NMSE {nmse:.3f}   MAE {mae:.3f}   "
-            f"RMSE {rmse:.3f}   masked {mask[ch].sum()}/{P} patches",
-            loc="left")
-        ax.grid(alpha=0.2, lw=0.5)
-        ax.set_xticklabels([])
-        if i == 0:
-            ax.legend(frameon=False, ncol=3, fontsize=6.5, loc="upper right")
+            err = np.abs(pred - target)
+            err[~m] = np.nan
+            ax_err.fill_between(t, 0, np.nan_to_num(err), where=m,
+                                color=OKABE_ITO[3], lw=0)
+            ax_err.set_ylabel("|error|\nmasked")
+            ax_err.grid(alpha=0.2, lw=0.5)
+            if i_row == len(present) - 1:
+                ax_err.set_xlabel("time (s)")
+            else:
+                ax_err.set_xticklabels([])
 
-        err = np.abs(pred - target)
-        err[~m] = np.nan
-        ax_err.fill_between(t, 0, np.nan_to_num(err), where=m,
-                            color=OKABE_ITO[3], lw=0)
-        ax_err.set_ylabel("|error|\nmasked")
-        ax_err.grid(alpha=0.2, lw=0.5)
-        if i == len(rows) - 1:
-            ax_err.set_xlabel("time (s)")
-        else:
-            ax_err.set_xticklabels([])
+            rk = ranks.get((rid, k), {})
+            data[f"{rid}_time"] = t
+            data[f"{rid}_target"] = target
+            data[f"{rid}_pred"] = pred
+            data[f"{rid}_composite"] = composite
+            data[f"{rid}_mask"] = mask[ch]
+            data[f"{rid}_masked_error"] = err
+            meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                              "channel": route.slots[ch], "channel_slot": ch,
+                              "subject_id": ex["subject_id"],
+                              "recording_id": ex["recording_id"],
+                              "window_index": ex["window_index"],
+                              "mask_seed": mask_seed,
+                              "raw_corr": corr, "raw_nmse": nmse,
+                              "raw_mae": mae, "raw_rmse": rmse,
+                              "window_raw_nmse_rank": rk.get("raw"),
+                              "n_windows_surveyed": rk.get("n")})
 
-        data[f"{rid}_time"] = t
-        data[f"{rid}_target"] = target
-        data[f"{rid}_pred"] = pred
-        data[f"{rid}_composite"] = composite
-        data[f"{rid}_mask"] = mask[ch]
-        data[f"{rid}_masked_error"] = err
-        meta_rows.append({"route_id": rid, "dataset_id": dsid,
-                          "channel": route.slots[ch], "channel_slot": ch,
-                          "subject_id": ex["subject_id"],
-                          "recording_id": ex["recording_id"],
-                          "window_index": ex["window_index"],
-                          "mask_seed": mask_seed,
-                          "raw_corr": corr, "raw_nmse": nmse,
-                          "raw_mae": mae, "raw_rmse": rmse})
-
-    if not meta_rows:
-        plt.close(fig)
-        return
-    # Compatibility with the single-route version of this figure, whose npz
-    # held bare `time`/`target`/`pred`/`mask` and whose metadata was flat.
-    # Paper scripts written against those names keep working and get the first
-    # route's row, which is what they used to get.
-    first = meta_rows[0]["route_id"]
-    for bare in ("time", "target", "pred", "composite", "mask",
-                 "masked_error"):
-        data[bare] = data[f"{first}_{bare}"]
-    fig.suptitle(
-        "Raw-head reconstruction, one row per route. The trace is PREPROCESSED, "
-        "z-scored EEG -- not raw EDF values, and not the folded wavelet "
-        "representation. Shaded = masked before the frontend; the prediction is "
-        "drawn only there, because visible patches are unsupervised.", y=1.005,
-        fontsize=8.5)
-    fig.tight_layout()
-    w.save(fig, "14_raw_waveform_reconstruction", data,
-           {"rows": meta_rows,
-            # The flat keys the single-route version wrote, from the first row.
-            "dataset_id": meta_rows[0]["dataset_id"],
-            "route_id": meta_rows[0]["route_id"],
-            "channel": meta_rows[0]["channel"],
-            "note": "z-scored preprocessed EEG, not raw EDF values, and not "
-                    "the folded wavelet representation; the prediction is "
-                    "shown on masked patches only. One row per route; the "
-                    "unprefixed arrays are the first route's, for scripts "
-                    "written against the single-route version."})
+        if not meta_rows:
+            plt.close(fig)
+            continue
+        # Compatibility with the single-route version of this figure, whose npz
+        # held bare `time`/`target`/`pred`/`mask` and whose metadata was flat.
+        # Paper scripts written against those names keep working and get the
+        # first route's row, which is what they used to get.
+        first = meta_rows[0]["route_id"]
+        for bare in ("time", "target", "pred", "composite", "mask",
+                     "masked_error"):
+            data[bare] = data[f"{first}_{bare}"]
+        title = ("Raw-head reconstruction, one row per route. The trace is "
+                 "PREPROCESSED, z-scored EEG -- not raw EDF values, and not "
+                 "the folded wavelet representation. Shaded = masked before "
+                 "the frontend; the prediction is drawn only there, because "
+                 "visible patches are unsupervised.")
+        if n_drawn > 1:
+            title += (f"  Window {k + 1} of {n_drawn} surveyed per route.")
+        fig.suptitle(title, y=1.005, fontsize=8.5)
+        fig.tight_layout()
+        w.save(fig, _recon_name("14_raw_waveform_reconstruction", k), data,
+               {"rows": meta_rows,
+                "survey_index": k, "n_windows_surveyed": n_drawn,
+                # The flat keys the single-route version wrote, from row one.
+                "dataset_id": meta_rows[0]["dataset_id"],
+                "route_id": meta_rows[0]["route_id"],
+                "channel": meta_rows[0]["channel"],
+                "note": "z-scored preprocessed EEG, not raw EDF values, and "
+                        "not the folded wavelet representation; the prediction "
+                        "is shown on masked patches only. One row per route; "
+                        "the unprefixed arrays are the first route's, for "
+                        "scripts written against the single-route version."})
 
 
 #: Threads for the figures that run the model. A login node has many cores and
@@ -1372,6 +1591,14 @@ def main(argv=None) -> int:
                    help=f"threads for the figures that run the model "
                         f"(default {DEFAULT_THREADS}; a login node's per-user "
                         f"quota is what one-thread-per-core runs into)")
+    p.add_argument("--recon-windows", type=int, default=1, metavar="N",
+                   help="how many DIFFERENT validation windows per route the "
+                        "two reconstruction figures draw (default 1). Above 1 "
+                        "they are numbered _w01, _w02 ... and each carries its "
+                        "rank among the survey, so a figure chosen for looking "
+                        "good can be captioned as chosen. The ranking table is "
+                        "printed and written to "
+                        "figure_metadata/reconstruction_survey.json")
     p.add_argument("--only", nargs="*", default=None,
                    help="figure names to regenerate")
     args = p.parse_args(argv)
@@ -1509,13 +1736,24 @@ def main(argv=None) -> int:
     if want("fig_route_cost"):
         fig_route_cost(writer, epoch_rows)
     if datasets:
-        if want("fig_mask_reconstruction"):
-            fig_mask_reconstruction(writer, model, datasets, mask_seed, device,
-                                    objective=objective)
-        if want("fig_raw_waveform_reconstruction"):
-            fig_raw_waveform_reconstruction(writer, model, datasets,
-                                            mask_seed, device,
-                                            objective=objective)
+        # One survey, both reconstruction figures. Built only if one of them is
+        # wanted: it is the only part of this script that runs the model over
+        # more than a single window, and `--only fig_channel_embedding` should
+        # not pay for it.
+        if want("fig_mask_reconstruction") or \
+                want("fig_raw_waveform_reconstruction"):
+            rows, grid, ranks = survey_reconstruction_windows(
+                model, datasets, mask_seed, device, objective,
+                n_windows=args.recon_windows)
+            if want("fig_mask_reconstruction"):
+                fig_mask_reconstruction(writer, rows, grid, ranks, mask_seed,
+                                        objective=objective)
+            if want("fig_raw_waveform_reconstruction"):
+                fig_raw_waveform_reconstruction(writer, rows, grid, ranks,
+                                                mask_seed, model.mask_ratio)
+            if len(grid) > 1:
+                write_reconstruction_survey(writer, rows, grid, ranks,
+                                            mask_seed)
         if want("fig_mask_examples_by_dataset"):
             fig_mask_examples_by_dataset(writer, model, datasets, mask_seed,
                                          device)
