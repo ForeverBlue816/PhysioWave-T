@@ -652,6 +652,34 @@ def main_worker(rank, world_size, args):
     
     test_ds = TimeSeriesDataset(test_files) if test_files else None
 
+#: Which converter wrote a split, so a refusal can name the one to re-run.
+#: This file is shared by every downstream task, and both messages below used
+#: to hardcode EEG/sleep_edf_finetune.py -- so a P300 run that hit them was
+#: sent to rebuild a sleep dataset it does not have. Named from evidence, and
+#: where there is none it says so rather than guessing confidently.
+_CONVERTERS = (
+    ("p300", "EEG/physio_p300_finetune.py --stage split --fold <k> \\\n"
+             "          --edf-dir <erpbci> --out-dir <new dir>"),
+    ("erpbci", "EEG/physio_p300_finetune.py --stage split --fold <k> \\\n"
+               "          --edf-dir <erpbci> --out-dir <new dir>"),
+    ("sleep", "EEG/sleep_edf_finetune.py --stage split \\\n"
+              "          --cache-dir <existing cache> --out-dir <new dir>"),
+    ("tuab", "EEG/tuab_finetune.py --stage split --out-dir <new dir>"),
+    ("db5", "EMG/db5_finetune.py --out-dir <new dir>"),
+    ("db6", "EMG/db6_finetune.py --out-dir <new dir>"),
+)
+
+
+def rebuild_command(paths) -> str:
+    """The re-run line for whichever converter wrote these files."""
+    hay = " ".join(str(p).lower() for p in paths if p)
+    for key, cmd in _CONVERTERS:
+        if key in hay:
+            return "      python " + cmd
+    return ("      the converter under EEG/ or EMG/ that wrote this dataset,\n"
+            "      with --stage split")
+
+
     # ------------------------------------------------------------------ #
     # Channel metadata: resolved once here, not per sample.
     # ------------------------------------------------------------------ #
@@ -667,21 +695,25 @@ def main_worker(rank, world_size, args):
     if disagree:
         raise SystemExit(
             f"channel metadata differs between train and {', '.join(disagree)}.\n"
-            f"  The splits describe different montages. Rebuild them from one "
-            f"run of\n  EEG/sleep_edf_finetune.py --stage split.")
+            f"  The splits describe different montages. Rebuild all three from "
+            f"ONE run of:\n\n"
+            f"{rebuild_command([args.train_file, args.val_file, args.test_file])}\n")
     channel_metadata = split_meta['train']
 
     if args.channel_encoding != 'none':
         if channel_metadata is None:
             raise SystemExit(
                 f"--channel_encoding {args.channel_encoding} needs channel "
-                f"metadata and these HDF5 files carry none.\n\n"
-                f"  Rebuild the split -- the per-subject .npz cache is reused, "
-                f"so this is fast:\n\n"
-                f"      python EEG/sleep_edf_finetune.py --stage split \\\n"
-                f"          --split eegpt-fold --fold <k> \\\n"
-                f"          --cache-dir <existing cache> --out-dir <new dir>\n\n"
-                f"  Or run with --channel_encoding none.")
+                f"metadata and these HDF5 files carry none.\n"
+                f"  ({args.train_file})\n\n"
+                f"  A split written with --no-channel-metadata carries the "
+                f"array and the channel\n  names but not the electrode "
+                f"coordinates and ids this encoding reads. Rebuild\n  it -- the "
+                f"per-subject .npz cache is reused, so this is a split and not "
+                f"a decode:\n\n"
+                f"{rebuild_command([args.train_file, args.val_file, args.test_file])}\n\n"
+                f"  Or run with --channel_encoding none, which trains the same "
+                f"architecture\n  without the channel-identity path.")
         n_meta = len(channel_metadata['channel_ids'])
         if n_meta != args.in_channels:
             raise SystemExit(

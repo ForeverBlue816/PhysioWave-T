@@ -584,10 +584,16 @@ def test_pooling_survives_bf16_tokens():
     assert torch.allclose(got.float(), ref, atol=2e-2)
 
 
-def test_the_shipped_configs_use_it():
+def test_the_shipped_configs_pool_by_mean():
+    """The shipped default, pinned. The other shapes stay reachable by --set.
+
+    Pinned rather than assumed because the default has moved twice and both
+    times something downstream still described the old one.
+    """
     import yaml
 
     for name in ("eeg_c1_p300", "eeg_c1_sleep"):
         with open(f"configs/finetune/{name}.yaml") as fh:
             c1 = yaml.safe_load(fh)["model"]["eeg_c1"]
-        assert c1["pool"] == "stat" and c1["pool_heads"] == 4
+        assert c1["pool"] == "mean", f"{name} ships pool={c1['pool']!r}"
+        assert "route_id" not in c1, f"{name} places its montage on a route"

@@ -60,30 +60,12 @@ model:
     # in_channels, window_samples, sampling_rate and channel_names
     # come from the HDF5. Naming them here would be a second copy.
     patch_samples: 50
-    # Attentive statistics pooling over the token grid: H learned queries, each
-    # producing an attention-weighted MEAN and STANDARD DEVIATION, concatenated
-    # into one Linear. Not EEGPT's head -- theirs projects per position and
-    # either flattens or runs a transformer over the result. This is the
-    # speaker-verification construction (Okabe et al. 2018), which solves the
-    # same shape of problem: one fixed vector out of a variable-length set of
-    # embeddings, without a sequence model on top.
-    #
-    # SIGMA COSTS NO PARAMETERS and is the half a mean throws away. THIS IS THE ONE THAT
-    # MATTERS HERE: a sleep stage is defined largely by how much the signal
-    # fluctuates over its 30 s -- delta power in N3, spindle bursts in N2 --
-    # and a mean over the 60 time positions is precisely the operation that
-    # removes it.
-    #
-    # ATTENTION, because a flat mean weights every cell of the 2 x 60 grid
-    # equally. A spindle is 0.5-2 s inside a 30 s window, so the
-    # positions that carry N2 are a handful of the 60, and the queries can
-    # find them.
-    #
-    # The queries initialise to ZERO, so the first forward is exactly the mean
-    # head this replaces plus a standard deviation. Anything past that, it had
-    # to learn.
-    pool: stat
-    pool_heads: 4
+    # Mean over the tokens, LayerNorm, dropout, one Linear. heads.py still
+    # carries the other shapes -- pool=stat (attentive statistics pooling),
+    # pool=time, pool=attn, channel_pool, head_max_norm, spatial_filter -- and
+    # each is one --set away, so the ablations survive while the default stays
+    # the head this evaluation has always had.
+    pool: mean
     head_dropout: 0.1
     pretrained: null
 
