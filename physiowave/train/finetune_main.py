@@ -98,12 +98,17 @@ HPARAM_FALLBACKS = {
     "warmup_epochs": 5, "warmup_ratio": None, "grad_clip": 1.0,
     "label_smoothing": 0.1, "min_lr_ratio": 0.01, "precision": "bf16",
     "select_by": "balanced_acc",
+    # Early stopping is a training hyper-parameter like the rest, and it is in
+    # this table for the reason the others are: the table is LOGGED. Left out,
+    # `--patience` was a flag whose absence looked exactly like its presence
+    # until the run failed to stop, twenty epochs later.
+    "patience": 0, "min_delta": 0.0,
 }
 HPARAM_TYPES = {
     "epochs": int, "batch_size": int, "warmup_epochs": int, "lr": float,
     "weight_decay": float, "warmup_ratio": float, "grad_clip": float,
     "label_smoothing": float, "min_lr_ratio": float, "precision": str,
-    "select_by": str,
+    "select_by": str, "patience": int, "min_delta": float,
 }
 
 
@@ -437,9 +442,12 @@ def parse_args(argv=None):
                    help="validation metric that decides best.pth. EEGPT monitors "
                         "AUROC for binary tasks and Cohen's kappa for multi-class; "
                         "the finetune configs set the matching one.")
-    p.add_argument("--patience", type=int, default=0,
-                   help="stop when --select-by has not improved for this many epochs")
-    p.add_argument("--min-delta", type=float, default=0.0)
+    p.add_argument("--patience", type=int, default=None,
+                   help="stop when --select-by has not improved for this many "
+                        "epochs. 0, the default, never stops early -- the run "
+                        "goes to --epochs. The resolved value is logged.")
+    p.add_argument("--min-delta", type=float, default=None,
+                   help="how much better counts as an improvement, for --patience")
     # 'extend' rather than the default 'store': the launch scripts pass a --set of
     # their own and EXTRA can carry another, and with 'store' the second silently
     # replaces the first -- an override that looks applied and is not.
@@ -648,6 +656,12 @@ def main(argv=None) -> int:
     history: List[Dict[str, Any]] = []
     best_score, best_epoch, stale = float("-inf"), -1, 0
 
+    if info.is_main and val_loader is not None:
+        logger.info("selection: best.pth follows val %s%s", args.select_by,
+                    f"; early stop after {args.patience} epochs without an "
+                    f"improvement of >{args.min_delta:g}" if args.patience > 0
+                    else "; no early stop, so this runs all "
+                         f"{args.epochs} epochs (--patience N to stop sooner)")
     run_started = time.monotonic()
     outer = epoch_bar(args.epochs, args.progress, info.is_main)
     for epoch in range(args.epochs):

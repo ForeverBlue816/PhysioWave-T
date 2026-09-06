@@ -597,3 +597,30 @@ def test_the_shipped_configs_pool_by_mean():
             c1 = yaml.safe_load(fh)["model"]["eeg_c1"]
         assert c1["pool"] == "mean", f"{name} ships pool={c1['pool']!r}"
         assert "route_id" not in c1, f"{name} places its montage on a route"
+
+
+def test_patience_is_a_resolved_hyperparameter():
+    """It is logged, and the config can set it.
+
+    Left out of the table it was a flag whose absence looked exactly like its
+    presence: a run given no --patience printed nothing about early stopping
+    and then did not stop.
+    """
+    args = namespace()
+    rows = resolve_hparams(args, {"train": {"patience": 15, "min_delta": 1e-4}})
+    assert args.patience == 15 and args.min_delta == 1e-4
+    sources = dict((k, s) for k, _, s in rows)
+    assert sources["patience"].startswith("config:")
+
+
+def test_patience_defaults_to_off_and_says_so():
+    args = namespace()
+    rows = resolve_hparams(args, {})
+    assert args.patience == 0
+    assert dict((k, s) for k, _, s in rows)["patience"] == "builtin"
+
+
+def test_the_command_line_beats_a_config_patience():
+    args = namespace(patience=5)
+    resolve_hparams(args, {"train": {"patience": 15}})
+    assert args.patience == 5
