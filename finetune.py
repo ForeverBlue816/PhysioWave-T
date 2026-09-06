@@ -340,7 +340,31 @@ def load_pretrained_feature_extractor(model, pretrained_path, rank=0):
         print(f"Loading pretrained feature extractor from {pretrained_path}")
     
     checkpoint = torch.load(pretrained_path, map_location='cpu')
-    
+
+    # An eeg_c1 export names itself. Say so here rather than letting it reach
+    # the key-by-key comparison below, which is correct but reports the
+    # mismatch as a hundred missing tensor names -- the reader's question is
+    # "which trainer does this checkpoint belong to", and the answer is in the
+    # file. The two architectures share three tensors out of a hundred and six.
+    if isinstance(checkpoint, dict) and 'route_id' in checkpoint \
+            and 'channel_vocab_sha256' in checkpoint:
+        raise SystemExit(
+            f"{os.path.basename(pretrained_path)} is an EEG C1 export (route "
+            f"{checkpoint['route_id']}), and this is the legacy\n"
+            f"  BERTWaveletTransformer. They are different architectures: the "
+            f"transformer is\n  `shared_transformer.*` in one and `encoder.*` "
+            f"in the other, the frontend\n  `wavelet_frontend.*` against "
+            f"`wavelet_decomp.*`. Three tensors of a hundred\n  and six would "
+            f"load.\n\n"
+            f"  Fine-tune it with the entry point that builds it:\n\n"
+            f"      python -m physiowave.train.finetune_main \\\n"
+            f"          --config finetune/eeg_c1_p300 --data-dir <split> "
+            f"--num-classes 2 \\\n"
+            f"          --output-dir <out> \\\n"
+            f"          --set model.eeg_c1.pretrained={pretrained_path}\n\n"
+            f"  This script trains the legacy architecture, whose pretraining "
+            f"is pretrain.py.")
+
     if 'model_state_dict' in checkpoint:
         pretrained_dict = checkpoint['model_state_dict']
     elif 'state_dict' in checkpoint:
