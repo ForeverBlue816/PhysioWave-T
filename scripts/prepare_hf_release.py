@@ -40,6 +40,7 @@ Publishing is a separate, deliberate step.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -239,6 +240,23 @@ def why_no_per_route_files(share: dict) -> str:
         f"want out of the complete checkpoint.")
 
 
+def model_digest(path: str) -> str:
+    """A hash of the WEIGHTS, so two checkpoints can be compared by content.
+
+    Not of the file: two checkpoints written at the same epoch under different
+    names differ in their metadata -- released_utc, released_from -- and are
+    the same model. What matters for a release is whether the tensors differ.
+    """
+    sd = torch.load(path, map_location="cpu", weights_only=False)["model"]
+    h = hashlib.sha256()
+    for k in sorted(sd):
+        v = sd[k]
+        h.update(k.encode())
+        h.update(v.detach().cpu().numpy().tobytes() if hasattr(v, "detach")
+                 else repr(v).encode())
+    return h.hexdigest()
+
+
 def read_metrics(run_dir: str):
     rows = []
     path = os.path.join(run_dir, "metrics_epoch.jsonl")
@@ -257,13 +275,25 @@ def read_metrics(run_dir: str):
 
 
 def model_card(repo_id: str, info: dict, rows, run_dir: str,
-               components: str = "", shares: Optional[dict] = None) -> str:
+               components: str = "", shares: Optional[dict] = None,
+               published=(), aliases: Optional[dict] = None) -> str:
     cfg = info["config"]
     mcfg, tcfg = cfg.get("model", {}), cfg.get("train", {})
     obj = info["objective"]
     last = rows[-1] if rows else {}
     best = info.get("best_scores", {})
     bep = info.get("best_epochs", {})
+    aliases = aliases or {}
+    checkpoint_rows = "\n".join(
+        f"| `{name}` | complete model, {what} (epoch {ep}) |"
+        for name, what, ep, dup in published if not dup)
+    dups = [(a, t) for a, t in aliases.items()]
+    alias_note = ""
+    if dups:
+        alias_note = ("\n\n" + "\n".join(
+            f"`{a}` would have been byte-identical to `{t}` -- the same epoch "
+            f"won both bars -- so it is not published separately."
+            for a, t in dups))
 
     def g(key, fmt="{:.4f}"):
         v = last.get(key)
@@ -352,10 +382,21 @@ pretraining-only. It exists because it cannot be loaded wrong.
 | file | what it is |
 |---|---|
 | `eeg_c1_encoder.pth` | encoder alone: channel embedding, gate, transformer |
-| `pretrain_eeg_c1_moe_best.pth` | complete model, lowest validation total loss (epoch {bep.get('total', '?')}) |
-| `pretrain_eeg_c1_moe_final.pth` | complete model, last epoch, cosine fully annealed |
+| `pretrain_eeg_c1_moe_best.pth` | complete model, lowest validation **total** loss (epoch {bep.get('total', '?')}) |
+{checkpoint_rows}
 | `metrics_epoch.jsonl` | the full training curve |
 | `config_resolved.yaml` | every resolved hyperparameter |
+
+### Why several checkpoints
+
+Each is the minimum of a different validation metric, and they are published
+together so a downstream comparison can ask which criterion transfers instead
+of assuming the one that names `best.pth`. The four bars are within validation
+noise of each other here, which is exactly why the question is worth asking and
+why reconstruction loss cannot answer it.
+
+`best.pth` is selected on the TOTAL loss -- the loss that was trained. It is
+not the best spec loss, and not the best raw loss.{alias_note}
 
 ### What is in the complete model
 
@@ -477,8 +518,12 @@ def main(argv=None) -> int:
     p.add_argument("--run-dir", required=True)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--repo-id", default="ForeverBlue/EEG")
-    p.add_argument("--best", default="best.pth")
+    p.add_argument("--best", default="best.pth",
+                   help="the checkpoint the encoder is exported from")
     p.add_argument("--final", default="latest.pth")
+    p.add_argument("--only-best", action="store_true",
+                   help="skip the per-criterion checkpoints "
+                        "(best_spec/best_raw/best_macro_total)")
     args = p.parse_args(argv)
 
     run_dir = os.path.expanduser(args.run_dir)
@@ -500,12 +545,41 @@ def main(argv=None) -> int:
           f"{human_bytes(info['dst_bytes'])}   "
           f"(epoch {info['epoch']}, {info['n_params'] / 1e6:.1f} M params)")
 
-    final_src = os.path.join(run_dir, args.final)
-    if os.path.isfile(final_src):
-        final_dst = os.path.join(out_dir, "pretrain_eeg_c1_moe_final.pth")
-        fi = strip_checkpoint(final_src, final_dst)
-        print(f"  {os.path.basename(final_dst)}  "
-              f"{human_bytes(fi['src_bytes'])} -> "
+    # Every bar, so a downstream comparison can ask which criterion transfers
+    # rather than assuming the one that selects best.pth. They are not four
+    # different models: several bars are routinely won by the same epoch, and
+    # the checkpoints then hold identical weights. Publishing 116 MB twice
+    # under two names is not a second data point, so identical ones are
+    # detected and recorded as aliases.
+    seen = {model_digest(best_dst): "pretrain_eeg_c1_moe_best.pth"}
+    aliases, published = {}, []
+    extra = [(args.final, "pretrain_eeg_c1_moe_final.pth", "last epoch")]
+    if not args.only_best:
+        extra += [("best_spec.pth", "pretrain_eeg_c1_moe_best_spec.pth",
+                   "lowest spec MSE"),
+                  ("best_raw.pth", "pretrain_eeg_c1_moe_best_raw.pth",
+                   "lowest raw SmoothL1"),
+                  ("best_macro_total.pth",
+                   "pretrain_eeg_c1_moe_best_macro.pth",
+                   "lowest route-macro total")]
+    for src_name, dst_name, what in extra:
+        src = os.path.join(run_dir, src_name)
+        if not os.path.isfile(src):
+            print(f"  (no {src_name})")
+            continue
+        dst = os.path.join(out_dir, dst_name)
+        fi = strip_checkpoint(src, dst)
+        digest = model_digest(dst)
+        if digest in seen:
+            os.remove(dst)
+            aliases[dst_name] = seen[digest]
+            print(f"  {dst_name}   IDENTICAL to {seen[digest]} "
+                  f"(both epoch {fi['epoch']}) -- not published twice")
+            published.append((seen[digest], what, fi["epoch"], True))
+            continue
+        seen[digest] = dst_name
+        published.append((dst_name, what, fi["epoch"], False))
+        print(f"  {dst_name}   {human_bytes(fi['src_bytes'])} -> "
               f"{human_bytes(fi['dst_bytes'])}   (epoch {fi['epoch']})")
 
     # One encoder, no route. What transfers is the channel embedding, its gate
@@ -560,7 +634,8 @@ def main(argv=None) -> int:
     card = os.path.join(out_dir, "README.md")
     with open(card, "w") as f:
         f.write(model_card(args.repo_id, info, rows, run_dir,
-                           components=components, shares=shares))
+                           components=components, shares=shares,
+                           published=published, aliases=aliases))
     print(f"  README.md   (model card, {len(rows)} epochs of metrics read)")
 
     # Every file, not only the checkpoints. The first version of this check

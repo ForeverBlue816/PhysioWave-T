@@ -132,9 +132,31 @@ class FigureWriter:
         self.base_meta = base_meta
         self.written: List[str] = []
 
+    #: Stamped onto every figure, not only into its metadata.
+    #:
+    #: The metadata already recorded the checkpoint, its epoch and the
+    #: generation time, and that was enough for a file and useless for a
+    #: picture: a PNG from epoch 32 and one from epoch 59 look identical, and
+    #: the way you find out is by noticing an axis that stops too early and
+    #: doubting the run instead of the file. Copies leave this directory --
+    #: scp'd, pasted into slides, mailed -- and the metadata does not go with
+    #: them. The stamp does.
+    def _stamp(self, fig):
+        bits = [os.path.basename(str(self.base_meta.get("checkpoint", "?")))]
+        ep = self.base_meta.get("epoch")
+        if ep is not None:
+            bits.append(f"ckpt epoch {ep}")
+        last = self.base_meta.get("metrics_last_epoch")
+        if last is not None:
+            bits.append(f"metrics through epoch {last}")
+        bits.append(datetime.now(timezone.utc).strftime("drawn %Y-%m-%d %H:%M UTC"))
+        fig.text(0.005, 0.005, "  ".join(bits), fontsize=5.5, color="0.45",
+                 ha="left", va="bottom")
+
     def save(self, fig, name: str, data: Optional[Dict] = None,
              meta: Optional[Dict] = None):
         path = os.path.join(self.fig_dir, f"{name}.{self.fmt}")
+        self._stamp(fig)
         fig.savefig(path, format=self.fmt)
         plt.close(fig)
         if data:
@@ -1710,6 +1732,15 @@ def main(argv=None) -> int:
 
     epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
     step_rows = read_jsonl(os.path.join(run_dir, "metrics_step.jsonl"))
+    # How far the curves in these figures actually go, stamped on each one.
+    # A checkpoint's epoch and the metrics' last epoch are different numbers --
+    # best.pth is whichever epoch won, the metrics run to the end -- and seeing
+    # both is what tells a stale figure from a current one.
+    if epoch_rows:
+        writer.base_meta["metrics_last_epoch"] = epoch_rows[-1].get("epoch")
+        print(f"  metrics: {len(epoch_rows)} epochs "
+              f"(through epoch {epoch_rows[-1].get('epoch')}), "
+              f"{len(step_rows)} step rows")
 
     if args.threads:
         os.environ["PW_VIZ_THREADS"] = str(args.threads)
