@@ -47,6 +47,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
+from typing import Optional
 
 import torch
 
@@ -181,6 +182,63 @@ def strip_checkpoint(src: str, dst: str) -> dict:
             "dst_bytes": os.path.getsize(dst)}
 
 
+#: Rendered in the card so a reader can see what each file costs and what it
+#: buys, rather than being told. Order is fixed; sizes are measured.
+COMPONENTS = (
+    ("shared_transformer.", "shared transformer", "encoder, always transfers"),
+    ("channel_encoder.", "channel-name embedding", "always transfers"),
+    ("channel_to_token.", "channel projection", "always transfers"),
+    ("wavelet_frontends.", "wavelet frontends (all 4 routes)",
+     "route-bound; downstream usually builds its own"),
+    ("patch_embed_by_rate.", "patchers (both rates)", "route-bound"),
+    ("reconstruction_heads.", "spec decoder", "pretraining only"),
+    ("raw_reconstruction_heads.", "raw decoder", "pretraining only"),
+)
+
+
+def component_table(sd: dict):
+    """``(markdown rows, {prefix: share})`` for the full model, all measured.
+
+    The shares come back with the table because the sentence under it used to
+    be prose -- "the shared transformer is most of the model" -- written from
+    the 512/8/8 run it happened to be true for. Beside a measured table it is
+    a claim that can contradict the rows directly above it, and at 32/1 it did:
+    the transformer was 0.4% and the card said it was most of the model.
+    """
+    total = sum(v.numel() for v in sd.values() if hasattr(v, "numel")) or 1
+    lines, share = [], {}
+    for prefix, label, note in COMPONENTS:
+        n = sum(v.numel() for k, v in sd.items()
+                if k.startswith(prefix) and hasattr(v, "numel"))
+        share[prefix] = n / total
+        if not n:
+            continue
+        lines.append(f"| {label} | {n / 1e6:.2f} M | {n / total * 100:.1f}% "
+                     f"| {note} |")
+    lines.append(f"| **total** | **{total / 1e6:.2f} M** | 100% | |")
+    return "\n".join(lines), share
+
+
+def why_no_per_route_files(share: dict) -> str:
+    """The reason there is one encoder and not four, from the actual shares."""
+    enc = share.get("shared_transformer.", 0.0)
+    fronts = share.get("wavelet_frontends.", 0.0)
+    if enc > fronts:
+        return (
+            f"The shared transformer is {enc * 100:.0f}% of the model and the "
+            f"four frontends together are {fronts * 100:.0f}%, which is why "
+            f"there is no per-route encoder file here: four of them would "
+            f"duplicate that transformer four times to deliver frontends that "
+            f"are a small fraction of it. Cut the one you want out of the "
+            f"complete checkpoint instead.")
+    return (
+        f"At this width the four frontends ({fronts * 100:.0f}%) outweigh the "
+        f"shared transformer ({enc * 100:.0f}%). There is still one encoder "
+        f"file rather than four, because what a per-route file adds is a "
+        f"frontend that only loads onto that exact montage; cut the one you "
+        f"want out of the complete checkpoint.")
+
+
 def read_metrics(run_dir: str):
     rows = []
     path = os.path.join(run_dir, "metrics_epoch.jsonl")
@@ -198,7 +256,8 @@ def read_metrics(run_dir: str):
     return rows
 
 
-def model_card(repo_id: str, info: dict, rows, run_dir: str) -> str:
+def model_card(repo_id: str, info: dict, rows, run_dir: str,
+               components: str = "", shares: Optional[dict] = None) -> str:
     cfg = info["config"]
     mcfg, tcfg = cfg.get("model", {}), cfg.get("train", {})
     obj = info["objective"]
@@ -274,25 +333,48 @@ directions.
 
 ## Files
 
+### Which file do you want
+
+| your situation | download |
+|---|---|
+| fine-tune on any montage | `eeg_c1_encoder.pth` |
+| your montage IS one of the four routes below | `pretrain_eeg_c1_moe_best.pth`, then cut the route out (one command, below) |
+| continue pretraining, or take the model apart yourself | `pretrain_eeg_c1_moe_best.pth` |
+
+**`pretrain_eeg_c1_moe_best.pth` is the complete model** -- all four wavelet
+frontends, both patchers, both reconstruction decoders. Nothing is held back;
+only the optimiser state was stripped, which no downstream use needs. Take it
+if you want to keep or strip pieces yourself.
+
+`eeg_c1_encoder.pth` is the same weights minus everything route-bound and
+pretraining-only. It exists because it cannot be loaded wrong.
+
 | file | what it is |
 |---|---|
-| `eeg_c1_encoder.pth` | **start here.** The transferable encoder |
-| `pretrain_eeg_c1_moe_best.pth` | full model, lowest validation total loss (epoch {bep.get('total', '?')}) |
-| `pretrain_eeg_c1_moe_final.pth` | full model, last epoch, cosine fully annealed |
+| `eeg_c1_encoder.pth` | encoder alone: channel embedding, gate, transformer |
+| `pretrain_eeg_c1_moe_best.pth` | complete model, lowest validation total loss (epoch {bep.get('total', '?')}) |
+| `pretrain_eeg_c1_moe_final.pth` | complete model, last epoch, cosine fully annealed |
 | `metrics_epoch.jsonl` | the full training curve |
 | `config_resolved.yaml` | every resolved hyperparameter |
 
+### What is in the complete model
+
+| component | parameters | share | |
+|---|---|---|---|
+{components}
+
+{why_no_per_route_files(shares or {})}
+
 ### What transfers, and what does not
 
-`eeg_c1_encoder.pth` holds the channel-name embedding, its gate, and the shared
-transformer. It holds **no wavelet frontend and no patcher**, on purpose: those
-are bound to one electrode count and one patch length, and a downstream task on
-a different montage cannot use them. Build a fresh frontend and patcher for
-your montage and load this file into the rest.
+`downstream.py` splits a checkpoint into two sets. The channel embedding, its
+gate and the shared transformer **always** load. The wavelet frontend and the
+patcher load **only when your montage is the route they were trained for** --
+same electrode count, same patch length -- and are skipped otherwise rather
+than reshaped.
 
-Both pretraining decoders are dropped from every file listed as an encoder --
-fine-tuning against the pretext objective by accident is the failure that
-prevents.
+So a fresh frontend is the normal case, not a fallback. Both downstream tasks
+in the source repository build their own.
 
 The four routes the shared transformer was pretrained across:
 
@@ -300,14 +382,18 @@ The four routes the shared transformer was pretrained across:
 |---|---|---|
 {routes}
 
-To fine-tune ON one of these routes exactly -- same electrode count, same patch
-length -- take the frontend from a full checkpoint instead:
+To fine-tune ON one of them exactly, take that route's frontend and patcher out
+of the complete checkpoint:
 
 ```bash
 python scripts/export_eeg_pretrained_encoder.py \\
     --checkpoint pretrain_eeg_c1_moe_best.pth --route E64_256 \\
     --output encoder_E64_256.pth
 ```
+
+Omit `--route` and you get `eeg_c1_encoder.pth` again. Both pretraining
+decoders are dropped either way: fine-tuning against the pretext objective by
+accident is the failure that prevents.
 
 **`best.pth` and the final checkpoint are within validation noise of each
 other.** Which one transfers better is a downstream question, not a
@@ -407,6 +493,8 @@ def main(argv=None) -> int:
 
     best_dst = os.path.join(out_dir, "pretrain_eeg_c1_moe_best.pth")
     info = strip_checkpoint(best_src, best_dst)
+    components, shares = component_table(
+        torch.load(best_dst, map_location="cpu", weights_only=False)["model"])
     print(f"  {os.path.basename(best_dst)}   "
           f"{human_bytes(info['src_bytes'])} -> "
           f"{human_bytes(info['dst_bytes'])}   "
@@ -471,7 +559,8 @@ def main(argv=None) -> int:
     rows = read_metrics(run_dir)
     card = os.path.join(out_dir, "README.md")
     with open(card, "w") as f:
-        f.write(model_card(args.repo_id, info, rows, run_dir))
+        f.write(model_card(args.repo_id, info, rows, run_dir,
+                           components=components, shares=shares))
     print(f"  README.md   (model card, {len(rows)} epochs of metrics read)")
 
     # Every file, not only the checkpoints. The first version of this check
