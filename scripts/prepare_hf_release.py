@@ -332,15 +332,49 @@ mask        {mcfg.get('masking_strategy', '?')}, ratio {mcfg.get('mask_ratio', '
 
 ## Loading
 
+`EEGC1Downstream` builds the frontend and patcher for your montage and loads
+this file into everything else. Nothing here is route-bound, so the montage,
+the window length and the patch length are yours to choose.
+
 ```python
 import torch
-ck = torch.load("eeg_c1_encoder.pth", map_location="cpu", weights_only=False)
-ck["model"]                  # channel_encoder, channel_to_token,
-                             # channel_token_gate, shared_transformer
-ck["channel_vocab"]          # names -> ids, as learned
-ck["channel_vocab_sha256"]   # check this against yours before loading
-ck["route_id"]               # None -- this encoder is not route-bound
+from physiowave.eeg_c1.downstream import EEGC1Downstream
+
+ENC = "eeg_c1_encoder.pth"
+ck = torch.load(ENC, map_location="cpu", weights_only=False)
+mc = ck["model_config"]                  # the width the weights were trained at
+CH = ["Fz", "Cz", "Pz", "Oz", "C3", "C4", "P3", "P4"]   # your electrodes
+
+model = EEGC1Downstream(
+    in_channels=len(CH), window_samples=1024, sampling_rate=256.0,
+    patch_samples=64, num_classes=2, channel_names=CH,
+    embed_dim=mc["embed_dim"], depth=mc["depth"], num_heads=mc["num_heads"],
+    channel_embed_dim=mc.get("channel_embed_dim", 64),
+    channel_vocab_size=ck["channel_vocab_size"])
+
+report = model.load_pretrained(ENC)
+print(model.describe_transfer(report))
+# loaded: transformer N, channel encoder N, gate yes, frontend 0, patcher 0
+
+class Meta:                               # or your dataset's ChannelMeta
+    channel_names = CH
+    channel_mask = None
+
+out = model(torch.randn(2, len(CH), 1024), Meta())   # {{"logits": [2, 2]}}
 ```
+
+`frontend 0, patcher 0` is the expected line, not a warning: those are the two
+things your montage supplies.
+
+**The frontend you build is not randomly initialised.** Its filters are seeded
+from real wavelet families -- `sym4, sym5, db6, sym8, db8` -- and learned from
+there during fine-tuning. What a fresh frontend costs you is the adaptation
+those filters underwent during pretraining, not the wavelet prior itself.
+
+Channel names, not indices, are what this encoder and your data agree on. An
+embedding row means whichever electrode held it when it was learned, so pass
+real names and check `channel_vocab_sha256` -- `load_pretrained` refuses a
+mismatch rather than silently training on relabelled electrodes.
 
 Code: <https://github.com/ForeverBlue816/PhysioWave-T>
 
