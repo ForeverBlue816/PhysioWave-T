@@ -6,19 +6,37 @@ Export one route's encoder from a pretraining checkpoint, for fine-tuning.
     python scripts/export_eeg_pretrained_encoder.py \
         --checkpoint best.pth --route E32_512 --output exported_E32_512.pth
 
+    python scripts/export_eeg_pretrained_encoder.py \
+        --checkpoint best.pth --output encoder.pth        # no --route
+
 A pretraining checkpoint holds four wavelet frontends, two patchers and two
-reconstruction decoders. A downstream task uses one route and no decoder, so
-carrying the rest means shipping several times the weights and inviting someone
-to load a frontend built for a different electrode count.
+reconstruction decoders. A downstream task uses at most one route and no
+decoder, so carrying the rest means shipping several times the weights and
+inviting someone to load a frontend built for a different electrode count.
+
+--route IS OPTIONAL, and omitting it is now the common case. downstream.py
+splits what a checkpoint may supply into two sets:
+
+    TRANSFERABLE  channel_encoder, channel_to_token, channel_token_gate,
+                  shared_transformer   -- always loaded
+    ROUTE_BOUND   wavelet_frontend, patch_embed
+                  -- loaded ONLY when the downstream montage IS the route
+
+Both downstream tasks build their own frontend and declare no route_id, so for
+them ROUTE_BOUND is always skipped. Passing --route to feed those tasks means
+choosing a route for weights that are then discarded on load; without it the
+file holds the part that actually transfers, and is a good deal smaller.
+
+Pass --route only to fine-tune ON one of the pretraining routes, at its exact
+electrode count and patch length.
 
 What comes out:
 
-    wavelet_frontend.*    the named route's expert only
-    patch_embed.*         the patcher for that route's sampling rate
     channel_encoder.*     the C1 channel-name embedding, whole
     channel_to_token.*    its projection, and the gate
     shared_transformer.*  the encoder
     + the channel vocabulary, its hash, and the preprocessing spec
+    + wavelet_frontend.* and patch_embed.*, ONLY with --route
 
 What does not:
 
@@ -71,7 +89,9 @@ def main(argv=None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--checkpoint", required=True)
-    p.add_argument("--route", required=True, choices=sorted(ROUTES))
+    p.add_argument("--route", default=None, choices=sorted(ROUTES),
+                   help="include this route's wavelet frontend and patcher. "
+                        "OMIT for the encoder alone -- see below")
     p.add_argument("--output", required=True)
     p.add_argument("--keep-mask-token", action="store_true",
                    help="keep the pretraining mask token (downstream ignores it)")
@@ -86,20 +106,23 @@ def main(argv=None) -> int:
         print("ERROR: checkpoint has no 'model' state dict", file=sys.stderr)
         return 1
 
-    route = ROUTES[args.route]
-    front = f"wavelet_frontends.{args.route}."
-    patch = f"patch_embed_by_rate.{route.rate_key}."
+    route = ROUTES[args.route] if args.route else None
+    # Prefixes that match no key when there is no route, so the loop below
+    # needs no second branch: an f-string on None would match "None." and
+    # quietly export nothing under a name that looks exported.
+    front = f"wavelet_frontends.{args.route}." if route else None
+    patch = f"patch_embed_by_rate.{route.rate_key}." if route else None
 
     out = {}
     for k, v in sd.items():
         if any(k.startswith(d) for d in DROP_PREFIXES):
             continue
         if k.startswith("wavelet_frontends."):
-            if k.startswith(front):
+            if front and k.startswith(front):
                 out["wavelet_frontend." + k[len(front):]] = v
             continue
         if k.startswith("patch_embed_by_rate."):
-            if k.startswith(patch):
+            if patch and k.startswith(patch):
                 out["patch_embed." + k[len(patch):]] = v
             continue
         if k.startswith("mask_token") and not args.keep_mask_token:
@@ -107,26 +130,34 @@ def main(argv=None) -> int:
         if any(k.startswith(pref) for pref in KEEP_PREFIXES):
             out[k] = v
 
-    if not any(k.startswith("wavelet_frontend.") for k in out):
+    if route and not any(k.startswith("wavelet_frontend.") for k in out):
         print(f"ERROR: the checkpoint has no frontend for route {args.route}",
               file=sys.stderr)
+        return 1
+    if not any(k.startswith("shared_transformer.") for k in out):
+        # The encoder is the whole point with or without a route, and a file
+        # without it loads downstream as "0 keys taken" rather than as an error.
+        print("ERROR: the checkpoint has no shared_transformer", file=sys.stderr)
         return 1
 
     cfg = ck.get("config", {})
     payload = {
         "model": out,
         "route_id": args.route,
-        "route": {"n_channels": route.n_channels,
-                  "sampling_rate": route.sampling_rate,
-                  "window_samples": route.window_samples,
-                  "patch_size": list(route.patch_size),
-                  "n_tokens": route.n_tokens,
-                  "slots": list(route.slots)},
+        "route": ({"n_channels": route.n_channels,
+                   "sampling_rate": route.sampling_rate,
+                   "window_samples": route.window_samples,
+                   "patch_size": list(route.patch_size),
+                   "n_tokens": route.n_tokens,
+                   "slots": list(route.slots)} if route else None),
         "model_config": cfg.get("model", {}),
+        # Without a route there is no single sampling rate or window length to
+        # state -- the encoder saw four. The pipeline line still applies: it is
+        # how every window reaching this encoder was prepared, at whatever rate.
         "preprocessing_spec": {
-            "window_seconds": route.window_seconds,
-            "patch_seconds": route.patch_seconds,
-            "target_sampling_rate": route.sampling_rate,
+            "window_seconds": route.window_seconds if route else None,
+            "patch_seconds": route.patch_seconds if route else None,
+            "target_sampling_rate": route.sampling_rate if route else None,
             "pipeline": ("units_uV -> detrend -> notch -> 0.5 Hz high-pass -> "
                          "resample_poly -> slot_map -> window -> zscore_clip"),
             "note": ("no 0.5-45 Hz band-pass; the encoder has seen the full "
@@ -161,11 +192,17 @@ def main(argv=None) -> int:
     torch.save(payload, args.output)
 
     n_par = sum(v.numel() for v in out.values() if hasattr(v, "numel"))
-    print(f"exported {args.route} from {args.checkpoint}")
+    print(f"exported {args.route or 'encoder (no route)'} "
+          f"from {args.checkpoint}")
     print(f"  {len(out)} tensors, {n_par:,} parameters -> {args.output}")
-    print(f"  input shape  [B, {route.n_channels}, {route.window_samples}] "
-          f"@ {route.sampling_rate} Hz")
-    print(f"  tokens       {route.n_tokens}")
+    if route:
+        print(f"  input shape  [B, {route.n_channels}, "
+              f"{route.window_samples}] @ {route.sampling_rate} Hz")
+        print(f"  tokens       {route.n_tokens}")
+        print(f"  frontend     included (loads only onto this exact route)")
+    else:
+        print(f"  frontend     excluded -- downstream builds its own; "
+              f"pass --route to include one")
     print(f"  vocab sha    {payload['channel_vocab_sha256'][:16]}")
     print(f"  decoder      excluded (pretraining head)")
     return 0

@@ -76,6 +76,15 @@ def exported(tmp_path_factory):
             cwd=ROOT, capture_output=True, text=True)
         assert r.returncode == 0, r.stderr[-2000:]
         out[route] = str(p)
+    # The same checkpoint with no --route: what both downstream tasks actually
+    # consume, since neither declares a route_id.
+    p = d / "enc_noroute.pth"
+    r = subprocess.run(
+        [sys.executable, "scripts/export_eeg_pretrained_encoder.py",
+         "--checkpoint", str(ck), "--output", str(p)],
+        cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+    out["none"] = str(p)
     out["gate"] = 0.33
     return out
 
@@ -172,6 +181,51 @@ def test_a_different_montage_transfers_the_transformer_and_says_so(exported):
     assert not any(k.startswith("wavelet_frontend.") for k in rep["taken"])
     assert not any(k.startswith("patch_embed.") for k in rep["taken"])
     assert "loaded: transformer" in m.describe_transfer(rep)
+
+
+def test_an_export_without_a_route_carries_only_what_transfers(exported):
+    """--route is optional, and omitting it is the case both tasks are in.
+
+    A route-bound export fed to a task that builds its own frontend ships a
+    frontend and a patcher that load_pretrained then skips. The file is bigger
+    for nothing, and it names a route the weights will not be used at, which
+    reads as a constraint on the montage that does not exist.
+    """
+    ck = torch.load(exported["none"], map_location="cpu", weights_only=False)
+    assert ck["route_id"] is None
+    assert ck["route"] is None
+    keys = set(ck["model"])
+    assert any(k.startswith("shared_transformer.") for k in keys)
+    assert any(k.startswith("channel_encoder.") for k in keys)
+    assert "channel_token_gate" in keys
+    assert not any(k.startswith("wavelet_frontend.") for k in keys)
+    assert not any(k.startswith("patch_embed.") for k in keys)
+    # And it is genuinely smaller, which is the other half of the point.
+    assert os.path.getsize(exported["none"]) < \
+        os.path.getsize(exported["E64_256"])
+
+
+def test_a_routeless_export_transfers_exactly_what_a_routed_one_does(exported):
+    """The bytes a montage-mismatched task actually receives are identical.
+
+    If dropping the frontend changed what lands, the smaller file would be a
+    different model rather than the same one without its unused half.
+    """
+    kw = dict(in_channels=2, window_samples=3000, sampling_rate=100,
+              patch_samples=50, num_classes=5,
+              channel_names=["Fpz-Cz", "Pz-Oz"], **SMALL)
+    torch.manual_seed(0)
+    a = EEGC1Downstream(**kw)
+    torch.manual_seed(0)
+    b = EEGC1Downstream(**kw)
+    rep_routed = a.load_pretrained(exported["E19_256"])
+    rep_bare = b.load_pretrained(exported["none"])
+
+    assert set(rep_routed["taken"]) == set(rep_bare["taken"])
+    assert any(k.startswith("shared_transformer.") for k in rep_bare["taken"])
+    sd_a, sd_b = a.state_dict(), b.state_dict()
+    for k in sd_a:
+        assert torch.equal(sd_a[k], sd_b[k]), k
 
 
 def test_the_weights_actually_land(exported):
