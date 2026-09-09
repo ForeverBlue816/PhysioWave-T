@@ -121,9 +121,13 @@ if [[ "${CONFIRM:-}" != "1" ]]; then
     echo "  This is public and the files stay in the repo's git history"
     echo "  even if deleted afterwards."
     if [[ -t 0 ]]; then
-        read -r -p "  Type the repo id to publish: " answer
+        # The exact string, quoted. "Type the repo id" is ambiguous the first
+        # time someone meets it -- the name alone, or owner/name? -- and a
+        # confirmation you have to guess at is a confirmation people paste
+        # past without reading.
+        read -r -p "  Type '${REPO}' to publish (anything else cancels): " answer
         if [[ "${answer}" != "${REPO}" ]]; then
-            echo "  not published."
+            echo "  not published (you typed '${answer}')."
             exit 1
         fi
     else
