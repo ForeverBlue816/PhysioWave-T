@@ -1,53 +1,58 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-What the three EEGPT benchmark converters share: BCIC-IV-2a, BCIC-IV-2b and
-KaggleERN.
+What the three benchmark converters share: BCIC-IV-2a, BCIC-IV-2b, KaggleERN.
 
     EEG/bcic_iv2_finetune.py    --dataset 2a | 2b
     EEG/kaggle_ern_finetune.py
 
-Each converter reproduces EEGPT's own preparation where it can -- the epoch,
-the filter, the channel set, the cross-subject split -- and departs from it
-only where their model and ours differ. The departures are the same three for
-all of them, stated once here:
+THE PREPROCESSING IS THE PRETRAINING PIPELINE, not EEGPT's. These are the
+tasks EEGPT reports, run on the tasks' own recordings, but the signal reaching
+the encoder is prepared the way the signal it was pretrained on was -- by the
+same functions, from physiowave.eeg_c1.preprocess, with the same defaults:
 
-1.  AMPLITUDE. EEGPT normalises per TRIAL: exponential moving standardisation
-    on 2a, x/10 on 2b, a per-trial min-max to [-1, 1] on KaggleERN. Their
-    classifier then opens with a learnable per-channel scaling layer that
-    absorbs whatever scale is left. Ours has no such layer, and per-trial
-    scaling divides away exactly what these tasks are decided on: the
-    left/right power asymmetry over C3/C4 that motor imagery IS, and the
-    amplitude of an error-related negativity against a correct-feedback
-    response. So the normalisation here is per SESSION -- Euclidean alignment
-    on the motor-imagery sets (which EEGPT also applies, and which sets the
-    scale as a side effect), a per-channel z-score over the session otherwise.
-    This is the choice physio_p300_finetune.py and sleep_edf_finetune.py make,
-    for the same reason.
+    microvolts -> linear detrend -> mains notch (50 Hz + harmonic)
+    -> 0.5 Hz high-pass -> polyphase resample to 256 Hz
+    -> epoch -> per-window, per-channel z-score, clipped at +-20
 
-2.  RESAMPLING. EEGPT stretches every epoch to a fixed length with
-    `F.interpolate(mode='nearest')`, which is sample duplication: 1001 samples
-    at 250 Hz become 1024 by repeating 23 of them. Here the continuous signal
-    goes through scipy's polyphase resampler to 256 Hz before it is epoched, so
-    a 4 s epoch is 1024 samples because 4 s at 256 Hz is 1024 samples.
+applied to each continuous run or session before it is epoched, exactly as
+EEG/preprocess_pretrain_corpus.py applies it to each recording before it is
+windowed. A fine-tuned encoder is being asked to reuse what it learned; handing
+it input prepared differently -- EEGPT's 0-38 Hz band-pass, Euclidean
+alignment, common average, per-trial min-max -- changes the question to
+whether it can also adapt to a new input distribution.
 
-3.  EVALUATION. EEGPT's scripts call `trainer.fit(model, train, test)` with no
-    checkpoint callback: the held-out subjects are the validation set, scored
-    every epoch, and the reported number is read off that curve. Here the
-    held-out subjects are a TEST set that selects nothing, and validation is a
-    further set of subjects carved out of the training ones. That makes these
-    numbers pessimistic relative to theirs, not optimistic. Theirs is also a
-    mean over folds (9 for BCIC, 4 for KaggleERN); each converter here builds
-    one fold, whose shape matches one of theirs.
+What that means per task, stated because each differs from EEGPT's:
 
-The output is what physiowave.train.finetune_main reads:
+  * no band-pass. BCIC keeps everything above 0.5 Hz up to Nyquist (EEGPT cuts
+    at 38 Hz), because the pretraining corpus did.
+  * no re-referencing and no Euclidean alignment. Neither was applied in
+    pretraining.
+  * per-WINDOW z-score. The encoder never saw an un-normalised window. It
+    removes each channel's absolute power in the window -- and with it part of
+    the C3/C4 power asymmetry motor imagery produces -- but the spectral and
+    temporal structure within the window, which is what an ERD and an ERN are
+    made of, survive it. It is also close to what EEGPT does on 2a
+    (braindecode's exponential moving standardisation, a running per-channel
+    z-score).
+  * mains 50 Hz: both datasets were recorded in Europe (Graz, Toulouse).
+
+What IS kept from EEGPT is what makes the tasks the same tasks: the epochs
+(cue + 0..4 s on BCIC, feedback -0.7..+1.3 s on KaggleERN), the classes, the
+channel sets, and the cross-subject structure of their folds. The evaluation
+differs too: held-out subjects are a TEST set that selects nothing, validation
+is a separate set of subjects, and one fold is run rather than a mean over
+folds. EEGPT's rows are printed beside ours as a reference, not as a
+like-for-like comparison.
+
+Output, what physiowave.train.finetune_main reads:
 
     data           (N, C, T) float32
     label          (N,)      int64
     subject        (N,)      int64     provenance; the trainer ignores it
     session        (N,)      int64     provenance; the trainer ignores it
     channel_names  (C,)      bytes     the montage, by name, in order
-    attrs          sampling_rate, window_samples, provenance (JSON)
+    attrs          sampling_rate, window_samples, prep_version, provenance
 """
 
 from __future__ import annotations
@@ -55,7 +60,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Sequence
 
 import numpy as np
 
@@ -63,117 +68,46 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from physiowave.eeg_c1 import preprocess as pp                  # noqa: E402
+
 FS_OUT = 256
-CLIP_SIGMA = 20.0
+MAINS_HZ = 50.0
+#: Stamped into every file and into the split directory's name, so a split
+#: built by an older pipeline is never silently reused by a newer one.
+PREP_VERSION = "pretrain-v1"
+#: The pretraining defaults, one object, so nothing here restates a number.
+CFG = pp.PreprocessConfig(notch_hz=MAINS_HZ)
 
 
-# --------------------------------------------------------------------------- #
-# Signal steps. Every one of them works on a continuous [C, T] array or on a
-# stack of epochs [N, C, T]; none of them looks at labels.
-# --------------------------------------------------------------------------- #
+def pretrain_pipeline(x: np.ndarray, fs: float, unit: str = "uV") -> np.ndarray:
+    """A continuous ``[C, T]`` recording, prepared as pretraining prepared one.
 
-def common_average(x: np.ndarray) -> np.ndarray:
-    """Subtract the mean over channels at every sample.
-
-    EEGPT does this implicitly -- `temporal_interpolation(..., use_avg=True)`
-    subtracts `x.mean(dim=-2)` -- so it is part of their preparation even
-    though no preparation script names it. It is the LAST spatial step there,
-    after Euclidean alignment, and must be here too: see euclidean_alignment.
+    The same calls, in the same order, as `process_recording` in
+    EEG/preprocess_pretrain_corpus.py, up to (not including) windowing.
     """
-    return x - x.mean(axis=-2, keepdims=True)
+    x = pp.to_microvolts(np.asarray(x, dtype=np.float64), unit)
+    x = pp.detrend(x, CFG.detrend)
+    x = pp.notch(x, fs, CFG.notch_hz, CFG.notch_harmonics, CFG.notch_quality)
+    x = pp.highpass(x, fs, CFG.highpass_hz)
+    return pp.resample_to(x, fs, FS_OUT)
 
 
-def butter_filter(x: np.ndarray, fs: float, low: Optional[float],
-                  high: Optional[float], order: int = 4) -> np.ndarray:
-    """Zero-phase Butterworth, on a CONTINUOUS signal.
-
-    MNE's `filter(l_freq, h_freq, method='iir')` is a 4th-order Butterworth run
-    forward and backward, which is what this is. EEGPT applies it to 4 s epochs;
-    here it runs on the whole run before epoching, so the filter's edge
-    transient falls at the ends of a recording rather than at the ends of every
-    trial.
-    """
-    from scipy.signal import butter, sosfiltfilt
-    nyq = fs / 2.0
-    if low and high:
-        sos = butter(order, [low / nyq, high / nyq], btype="bandpass", output="sos")
-    elif high:
-        sos = butter(order, high / nyq, btype="lowpass", output="sos")
-    elif low:
-        sos = butter(order, low / nyq, btype="highpass", output="sos")
-    else:
-        return x
-    return sosfiltfilt(sos, x, axis=-1)
+def normalise_windows(epochs: np.ndarray) -> np.ndarray:
+    """Per-window, per-channel z-score, clipped -- pretraining's zscore_windows."""
+    valid = np.ones(epochs.shape[1], dtype=bool)
+    return pp.zscore_windows(epochs, valid, CFG.zscore_eps, CFG.clip_sigma)
 
 
-def resample_to(x: np.ndarray, fs_in: float, fs_out: int = FS_OUT) -> np.ndarray:
-    """Polyphase resampling along the last axis -- the pretraining resampler."""
-    from physiowave.eeg_c1.preprocess import resample_to as _r
-    return _r(x, fs_in, fs_out)
-
-
-def euclidean_alignment(epochs: np.ndarray) -> np.ndarray:
-    """``R^{-1/2} x`` with ``R`` the mean trial covariance of this set.
-
-    EEGPT's `Data_process.utils.EA`, applied the way they apply it: once per
-    session file, over every trial in it. Label-free, so it is applied to the
-    test subject's sessions too -- as theirs is -- using that subject's own
-    unlabelled trials. After it the mean spatial covariance of the session is
-    the identity, which is the session-level normalisation this pipeline wants
-    anyway.
-
-    MUST RUN BEFORE the common-average reference, which is EEGPT's order too
-    (EA in `get_data`, CAR later in `temporal_interpolation`). A common average
-    makes the channels sum to zero at every sample, so R loses a rank: on
-    2b's three channels it is singular outright, and on 2a's twenty-two it is
-    singular to within rounding, where R^{-1/2} multiplies the all-ones
-    direction by ~1e5 and the result is finite only by luck. Hence eigh and an
-    explicit conditioning check, rather than a finiteness test that luck passes.
-    """
-    x = epochs.astype(np.float64)
-    R = np.einsum("nct,ndt->cd", x, x) / len(x)
-    w, V = np.linalg.eigh((R + R.T) / 2.0)
-    if w.min() <= w.max() * 1e-8:
-        raise ValueError(
-            f"Euclidean alignment: the session covariance is rank-deficient "
-            f"(eigenvalues {w.min():.3g} .. {w.max():.3g}). A common-average "
-            f"reference applied before EA does this; so does a flat or "
-            f"duplicated channel.")
-    # errstate for the same reason as preprocess.detrend: numpy's matmul on
-    # some BLAS builds reports divide-by-zero on well-conditioned input. The
-    # conditioning is checked above and the outcome below, which is what
-    # actually matters.
-    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-        Rm = (V / np.sqrt(w)) @ V.T
-        out = np.einsum("dc,nct->ndt", Rm, x)
-    if not (np.all(np.isfinite(Rm)) and np.all(np.isfinite(out))):
-        raise ValueError("Euclidean alignment produced non-finite values")
-    return out
-
-
-def session_zscore(x: np.ndarray) -> np.ndarray:
-    """Per channel, over the whole session: ``[N, C, T]`` or ``[C, T]``.
-
-    NOT per epoch. See point 1 at the top of this file.
-    """
-    axes = (0, 2) if x.ndim == 3 else (1,)
-    mu = x.mean(axis=axes, keepdims=True)
-    sd = x.std(axis=axes, keepdims=True)
-    return (x - mu) / np.maximum(sd, 1e-6)
-
-
-def clip(x: np.ndarray, sigma: float = CLIP_SIGMA) -> np.ndarray:
-    """The pretraining pipeline's ±20 clip, so no single artefact dominates."""
-    return np.clip(x, -sigma, sigma)
+def provenance(extra: Dict) -> Dict:
+    return CFG.provenance({"prep_version": PREP_VERSION,
+                           "target_sampling_rate": FS_OUT, **extra})
 
 
 def epoch_at(x: np.ndarray, onsets: Sequence[int], length: int) -> np.ndarray:
     """``[C, T] -> [N, C, length]``. An epoch running off either end is an error.
 
-    Not clipped and not padded. EEGPT's ERN reader clamps the start at 0 and
-    the end at the file length, which yields a short epoch that
-    `temporal_interpolation` then stretches -- a different duration passed off
-    as the same one. None of the three datasets needs that, so it is refused.
+    Not clipped and not padded: a short epoch stretched or zero-filled to length
+    is a different duration passed off as the same one.
     """
     C, T = x.shape
     out = np.empty((len(onsets), C, length), dtype=np.float32)
@@ -218,17 +152,16 @@ def loso_split(subjects: List[int], fold: int, seed: int = 7) -> Dict[str, List[
 def write_split(path: str, epochs: List[np.ndarray], labels: List[np.ndarray],
                 subjects: List[np.ndarray], sessions: List[np.ndarray],
                 channels: Sequence[str], class_names: Sequence[str],
-                provenance: Dict) -> Dict:
+                prov: Dict) -> Dict:
     """One HDF5 in the layout finetune_main reads. Returns a summary row."""
     import h5py
 
-    X = np.concatenate(epochs).astype(np.float32) if epochs else \
-        np.zeros((0, len(channels), 0), np.float32)
-    y = np.concatenate(labels).astype(np.int64) if labels else np.zeros(0, np.int64)
-    s = np.concatenate(subjects).astype(np.int64) if subjects else np.zeros(0, np.int64)
-    k = np.concatenate(sessions).astype(np.int64) if sessions else np.zeros(0, np.int64)
-    if len(X) == 0:
+    if not epochs:
         raise SystemExit(f"{path}: no epochs -- refusing to write an empty split")
+    X = np.concatenate(epochs).astype(np.float32)
+    y = np.concatenate(labels).astype(np.int64)
+    s = np.concatenate(subjects).astype(np.int64)
+    k = np.concatenate(sessions).astype(np.int64)
     if X.shape[1] != len(channels):
         raise SystemExit(f"{path}: {X.shape[1]} channels in the data, "
                          f"{len(channels)} names")
@@ -246,8 +179,9 @@ def write_split(path: str, epochs: List[np.ndarray], labels: List[np.ndarray],
                          data=np.array([c.encode() for c in channels], dtype="S32"))
         f.attrs["sampling_rate"] = float(FS_OUT)
         f.attrs["window_samples"] = int(X.shape[-1])
+        f.attrs["prep_version"] = PREP_VERSION
         f.attrs["class_names"] = json.dumps(list(class_names))
-        f.attrs["provenance"] = json.dumps(provenance, default=str)
+        f.attrs["provenance"] = json.dumps(prov, default=str)
 
     counts = np.bincount(y, minlength=len(class_names))
     return {"file": os.path.basename(path), "epochs": int(len(y)),

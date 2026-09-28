@@ -19,13 +19,13 @@
 # with no --route, or eeg_c1_encoder.pth from the release). A pretraining
 # checkpoint -- best.pth, latest.pth -- is accepted too and exported first.
 #
-# The split is built on first use if RAW_DIR holds the downloaded data, so a
-# batch job needs nothing prepared except the download (compute nodes have no
-# internet; downloading is the login node's job):
+# ALL THREE TASKS AT ONCE: bash scripts/run_eegpt_bench.sh -- it downloads,
+# then submits. This script is one run of one task.
 #
-#   python EEG/download_eegpt_benchmarks.py --dataset 2a --dest $PW_DATA_EEG/bcic_iv2a
-#   python EEG/download_eegpt_benchmarks.py --dataset 2b --dest $PW_DATA_EEG/bcic_iv2b
-#   bash   EEG/download_kaggle_ern.sh $PW_DATA_EEG/kaggle_ern
+# The split is built on first use from RAW_DIR, with the PRETRAINING
+# preprocessing (EEG/eegpt_bench_common.py), into a directory named by the
+# preprocessing version, so a batch job needs nothing prepared but the
+# download -- which is the login node's job; compute nodes have no internet.
 #
 # PROTOCOL, stated so the number is not read as more than it is. EEGPT's rows
 # are a mean over folds (nine LOSO folds on BCIC, four on KaggleERN) of a
@@ -42,21 +42,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # shellcheck disable=SC1091
 source "$(pwd)/scripts/cineca_env.sh"
+# shellcheck disable=SC1091
+source "$(pwd)/EEG/eegpt_bench_lib.sh"
 
 TASK="${TASK:?set TASK=bcic2a|bcic2b|kaggleern}"
 MODE="${MODE:-ft}"
 FOLD="${FOLD:-0}"
 NUM_GPUS="${NUM_GPUS:-1}"
 
-case "${TASK}" in
-    bcic2a)    NCLS=4; SUB="bcic2a"; RAW_DEFAULT="bcic_iv2a"
-               BUILD=(python EEG/bcic_iv2_finetune.py --dataset 2a) ;;
-    bcic2b)    NCLS=2; SUB="bcic2b"; RAW_DEFAULT="bcic_iv2b"
-               BUILD=(python EEG/bcic_iv2_finetune.py --dataset 2b) ;;
-    kaggleern) NCLS=2; SUB="ern";    RAW_DEFAULT="kaggle_ern"
-               BUILD=(python EEG/kaggle_ern_finetune.py) ;;
-    *) echo "ERROR: TASK must be bcic2a, bcic2b or kaggleern, not '${TASK}'" >&2; exit 1 ;;
-esac
+NCLS="$(eegpt_num_classes "${TASK}")" || exit 1
 case "${MODE}" in
     ft|scratch) ;;
     *) echo "ERROR: MODE must be ft or scratch, not '${MODE}'" >&2; exit 1 ;;
@@ -64,8 +58,8 @@ esac
 
 [[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
 
-RAW_DIR="${RAW_DIR:-${PW_DATA_EEG}/${RAW_DEFAULT}}"
-DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/${SUB}_f${FOLD}}"
+RAW_DIR="${RAW_DIR:-$(eegpt_raw_dir "${TASK}")}"
+DATA_DIR="${DATA_DIR:-$(eegpt_split_dir "${TASK}" "${FOLD}")}"
 # TAG names WHICH encoder, so two of them -- best.pth and latest.pth, say --
 # do not write into the same directory: TAG=final -> bcic2a_f0_ft_final.
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${MODE}${TAG:+_${TAG}}}"
@@ -77,17 +71,15 @@ pw_check_output_dir "$(dirname "${OUTPUT_DIR}")" || exit 1
 mkdir -p "$(dirname "${OUTPUT_DIR}")"
 pw_check_output_dir "${OUTPUT_DIR}" || exit 1
 mkdir -p "${OUTPUT_DIR}"
+# finetune_main reuses an existing directory without clearing it. A rerun that
+# dies before its first checkpoint would then leave the PREVIOUS run's
+# results.json in place for the collector to report as this one's -- and the
+# previous run here may well be the one with EEGPT-style preprocessing.
+rm -f "${OUTPUT_DIR}/results.json" "${OUTPUT_DIR}/best.pth" \
+      "${OUTPUT_DIR}/history.json" "${OUTPUT_DIR}/encoder.pth"
 
 # --- the split ---------------------------------------------------------------- #
-if [[ ! -f "${DATA_DIR}/test.h5" ]]; then
-    if [[ ! -d "${RAW_DIR}" ]]; then
-        echo "ERROR: no split at ${DATA_DIR} and no raw data at ${RAW_DIR}." >&2
-        echo "       Download it on the login node first (see the top of $0)." >&2
-        exit 1
-    fi
-    echo "building the ${TASK} fold-${FOLD} split from ${RAW_DIR}"
-    "${BUILD[@]}" --raw-dir "${RAW_DIR}" --out-dir "${DATA_DIR}" --fold "${FOLD}"
-fi
+eegpt_build_split "${TASK}" "${FOLD}" "${DATA_DIR}" "${RAW_DIR}" || exit 1
 
 # --- the encoder -------------------------------------------------------------- #
 SET_ARGS=()
@@ -130,7 +122,7 @@ fi
 
 echo "============================================================"
 echo "  EEGPT benchmark  ${TASK}  fold ${FOLD}  mode ${MODE}"
-echo "  data     ${DATA_DIR}"
+echo "  data     ${DATA_DIR}  (preprocessing $(basename "${DATA_DIR}" | sed 's/.*_f[0-9]*_//'))"
 echo "  encoder  ${ENCODER:-<none: random initialisation>}"
 echo "  output   ${OUTPUT_DIR}"
 echo "============================================================"

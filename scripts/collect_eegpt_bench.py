@@ -10,7 +10,8 @@ EEG/finetune_eegpt_bench.sh writes -- and prints the TEST metrics.
 
 The reference rows are EEGPT's Table 4 (NeurIPS 2024), mean ± std. They are
 NOT like-for-like with ours, and the table says so rather than leaving it to a
-footnote: theirs are a frozen-encoder linear probe averaged over folds (nine
+footnote. The preprocessing differs -- ours is the pretraining pipeline, theirs
+a per-task one -- and so does the protocol: theirs are a frozen-encoder linear probe averaged over folds (nine
 LOSO folds on BCIC, four on KaggleERN) and scored on the subjects that were
 also their validation set. Ours is one fold, with a test set nothing selected
 on, and every parameter fine-tuned. `ft` starts from the pretrained encoder;
@@ -107,6 +108,8 @@ def main(argv=None) -> int:
         print("  test set is 4 of the 16 labelled subjects, not EEGPT's 10 Kaggle test")
         print("  subjects -- their row is a reference, not the same test data. The")
         print("  split's split.json says which ('test_split').")
+    print("\n  Preprocessing: our pretraining pipeline (0.5 Hz high-pass, 50 Hz notch,")
+    print("  per-window z-score), not EEGPT's (0-38 Hz band-pass, EA, CAR / min-max).")
     print("\n  EEGPT's rows: frozen encoder + linear probe, mean over folds, scored on")
     print("  their validation subjects. Ours: one fold, test subjects select nothing.")
     if args.json:

@@ -56,29 +56,15 @@ echo "  encoder ${PRETRAINED:-<none>}"
 pw_print_layout
 echo "============================================================"
 
+# shellcheck disable=SC1091
+source "${PROJECT_DIR}/EEG/eegpt_bench_lib.sh"
+
 # The split is built ONCE, before the modes start, rather than by each of them
 # at the same moment into the same directory.
-# A plain case block, not $(case ... in x) ...): the unbalanced ")" of a case
-# pattern inside a command substitution is a syntax error on older bash.
-case "${TASK}" in
-    bcic2a) DATA_SUB=bcic2a ;;
-    bcic2b) DATA_SUB=bcic2b ;;
-    *)      DATA_SUB=ern ;;
-esac
-DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/${DATA_SUB}_f${FOLD}}"
-if [[ ! -f "${DATA_DIR}/test.h5" ]]; then
-    case "${TASK}" in
-        bcic2a)    python EEG/bcic_iv2_finetune.py --dataset 2a \
-                       --raw-dir "${RAW_DIR:-${PW_DATA_EEG}/bcic_iv2a}" \
-                       --out-dir "${DATA_DIR}" --fold "${FOLD}" ;;
-        bcic2b)    python EEG/bcic_iv2_finetune.py --dataset 2b \
-                       --raw-dir "${RAW_DIR:-${PW_DATA_EEG}/bcic_iv2b}" \
-                       --out-dir "${DATA_DIR}" --fold "${FOLD}" ;;
-        kaggleern) python EEG/kaggle_ern_finetune.py \
-                       --raw-dir "${RAW_DIR:-${PW_DATA_EEG}/kaggle_ern}" \
-                       --out-dir "${DATA_DIR}" --fold "${FOLD}" ;;
-    esac || { echo "ERROR: building the split failed" >&2; exit 1; }
-fi
+DATA_DIR="${DATA_DIR:-$(eegpt_split_dir "${TASK}" "${FOLD}")}"
+eegpt_build_split "${TASK}" "${FOLD}" "${DATA_DIR}" \
+    "${RAW_DIR:-$(eegpt_raw_dir "${TASK}")}" \
+    || { echo "ERROR: building the split failed" >&2; exit 1; }
 export DATA_DIR
 
 pids=()
@@ -102,6 +88,10 @@ for i in "${!pids[@]}"; do
     fi
 done
 
+# The table as it stands now, also written to summary.txt: each task's job
+# rewrites it when it finishes, so the last one to finish leaves all three.
 echo ""
-python scripts/collect_eegpt_bench.py --root "${PW_CKPT_ROOT}/eegpt_bench" || true
+python scripts/collect_eegpt_bench.py --root "${PW_CKPT_ROOT}/eegpt_bench" \
+    --json "${PW_CKPT_ROOT}/eegpt_bench/summary.json" \
+    | tee "${PW_CKPT_ROOT}/eegpt_bench/summary.txt" || true
 exit ${rc}

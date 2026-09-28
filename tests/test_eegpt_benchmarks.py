@@ -33,27 +33,34 @@ ERN_NAMES = ("Fp1,Fp2,AF7,AF3,AF4,AF8,F7,F5,F3,F1,Fz,F2,F4,F6,F8,FT7,FC5,FC3,"
 # Shared steps
 # --------------------------------------------------------------------------- #
 
-def test_ea_whitens_the_session_covariance():
-    rng = np.random.default_rng(0)
-    mix = rng.normal(size=(6, 6))
-    x = np.einsum("dc,nct->ndt", mix, rng.normal(size=(40, 6, 200)))
-    y = bc.euclidean_alignment(x)
-    R = np.einsum("nct,ndt->cd", y, y) / len(y)
-    assert np.allclose(R, np.eye(6), atol=1e-6)
+def test_the_pipeline_is_the_pretraining_one_call_for_call():
+    """Same functions, same defaults, same order as process_recording.
 
-
-def test_ea_refuses_a_common_average_applied_first():
-    """CAR makes the channels sum to zero, so R loses a rank.
-
-    On three channels that is singular outright; on 22 it is singular to within
-    rounding and R^{-1/2} amplifies the all-ones direction by ~1e5 while
-    staying finite. The check is on the eigenvalues because finiteness passes.
+    Checked against a direct sequence of physiowave.eeg_c1.preprocess calls
+    with PreprocessConfig's defaults, so a later edit to either side that makes
+    them disagree fails here rather than in a transfer result.
     """
+    from physiowave.eeg_c1 import preprocess as pp
+    cfg = pp.PreprocessConfig(notch_hz=50.0)
+    rng = np.random.default_rng(0)
+    x = rng.normal(0, 10, (4, 2500)) + np.linspace(0, 50, 2500)   # with a drift
+    ref = pp.to_microvolts(x, "uV")
+    ref = pp.detrend(ref, cfg.detrend)
+    ref = pp.notch(ref, 250.0, 50.0, cfg.notch_harmonics, cfg.notch_quality)
+    ref = pp.highpass(ref, 250.0, cfg.highpass_hz)
+    ref = pp.resample_to(ref, 250.0, 256)
+    assert np.allclose(bc.pretrain_pipeline(x, 250.0), ref)
+    assert bc.CFG.highpass_hz == 0.5 and bc.CFG.clip_sigma == 20.0
+
+
+def test_windows_are_z_scored_per_window_and_channel_and_clipped():
     rng = np.random.default_rng(1)
-    for C in (3, 22):
-        x = bc.common_average(rng.normal(size=(30, C, 200)))
-        with pytest.raises(ValueError, match="rank-deficient"):
-            bc.euclidean_alignment(x)
+    w = rng.normal(3.0, 7.0, (5, 4, 256))
+    w[0, 0, 10] = 1e4                                  # an artefact
+    z = bc.normalise_windows(w)
+    assert np.allclose(z[1:].mean(-1), 0, atol=1e-5)
+    assert np.allclose(z[1:].std(-1), 1, atol=1e-4)
+    assert z.max() <= 20.0                             # pretraining's clip
 
 
 def test_an_epoch_running_off_the_recording_is_refused():
@@ -119,13 +126,14 @@ def test_bcic_epochs_start_at_the_cue_and_carry_their_labels(
     r = subprocess.run(
         [sys.executable, "EEG/bcic_iv2_finetune.py", "--dataset", dataset,
          "--raw-dir", str(raw), "--out-dir", str(out), "--fold", "0",
-         "--subjects", "1,2,3", "--no-car"],
+         "--subjects", "1,2,3"],
         cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-2000:]
 
     with h5py.File(out / "test.h5") as f:
         X, y = f["data"][:], f["label"][:]
         assert f.attrs["sampling_rate"] == 256
+        assert f.attrs["prep_version"] == bc.PREP_VERSION
         assert X.shape[1:] == (n_eeg, 1024)
         assert set(np.unique(f["subject"][:])) == {1}          # fold 0 -> subject 1
         assert set(np.unique(f["session"][:])) == {0, 1}       # both T and E
@@ -136,8 +144,9 @@ def test_bcic_epochs_start_at_the_cue_and_carry_their_labels(
     power = (X ** 2)
     first, rest = power[:, :, :256].mean(-1), power[:, :, 300:].mean(-1)
     for i, lab in enumerate(y):
-        if n_eeg > 2:                                  # EA mixes little enough
-            assert first[i].argmax() == lab, f"epoch {i}: label {lab}"
+        # Per-window z-score gives every channel the same total power, so the
+        # burst shows as that power concentrated in the first second.
+        assert first[i].argmax() == lab, f"epoch {i}: label {lab}"
         assert first[i, lab] > 3 * rest[i, lab]
 
 

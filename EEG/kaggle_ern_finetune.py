@@ -24,38 +24,27 @@ says whether the speller got it right (1) or wrong (0). An error elicits an
 error-related potential. The classes are unbalanced -- roughly seven correct to
 three wrong -- which is why EEGPT reports balanced accuracy and AUROC.
 
-WHAT IS REPRODUCED from EEGPT's `read_kaggle_ern_{train,test}` and
-`linear_probe_EEGPT_KaggleERN.py`:
+PREPROCESSING is the pretraining pipeline (EEG/eegpt_bench_common.py), run on
+each continuous session before it is epoched: detrend, 50 Hz notch, 0.5 Hz
+high-pass, 256 Hz, then a per-window z-score. Not EEGPT's per-trial min-max and
+common average -- the encoder saw neither in pretraining.
 
-    epoch       -0.7 s to +1.3 s around feedback onset (tmin=-0.7, tlen=2)
-    reference   common average (their forward subtracts the channel mean)
-    folds       their four: each trains on 12 of the 16 training subjects and
-                scores the 10 Kaggle test subjects [1,3,4,5,8,9,10,15,19,25]
-    labels      TrainLabels.csv for the training subjects, true_labels.csv
-                for the test subjects
+THE TASK, as EEGPT defines it:
+
+    epoch       -0.7 s to +1.3 s around feedback onset (their tmin=-0.7, tlen=2)
+    channels    all 56 by default; `--channels eegpt19` gives their 19
+    folds       their four, 0-based here (their Folds[fold + 1])
     S22 Sess05  EEGPT skips it as an "error file". Here any session whose
                 feedback count disagrees with its label count is skipped and
                 named -- S22 Sess05 included, if that is what is wrong with it
-    channels    `--channels eegpt19` gives their 19 10-20 electrodes, in their
-                order. The default is all 56: this model builds its own
-                frontend and embeds channels by name, so nothing constrains it
-                to their subset, exactly as with P300's 64
 
 TEST LABELS. The Kaggle download does not include true_labels.csv, and it is
 not published anywhere this could find. Without it (the default --test-split
 auto picks this) train, val and test all come from the 16 labelled subjects:
 EEGPT's fold leaves 4 of them out, those are the test set, and 2 of its 12
-training subjects validate. That is a valid subject-disjoint benchmark, but
-its test subjects are not EEGPT's, so their Table 4 row is a reference, not a
+training subjects validate. That is a valid subject-disjoint benchmark, but its
+test subjects are not EEGPT's, so their Table 4 row is a reference, not a
 comparison on the same data.
-
-WHAT DIFFERS: EEGPT scales each trial by its own min-max into [-1, 1]. That
-divides away the amplitude an error-related negativity is measured by, so here
-the normalisation is a per-channel z-score over the whole session, after a
-0.5 Hz high-pass (the pretraining pipeline's) on the continuous signal --
-`--highpass 0` removes it. Their four folds VALIDATE on the test subjects; here
-the four training subjects each fold leaves out become the validation set, so
-the ten test subjects select nothing. See EEG/eegpt_bench_common.py.
 
 Output: see EEG/eegpt_bench_common.py. 512 samples at 256 Hz per epoch.
 """
@@ -168,23 +157,21 @@ def test_labels(raw_dir: str, order: list) -> dict:
 
 
 def prepare_session(x: np.ndarray, names: list, onsets: np.ndarray,
-                    keep: list, highpass: float):
+                    keep: list):
     """One session -> ``(epochs [N, C, 512], kept feedback indices)``."""
     lower = {n.lower(): i for i, n in enumerate(names)}
     missing = [c for c in keep if c.lower() not in lower]
     if missing:
         raise SystemExit(f"channels {missing} not in the recording {names}")
     x = x[[lower[c.lower()] for c in keep]]
-    if highpass:
-        x = bc.butter_filter(x, FS_IN, highpass, None)
-    x = bc.resample_to(x, FS_IN)
-    x = bc.session_zscore(x)
-    x = bc.common_average(x)
+    # The CSVs carry no unit; the per-window z-score at the end makes the
+    # absolute scale irrelevant, so "uV" is a label, not a claim.
+    x = bc.pretrain_pipeline(x, FS_IN, unit="uV")
     length = int(round(TLEN_S * bc.FS_OUT))
     starts = np.round(onsets * bc.FS_OUT / FS_IN + TMIN_S * bc.FS_OUT).astype(np.int64)
     ok = (starts >= 0) & (starts + length <= x.shape[1])
-    X = bc.epoch_at(x, starts[ok], length)
-    return bc.clip(X).astype(np.float32), np.flatnonzero(ok)
+    X = bc.normalise_windows(bc.epoch_at(x, starts[ok], length))
+    return X.astype(np.float32), np.flatnonzero(ok)
 
 
 def main(argv=None) -> int:
@@ -196,8 +183,6 @@ def main(argv=None) -> int:
                    help="EEGPT's fold, 0-based (their Folds[fold + 1])")
     p.add_argument("--channels", default="all", choices=["all", "eegpt19"],
                    help="all 56 (default) or EEGPT's 19")
-    p.add_argument("--highpass", type=float, default=0.5,
-                   help="Hz, on the continuous session; 0 disables")
     p.add_argument("--test-split", default="auto",
                    choices=["auto", "kaggle", "labelled"],
                    help="kaggle: the 10 Kaggle test subjects, scored against "
@@ -254,27 +239,26 @@ def main(argv=None) -> int:
 
     print(f"KaggleERN: fold {args.fold}  train {train}  val {val}  test {test}")
     print(f"  {len(keep)} channels, feedback {TMIN_S:+g}..{TMIN_S + TLEN_S:+g} s, "
-          f"high-pass {args.highpass:g} Hz, session z-score, CAR, {bc.FS_OUT} Hz")
+          f"pretraining pipeline ({bc.PREP_VERSION}): detrend, {bc.MAINS_HZ:g} Hz "
+          f"notch, {bc.CFG.highpass_hz:g} Hz high-pass, {bc.FS_OUT} Hz, "
+          f"window z-score")
 
     tr_lab = train_labels(args.raw_dir)
     te_lab = None
     skipped, dropped = [], 0
-    provenance = {
+    provenance = bc.provenance({
         "dataset": "KaggleERN (inria-bci-challenge)",
+        "source_sampling_rate": FS_IN,
         "epoch": f"feedback {TMIN_S:+g} s, {TLEN_S:g} s long",
-        "highpass_hz": args.highpass, "car": True,
-        "normalisation": "z-score per channel per session",
-        "clip_sigma": bc.CLIP_SIGMA, "sampling_rate": bc.FS_OUT,
-        "resampler": "scipy.signal.resample_poly", "fold": args.fold,
-        "eegpt_fold": args.fold + 1, "split": split, "channels": keep,
-        "test_split": mode,
+        "fold": args.fold, "eegpt_fold": args.fold + 1, "split": split,
+        "channels": keep, "test_split": mode,
         "protocol": ("EEGPT's fold; left-out training subjects validate, "
                      "the 10 Kaggle test subjects are the test set"
                      if mode == "kaggle" else
                      "labelled subjects only (no true_labels.csv): EEGPT fold's "
                      "4 left-out subjects are the test set, 2 of its 12 "
                      "training subjects validate -- NOT EEGPT's test set"),
-    }
+    })
 
     rows = []
     for name, subs in split.items():
@@ -302,7 +286,7 @@ def main(argv=None) -> int:
                                     f"{len(onsets)} feedback events, "
                                     f"{len(have)} labels"))
                     continue
-                Xs, kept = prepare_session(x, names, onsets, keep, args.highpass)
+                Xs, kept = prepare_session(x, names, onsets, keep)
                 dropped += len(ids) - len(kept)
                 X.append(Xs)
                 Y.append(np.array([lab[ids[i]] for i in kept], dtype=np.int64))
