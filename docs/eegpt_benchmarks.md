@@ -1,0 +1,76 @@
+# EEGPT benchmarks: BCIC-IV-2a, BCIC-IV-2b, KaggleERN
+
+The three downstream tasks from EEGPT (NeurIPS 2024) Table 4, run on the C1
+pretrained encoder.
+
+| task | classes | channels | epoch | EEGPT (probe, fold mean) |
+|---|---|---|---|---|
+| BCIC-IV-2a | 4 (L/R hand, feet, tongue) | 22 | cue + 0..4 s, 1024 @ 256 Hz | BAC 0.5846, κ 0.4462, wF1 0.5715 |
+| BCIC-IV-2b | 2 (L/R hand) | 3 (bipolar C3/Cz/C4) | cue + 0..4 s, 1024 @ 256 Hz | BAC 0.7212, κ 0.4426, AUROC 0.8059 |
+| KaggleERN | 2 (error / correct feedback) | 56 (or `--channels eegpt19`) | feedback −0.7..+1.3 s, 512 @ 256 Hz | BAC 0.5837, κ 0.1882, AUROC 0.6621 |
+
+## Run it
+
+On the **login node** (compute nodes have no internet):
+
+```bash
+cd ~/PhysioWave-T && git pull
+source scripts/cineca_env.sh
+
+python EEG/download_eegpt_benchmarks.py --dataset 2a --dest $PW_DATA_EEG/bcic_iv2a
+python EEG/download_eegpt_benchmarks.py --dataset 2b --dest $PW_DATA_EEG/bcic_iv2b
+bash   EEG/download_kaggle_ern.sh $PW_DATA_EEG/kaggle_ern     # needs a Kaggle token
+```
+
+Then one job per task. Each runs three modes in parallel on one node — `ft`
+(pretrained, fine-tuned), `scratch` (same model, random init: the control), and
+`probe` (pretrained parts frozen: the mode shaped like EEGPT's rows):
+
+```bash
+ENC=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth     # or an exported eeg_c1_encoder.pth
+for t in bcic2a bcic2b kaggleern; do
+  sbatch --export=ALL,TASK=$t,PRETRAINED=$ENC scripts/slurm/cineca_eegpt_bench.sbatch
+done
+```
+
+The split is built inside the job on first use. Results:
+
+```bash
+python scripts/collect_eegpt_bench.py --root $PW_CKPT_ROOT/eegpt_bench
+```
+
+Comparing two encoders (best vs last epoch): add `TAG=best` / `TAG=final` to the
+`--export` list, and `MODES=ft` or `MODES="ft probe"` on the second so the
+scratch control is not rerun.
+
+## What is reproduced, and what is not
+
+Reproduced from EEGPT's `downstream/` code: the epochs, the 0–38 Hz filter on
+BCIC, Euclidean alignment per session then common average reference, the
+channel sets, their four KaggleERN folds, and the leave-one-subject-out shape of
+their BCIC folds.
+
+Different, on purpose (details in `EEG/eegpt_bench_common.py`):
+
+- **Amplitude normalisation is per session, not per trial.** Per-trial scaling
+  divides away the C3/C4 power asymmetry motor imagery is decided on, and the
+  ERN's amplitude. EA sets the scale on BCIC; a session z-score on KaggleERN.
+- **Polyphase resampling**, not nearest-neighbour stretching of each epoch.
+- **Test subjects select nothing.** EEGPT validates on the subjects it reports.
+  Here validation is a separate subject set, so these numbers are pessimistic
+  relative to theirs.
+- **One fold, not a mean over folds.** `FOLD=k` picks which.
+- **The wavelet frontend and patcher are fresh**, not pretrained. The probe
+  therefore freezes exactly what *was* pretrained (channel embedding, gate,
+  transformer) and trains the fresh input layers with the head —
+  `freeze_scope: pretrained`. Freezing a randomly initialised frontend would
+  put a random projection in front of the transformer.
+
+## Data notes
+
+- BCIC comes from BNCI Horizon 2020 (001-2014, 004-2014): the competition
+  recordings, openly downloadable, with evaluation-session labels in the files.
+- KaggleERN needs a Kaggle account that has accepted the competition rules.
+  EEGPT scores the ten test subjects against `true_labels.csv`; if the download
+  does not contain it, the fetch script says so and the converter refuses to
+  build a test set rather than guess.

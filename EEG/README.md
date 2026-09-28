@@ -14,6 +14,11 @@ EEG-specific data preparation and launch scripts, alongside `ECG/` and `EMG/`.
 | `finetune_eeg.sh` | Launch downstream fine-tuning (shared `finetune.py`) |
 | `finetune_sleep.sh` | Launch Sleep-EDF sleep staging — see [docs/sleep_edf.md](../docs/sleep_edf.md) |
 | `finetune_p300.sh` | Launch PhysioP300 detection — see [docs/physio_p300.md](../docs/physio_p300.md) |
+| `download_eegpt_benchmarks.py` | Fetch BCIC-IV-2a / 2b from BNCI Horizon 2020, resumable and size-verified |
+| `download_kaggle_ern.sh` | Fetch KaggleERN via the Kaggle API, in an isolated venv |
+| `bcic_iv2_finetune.py` | BCIC-IV-2a / 2b → labelled HDF5, on EEGPT's preparation |
+| `kaggle_ern_finetune.py` | KaggleERN → labelled HDF5, on EEGPT's preparation |
+| `finetune_eegpt_bench.sh` | Launch one EEGPT benchmark (ft / scratch / probe) — see [docs/eegpt_benchmarks.md](../docs/eegpt_benchmarks.md) |
 
 ## Why EEG is not just "ECG with more channels"
 
