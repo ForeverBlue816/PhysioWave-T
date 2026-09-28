@@ -161,7 +161,8 @@ def _write_ern(root, rng, train=(2, 6, 7), test=(1,), break_session=None,
         for i, p in enumerate(pos):          # errors: a dip 0.2-0.5 s after
             if not y[i]:
                 x[p + 40:p + 100, 18:22] -= 40
-        df = pd.DataFrame(x, columns=ERN_NAMES)
+        # As the real files spell it: PO8 as "P08", digit zero.
+        df = pd.DataFrame(x, columns=["P08" if c == "PO8" else c for c in ERN_NAMES])
         df.insert(0, "Time", np.arange(T) / 200)
         df["EOG"] = 0.0
         df["FeedBackEvent"] = fb
@@ -206,6 +207,7 @@ def test_ern_epochs_are_timed_to_feedback_and_labels_follow_them(tmp_path):
             X, y = f["data"][:], f["label"][:]
             names = [c.decode() for c in f["channel_names"][:]]
         assert X.shape[1:] == (56, 512)
+        assert "PO8" in names and "P08" not in names
         ch = [names.index(c) for c in ("FC3", "FC1", "FCz", "FC2")]
         onset = round(0.7 * 256)
         win = X[:, ch, onset + 51:onset + 128].mean(axis=(1, 2))

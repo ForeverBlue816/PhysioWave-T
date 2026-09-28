@@ -98,6 +98,14 @@ def fb_id(s: int, k: int, fb: int) -> str:
     return f"S{s:02d}_Sess{k:02d}_FB{fb:03d}"
 
 
+#: Header names in the Kaggle CSVs that are not the electrode's name. The files
+#: write PO8 as "P08" -- digit zero for the letter O -- between PO7/POz and
+#: O1/O2, where only PO8 fits. EEGPT hard-codes the names instead of reading
+#: them and uses 19 channels without PO8, so it never met this. Mapped here and
+#: announced; any OTHER unknown name still stops the converter.
+HEADER_ALIASES = {"P08": "PO8"}
+
+
 def read_session(path: str):
     """``(eeg [C, T] float64, channel names, feedback sample indices)``."""
     import pandas as pd
@@ -108,7 +116,8 @@ def read_session(path: str):
     eeg_cols = [c for c in cols[1:] if c not in ("EOG", "FeedBackEvent")]
     x = df[eeg_cols].to_numpy(dtype=np.float64).T
     onsets = np.flatnonzero(df["FeedBackEvent"].to_numpy() > 0)
-    return x, [c.strip() for c in eeg_cols], onsets
+    names = [HEADER_ALIASES.get(c.strip(), c.strip()) for c in eeg_cols]
+    return x, names, onsets
 
 
 def train_labels(raw_dir: str) -> dict:
@@ -234,6 +243,12 @@ def main(argv=None) -> int:
         raise SystemExit(f"missing {first}\n  fetch the data with: "
                          f"bash EEG/download_kaggle_ern.sh {args.raw_dir}")
     _, names, _ = read_session(first)
+    import pandas as pd
+    raw_header = [c.strip() for c in pd.read_csv(first, nrows=0).columns]
+    for bad, good in HEADER_ALIASES.items():
+        if bad in raw_header:
+            print(f"  header {bad!r} read as {good!r} (a typo in the Kaggle "
+                  f"files: it sits between PO7/POz and O1/O2)", file=sys.stderr)
     keep = EEGPT19 if args.channels == "eegpt19" else names
     bc.check_vocabulary(keep)
 
