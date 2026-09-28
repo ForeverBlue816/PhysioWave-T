@@ -413,7 +413,8 @@ class TensorBoardWriter:
             self.writer.close()
 
 
-def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> torch.optim.Optimizer:
+def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float,
+                    lr_scale=None) -> torch.optim.Optimizer:
     """AdamW with weight decay disabled on norms, biases, embeddings and 1-D tensors.
 
     Decaying a LayerNorm gain or a learnable wavelet filter towards zero is not a
@@ -434,21 +435,25 @@ def build_optimizer(model: torch.nn.Module, lr: float, weight_decay: float) -> t
         for p in m.parameters(recurse=False)
     }
     POSITIONAL = ("embed", "_query", "_token", "anchor")
-    decay, no_decay = [], []
+    # ``lr_scale(name) -> float`` gives a parameter its own learning rate as a
+    # multiple of ``lr``. Groups are keyed on (decays?, scale), so the decay
+    # rules above are unchanged by it; LambdaLR then scales every group's own
+    # rate by the same schedule, so warmup and decay stay in step.
+    groups = {}
     for name, p in model.named_parameters():
         if not p.requires_grad:
             continue
         lowered = name.lower()
-        if p.ndim <= 1 or name.endswith(".bias") or "norm" in lowered \
-                or "dec_lo" in name or "dec_hi" in name \
-                or id(p) in embedding_params \
-                or any(tag in lowered for tag in POSITIONAL):
-            no_decay.append(p)
-        else:
-            decay.append(p)
+        no_wd = (p.ndim <= 1 or name.endswith(".bias") or "norm" in lowered
+                 or "dec_lo" in name or "dec_hi" in name
+                 or id(p) in embedding_params
+                 or any(tag in lowered for tag in POSITIONAL))
+        scale = float(lr_scale(name)) if lr_scale is not None else 1.0
+        groups.setdefault((no_wd, scale), []).append(p)
     return torch.optim.AdamW(
-        [{"params": decay, "weight_decay": weight_decay},
-         {"params": no_decay, "weight_decay": 0.0}],
+        [{"params": ps, "weight_decay": 0.0 if no_wd else weight_decay,
+          "lr": lr * scale}
+         for (no_wd, scale), ps in sorted(groups.items())],
         lr=lr, betas=(0.9, 0.95),
     )
 

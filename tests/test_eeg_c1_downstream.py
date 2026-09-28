@@ -375,3 +375,31 @@ def test_the_legacy_migration_does_not_rename_a_patcher_this_model_owns():
     assert not report.missing, f"a round trip lost {report.missing[:6]}"
     assert not report.remapped, f"a round trip renamed {report.remapped[:6]}"
     assert any(k.startswith("patch_embed.") for k in out)
+
+
+# --- encoder_lr_scale -------------------------------------------------------- #
+def test_encoder_lr_scale_gives_pretrained_parameters_their_own_rate():
+    """The TRANSFERABLE parameters get lr x scale, everything else lr, and the
+    weight-decay split is the same as without the scale."""
+    from physiowave.eeg_c1.downstream import TRANSFERABLE
+    from physiowave.train.utils import build_optimizer, build_scheduler
+
+    m = _routeless()
+    base = build_optimizer(m, 1e-3, 0.05)
+    opt = build_optimizer(m, 1e-3, 0.05,
+                          lr_scale=lambda n: 0.1 if n.startswith(TRANSFERABLE) else 1.0)
+    lr_of = {id(p): g["lr"] for g in opt.param_groups for p in g["params"]}
+    wd_of = {id(p): g["weight_decay"] for g in opt.param_groups for p in g["params"]}
+    wd_base = {id(p): g["weight_decay"] for g in base.param_groups for p in g["params"]}
+    for name, p in m.named_parameters():
+        want = 1e-4 if name.startswith(TRANSFERABLE) else 1e-3
+        assert lr_of[id(p)] == pytest.approx(want), name
+        assert wd_of[id(p)] == wd_base[id(p)], name        # decay rules unchanged
+
+    # The schedule scales every group by the same factor: halfway through a
+    # cosine with no warmup, both are at the same fraction of their own peak.
+    sched = build_scheduler(opt, 0, 100, 0.0)
+    for _ in range(50):
+        opt.step(); sched.step()
+    frac = {round(g["lr"] / g["initial_lr"], 6) for g in opt.param_groups}
+    assert len(frac) == 1 and abs(frac.pop() - 0.5) < 0.02

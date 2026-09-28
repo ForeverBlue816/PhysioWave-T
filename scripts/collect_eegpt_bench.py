@@ -60,6 +60,7 @@ def main(argv=None) -> int:
         rows.append({"task": m.group(1), "fold": int(m.group(2)), "mode": m.group(3),
                      "tag": m.group(4) or "",
                      "best_epoch": res.get("best_epoch"),
+                     "best_val": res.get("best_val"),
                      "select_by": res.get("select_by"),
                      "trainable": res.get("trainable_params"),
                      **{k: te.get(k) for k in ("balanced_acc", "kappa",
@@ -69,6 +70,11 @@ def main(argv=None) -> int:
         return 1
 
     rows.sort(key=lambda r: (r["task"], r["fold"], r["tag"], MODE_ORDER[r["mode"]]))
+    # Sweep runs ("sw_<config>" tags) get their own section below: a dozen
+    # configurations per task would bury the single-run rows, and the number
+    # that matters from a sweep is the one validation selected.
+    sweep = [r for r in rows if r["tag"].startswith("sw_")]
+    rows = [r for r in rows if not r["tag"].startswith("sw_")]
     print(f"{'task':10} {'fold':>4} {'mode[:tag]':18} {'BAC':>7} {'kappa':>7} "
           f"{'3rd':>7}  {'3rd is':12} {'trainable':>11}  best@ep")
     last = None
@@ -120,10 +126,72 @@ def main(argv=None) -> int:
     print("  (0-38 Hz low-pass, Euclidean alignment, common average).")
     print("\n  EEGPT's rows: frozen encoder + linear probe, mean over folds, scored on")
     print("  their validation subjects. Ours: one fold, test subjects select nothing.")
+    selected = report_sweep(sweep) if sweep else []
     if args.json:
         with open(args.json, "w") as fh:
-            json.dump({"runs": rows, "eegpt_table4": EEGPT}, fh, indent=2)
+            json.dump({"runs": rows, "sweep_runs": sweep, "sweep_selected": selected,
+                       "eegpt_table4": EEGPT}, fh, indent=2)
     return 0
+
+
+def report_sweep(sweep):
+    """Per task and mode, the configuration VALIDATION picked, and its test score.
+
+    ft and scratch are selected separately, each on its own validation score,
+    over the same grid: pretraining gets no tuning the control did not. The
+    test subjects never choose a configuration -- reporting the best TEST score
+    across a grid would be selecting on the test set.
+    """
+    def f(v):
+        return f"{v:7.4f}" if isinstance(v, (int, float)) else f"{'n/a':>7}"
+
+    groups = {}
+    for r in sweep:
+        cfg, _, prep = r["tag"][3:].partition("_")      # sw_<cfg>[_<prep>]
+        groups.setdefault((r["task"], r["fold"], prep, r["mode"]), []).append(
+            dict(r, config=cfg))
+    print("\n" + "=" * 92)
+    print("  SWEEP  (configuration chosen on VALIDATION; test is that configuration's)")
+    print("=" * 92)
+    print(f"{'task':10} {'fold':>4} {'mode':8} {'chosen':8} {'val':>7}  "
+          f"{'BAC':>7} {'kappa':>7} {'3rd':>7}  {'3rd is':12} best@ep")
+    chosen, last = [], None
+    for key in sorted(groups, key=lambda k: (k[0], k[1], k[2], MODE_ORDER[k[3]])):
+        task, fold, prep, mode = key
+        cand = [r for r in groups[key] if isinstance(r["best_val"], (int, float))]
+        if not cand:
+            continue
+        best = max(cand, key=lambda r: r["best_val"])
+        third = THIRD[task]
+        if task != last:
+            ref = EEGPT[task]
+            print(f"{task:10} {'':>4} {'EEGPT':8} {'':8} {'':>7}  "
+                  f"{ref['balanced_acc']:7.4f} {ref['kappa']:7.4f} {ref[third]:7.4f}  "
+                  f"{third:12} (Table 4)")
+            last = task
+        label = mode + (f":{prep}" if prep else "")
+        print(f"{'':10} {fold:>4} {label:8} {best['config']:8} {best['best_val']:7.4f}  "
+              f"{f(best['balanced_acc'])} {f(best['kappa'])} {f(best[third])}  "
+              f"{third:12} {best['best_epoch']}")
+        others = "  ".join(f"{r['config']} {r['best_val']:.3f}"
+                           for r in sorted(cand, key=lambda r: -r["best_val"]))
+        print(f"{'':10} {'':>4} {'':8} val by config: {others}")
+        chosen.append(dict(best, prep=prep))
+
+    print()
+    for task in sorted({c["task"] for c in chosen}):
+        key = "kappa" if task == "bcic2a" else "auroc"
+        for fold in sorted({c["fold"] for c in chosen if c["task"] == task}):
+            for prep in sorted({c["prep"] for c in chosen if c["task"] == task}):
+                by = {c["mode"]: c for c in chosen
+                      if (c["task"], c["fold"], c["prep"]) == (task, fold, prep)}
+                if "ft" in by and "scratch" in by:
+                    d = (by["ft"][key] or 0) - (by["scratch"][key] or 0)
+                    tag = f" [{prep}]" if prep else ""
+                    print(f"  {task} f{fold}{tag}: tuned pretrained - tuned scratch "
+                          f"{key} = {d:+.4f}   ({by['ft']['config']} vs "
+                          f"{by['scratch']['config']})")
+    return chosen
 
 
 if __name__ == "__main__":

@@ -76,6 +76,35 @@ widely, and Euclidean alignment — aligning each subject's spatial covariance
 to the identity — has no counterpart in pretraining and is known to matter for
 cross-subject motor imagery.
 
+## Hyper-parameter sweep
+
+```bash
+SWEEP=1 bash scripts/run_eegpt_bench.sh
+```
+
+One job per task runs every configuration in `EEG/eegpt_sweep_grid.sh` for
+both `ft` and `scratch` — 6 × 2 = 12 runs, four at a time:
+
+| config | lr | encoder lr | other |
+| --- | --- | --- | --- |
+| base | 2.5e-4 | ×1 | the default run |
+| lr1e4 | 1e-4 | ×1 | |
+| lr5e5 | 5e-5 | ×1 | |
+| enc01 | 2.5e-4 | ×0.1 | |
+| enc005 | 1e-3 | ×0.05 | fresh layers fast, pretrained slow |
+| reg | 1e-4 | ×1 | wd 0.05, dropout 0.3, head dropout 0.3 |
+
+"encoder lr" is `train.encoder_lr_scale`: the learning rate of the pretrained
+parameters (channel embedding, gate, transformer) as a fraction of the one the
+fresh frontend, patcher and head get. The first full run peaked within 4–14 of
+30 epochs everywhere, which is what a large pretrained encoder fine-tuned at one
+rate on a few thousand trials looks like.
+
+The summary's SWEEP section picks, for `ft` and `scratch` separately, the
+configuration with the best **validation** score and reports that
+configuration's test result. The test subjects never choose. `CONFIGS="base
+enc01"` restricts the grid; `BASE_SET` / `BASE_EXTRA` apply to all of it.
+
 ## Training
 
 30 epochs, batch 64, AdamW (wd 0.01), lr 2.5e-4, linear warmup over the first

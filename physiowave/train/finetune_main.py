@@ -103,12 +103,18 @@ HPARAM_FALLBACKS = {
     # `--patience` was a flag whose absence looked exactly like its presence
     # until the run failed to stop, twenty epochs later.
     "patience": 0, "min_delta": 0.0,
+    # The learning rate of the PRETRAINED parameters as a multiple of lr (EEG
+    # C1: channel embedding, its gate, shared transformer). 1.0 is plain
+    # fine-tuning; below it, the fresh frontend, patcher and head learn at lr
+    # while what pretraining learned moves more slowly.
+    "encoder_lr_scale": 1.0,
 }
 HPARAM_TYPES = {
     "epochs": int, "batch_size": int, "warmup_epochs": int, "lr": float,
     "weight_decay": float, "warmup_ratio": float, "grad_clip": float,
     "label_smoothing": float, "min_lr_ratio": float, "precision": str,
     "select_by": str, "patience": int, "min_delta": float,
+    "encoder_lr_scale": float,
 }
 
 
@@ -420,6 +426,9 @@ def parse_args(argv=None):
     p.add_argument("--min-lr-ratio", type=float, default=None,
                    help="floor of the cosine decay, as a fraction of --lr")
     p.add_argument("--grad-clip", type=float, default=None)
+    p.add_argument("--encoder-lr-scale", type=float, default=None,
+                   help="learning rate of the pretrained encoder parameters as a "
+                        "fraction of --lr (EEG C1 only); default 1.0")
     p.add_argument("--label-smoothing", type=float, default=None,
                    help="0.0 to match EEGPT, which trains a plain "
                         "CrossEntropyLoss. Smoothing puts a floor under the "
@@ -628,7 +637,22 @@ def main(argv=None) -> int:
     precision, amp_dtype = resolve_precision(args.precision, device)
     scaler = make_grad_scaler(device.type, precision == "fp16")
     criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
-    optimizer = build_optimizer(core, args.lr, args.weight_decay)
+    lr_scale = None
+    if args.encoder_lr_scale != 1.0:
+        if model_cfg.get("name") != "eeg_c1":
+            raise SystemExit("--encoder-lr-scale is defined for model.name=eeg_c1 "
+                             "only: it scales what that model loads from "
+                             "pretraining")
+        from physiowave.eeg_c1.downstream import TRANSFERABLE
+        s = float(args.encoder_lr_scale)
+        lr_scale = lambda name: s if name.startswith(TRANSFERABLE) else 1.0  # noqa: E731
+    optimizer = build_optimizer(core, args.lr, args.weight_decay, lr_scale=lr_scale)
+    if info.is_main and lr_scale is not None:
+        n_enc = sum(p.numel() for n, p in core.named_parameters()
+                    if p.requires_grad and lr_scale(n) != 1.0)
+        logger.info("encoder lr %.2e (x%g) on %s params; the rest at %.2e",
+                    args.lr * args.encoder_lr_scale, args.encoder_lr_scale,
+                    f"{n_enc:,}", args.lr)
     steps = max(len(train_loader), 1)
     total_steps = args.epochs * steps
     if args.warmup_ratio is not None:

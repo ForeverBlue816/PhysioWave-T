@@ -26,6 +26,9 @@
 #   PREP         pretrain (default) or eegpt -- EEGPT's preprocessing, BCIC
 #                only. Results get an "eegptprep" tag, beside the default run:
 #                  PREP=eegpt TASKS="bcic2a bcic2b" bash scripts/run_eegpt_bench.sh
+#   SWEEP=1      the hyper-parameter sweep instead of one run per mode: every
+#                configuration in EEG/eegpt_sweep_grid.sh, for ft and scratch,
+#                each selected on its own VALIDATION score. CONFIGS restricts it.
 #   SKIP_DOWNLOAD=1  only check what is on disk
 #   DRY_RUN=1        print the sbatch commands instead of submitting
 # ============================================================================
@@ -45,6 +48,7 @@ MODES="${MODES:-ft scratch}"
 
 echo "============================================================"
 echo "  EEGPT benchmarks   tasks: ${TASKS}   fold ${FOLD}   modes: ${MODES}   prep: ${PREP:-pretrain}"
+[[ "${SWEEP:-0}" == 1 ]] && echo "  SWEEP: ${CONFIGS:-every configuration in EEG/eegpt_sweep_grid.sh}"
 echo "  encoder  ${PRETRAINED}"
 echo "  data     ${PW_DATA_EEG}"
 echo "  results  ${PW_CKPT_ROOT}/eegpt_bench"
@@ -96,9 +100,17 @@ fi
 # --- 2. submit ----------------------------------------------------------------- #
 ids=()
 for t in "${ready[@]}"; do
-    cmd=(sbatch --parsable
-         "--export=ALL,TASK=${t},FOLD=${FOLD},MODES=${MODES},PREP=${PREP:-pretrain},PRETRAINED=${PRETRAINED}${TAG:+,TAG=${TAG}}"
-         scripts/slurm/cineca_eegpt_bench.sbatch)
+    if [[ "${SWEEP:-0}" == 1 ]]; then
+        # TAG is the sweep's own (sw_<config>), so it is not passed on; CONFIGS
+        # is, when set, and must not contain the comma --export splits on.
+        cmd=(sbatch --parsable
+             "--export=ALL,TASK=${t},FOLD=${FOLD},MODES=${MODES},PREP=${PREP:-pretrain},PRETRAINED=${PRETRAINED}${CONFIGS:+,CONFIGS=${CONFIGS}}"
+             scripts/slurm/cineca_eegpt_sweep.sbatch)
+    else
+        cmd=(sbatch --parsable
+             "--export=ALL,TASK=${t},FOLD=${FOLD},MODES=${MODES},PREP=${PREP:-pretrain},PRETRAINED=${PRETRAINED}${TAG:+,TAG=${TAG}}"
+             scripts/slurm/cineca_eegpt_bench.sbatch)
+    fi
     if [[ "${DRY_RUN:-0}" == 1 ]]; then
         echo "[${t}] would run: ${cmd[*]}"
         continue
