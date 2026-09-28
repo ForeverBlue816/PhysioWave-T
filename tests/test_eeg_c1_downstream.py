@@ -228,6 +228,82 @@ def test_a_routeless_export_transfers_exactly_what_a_routed_one_does(exported):
         assert torch.equal(sd_a[k], sd_b[k]), k
 
 
+def _routeless(**kw):
+    return EEGC1Downstream(in_channels=2, window_samples=3000, sampling_rate=100,
+                           patch_samples=50, num_classes=5,
+                           channel_names=["Fpz-Cz", "Pz-Oz"], **SMALL, **kw)
+
+
+def test_a_pretrained_scope_probe_trains_the_fresh_frontend_not_the_encoder(exported):
+    """freeze_scope=pretrained freezes what was LOADED, nothing more.
+
+    With no route the frontend and patcher are built fresh. The original
+    freeze_encoder froze them too, at their initialisation, which puts a random
+    projection in front of the pretrained transformer -- a probe of that
+    projection as much as of the representation.
+    """
+    m = _routeless(freeze_encoder=True, freeze_scope="pretrained")
+    m.load_pretrained(exported["none"])
+    grad = {n: p.requires_grad for n, p in m.named_parameters()}
+    assert all(v for n, v in grad.items() if n.startswith("wavelet_frontend."))
+    assert all(v for n, v in grad.items() if n.startswith("patch_embed."))
+    assert all(v for n, v in grad.items() if n.startswith("head"))
+    assert not any(v for n, v in grad.items() if n.startswith("shared_transformer."))
+    assert not any(v for n, v in grad.items() if n.startswith("channel_encoder."))
+    assert not grad["channel_token_gate"]
+
+    m.train()
+    assert not m.shared_transformer.training, "frozen encoder must stay in eval"
+    assert m.wavelet_frontend.training, "the fresh frontend is being trained"
+
+
+def test_the_default_scope_still_freezes_everything_but_the_head(exported):
+    """P300 and Sleep-EDF probes were run under this; it must not move."""
+    m = _routeless(freeze_encoder=True)
+    m.load_pretrained(exported["none"])
+    trainable = {n for n, p in m.named_parameters() if p.requires_grad}
+    assert trainable and all(n.startswith(("head", "spatial_filter"))
+                             for n in trainable)
+
+
+def test_a_pretrained_scope_freezes_the_frontend_when_it_was_loaded(exported):
+    """On the matching route the frontend IS pretrained, so it is frozen too."""
+    ch = p300_channels()
+    m = EEGC1Downstream(in_channels=len(ch), window_samples=512,
+                        sampling_rate=256, patch_samples=128, num_classes=2,
+                        channel_names=ch, route_id="E64_256",
+                        freeze_encoder=True, freeze_scope="pretrained", **SMALL)
+    rep = m.load_pretrained(exported["E64_256"])
+    assert any(k.startswith("wavelet_frontend.") for k in rep["taken"])
+    assert not any(p.requires_grad for n, p in m.named_parameters()
+                   if n.startswith(("wavelet_frontend.", "patch_embed.")))
+
+
+def test_one_probe_step_moves_the_frontend_and_leaves_the_encoder(exported):
+    """Behaviour, not flags: after an optimiser step, compare the tensors."""
+    torch.manual_seed(0)
+    m = _routeless(freeze_encoder=True, freeze_scope="pretrained")
+    m.load_pretrained(exported["none"])
+    before = {k: v.clone() for k, v in m.state_dict().items()}
+    opt = torch.optim.SGD([p for p in m.parameters() if p.requires_grad], lr=0.1)
+    m.train()
+    out = m(torch.randn(3, 2, 3000), _Meta(["Fpz-Cz", "Pz-Oz"]))
+    torch.nn.functional.cross_entropy(out["logits"], torch.tensor([0, 1, 2])).backward()
+    opt.step()
+    after = m.state_dict()
+    moved = {k for k in before if not torch.equal(before[k], after[k])}
+    assert any(k.startswith("wavelet_frontend.") for k in moved)
+    assert any(k.startswith("head") for k in moved)
+    assert not any(k.startswith(("shared_transformer.", "channel_encoder."))
+                   for k in moved)
+    assert "channel_token_gate" not in moved
+
+
+def test_an_unknown_freeze_scope_is_refused():
+    with pytest.raises(ValueError, match="freeze_scope"):
+        _routeless(freeze_encoder=True, freeze_scope="everything")
+
+
 def test_the_weights_actually_land(exported):
     """A report that says "taken" and a tensor that did not move is the bug."""
     ch = p300_channels()

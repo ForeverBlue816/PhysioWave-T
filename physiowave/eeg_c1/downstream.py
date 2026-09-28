@@ -77,6 +77,24 @@ ROUTE_BOUND = ("wavelet_frontend.", "patch_embed.")
 #: encoder.
 TRAINABLE_WHEN_FROZEN = ("head", "spatial_filter")
 
+#: What ``freeze_encoder`` freezes.
+#:
+#:   encoder     everything except TRAINABLE_WHEN_FROZEN. The original meaning,
+#:               and the default, so existing probes run as they always have.
+#:   pretrained  exactly what came from the checkpoint: the TRANSFERABLE set,
+#:               plus ROUTE_BOUND when the montage IS the route and those were
+#:               loaded too. A frontend and patcher built fresh for this
+#:               montage stay trainable.
+#:
+#: The difference matters as soon as the frontend is not pretrained, which with
+#: no route_id is always. Under `encoder` the fresh wavelet frontend and patcher
+#: are frozen at their initialisation, so the pretrained transformer is handed
+#: tokens from a random projection it never saw, and the probe measures that
+#: projection as much as the representation. EEGPT's probe freezes an encoder
+#: that is pretrained end to end, patch embedding included; `pretrained` is the
+#: analogue of that when the input layers cannot come from pretraining.
+FREEZE_SCOPES = ("encoder", "pretrained")
+
 
 def _slots_for(route: Route, channel_names: Sequence[str],
                aliases: Optional[Dict[str, str]] = None) -> torch.Tensor:
@@ -173,7 +191,8 @@ class EEGC1Downstream(nn.Module):
                  spatial_channels: Optional[Sequence[str]] = None,
                  spatial_max_norm: float = 1.0,
                  slot_aliases: Optional[Dict[str, str]] = None,
-                 freeze_encoder: bool = False):
+                 freeze_encoder: bool = False,
+                 freeze_scope: str = "encoder"):
         super().__init__()
         # THE SPATIAL FILTER COMES FIRST, because with `mix` it decides what
         # montage the rest of the model is built for: the frontend's electrode
@@ -302,11 +321,26 @@ class EEGC1Downstream(nn.Module):
             self.head_drop = nn.Dropout(head_dropout)
             self.head = nn.Linear(embed_dim, self.num_classes)
 
+        if freeze_scope not in FREEZE_SCOPES:
+            raise ValueError(f"freeze_scope must be one of {FREEZE_SCOPES}, "
+                             f"got {freeze_scope!r}")
         self._frozen = bool(freeze_encoder)
-        if self._frozen:
-            for name, p in self.named_parameters():
-                if not name.startswith(TRAINABLE_WHEN_FROZEN):
-                    p.requires_grad_(False)
+        self.freeze_scope = freeze_scope
+        # Under `pretrained`, what CAN come from a checkpoint whatever the
+        # route. load_pretrained adds ROUTE_BOUND if it actually loads those.
+        self._frozen_prefixes = TRANSFERABLE
+        self._apply_freeze()
+
+    def _is_frozen_name(self, name: str) -> bool:
+        if not self._frozen:
+            return False
+        if self.freeze_scope == "encoder":
+            return not name.startswith(TRAINABLE_WHEN_FROZEN)
+        return name.startswith(self._frozen_prefixes)
+
+    def _apply_freeze(self) -> None:
+        for name, p in self.named_parameters():
+            p.requires_grad_(not self._is_frozen_name(name))
 
     def train(self, mode: bool = True):
         """Keep a frozen encoder in eval mode even inside ``model.train()``.
@@ -322,7 +356,10 @@ class EEGC1Downstream(nn.Module):
         super().train(mode)
         if mode and self._frozen:
             for name, module in self.named_children():
-                if not name.startswith(TRAINABLE_WHEN_FROZEN):
+                # name + "." so a child is matched as a module prefix -- the
+                # TRANSFERABLE entries end in "." and a bare child name would
+                # match none of them.
+                if self._is_frozen_name(name + "."):
                     module.eval()
         return self
 
@@ -555,6 +592,12 @@ class EEGC1Downstream(nn.Module):
                 f"  --allow-missing-gate runs anyway, which is only right if "
                 f"you are deliberately ablating the mechanism.")
         self.load_state_dict(own)
+        if self._frozen and self.freeze_scope == "pretrained" and same_route \
+                and any(k.startswith(ROUTE_BOUND) for k in taken):
+            # The frontend and patcher came from pretraining too, so under
+            # `pretrained` they are frozen with the rest of what did.
+            self._frozen_prefixes = TRANSFERABLE + ROUTE_BOUND
+            self._apply_freeze()
         return {"taken": taken, "skipped": skipped,
                 "shape_mismatch": shape_mismatch,
                 "route_reused": [ck_route] if same_route else []}
