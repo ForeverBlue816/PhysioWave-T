@@ -9,9 +9,11 @@
 #   1. Accept the competition rules while logged in to Kaggle:
 #        https://www.kaggle.com/c/inria-bci-challenge/rules
 #      Without it the API answers 403, which reads like a bad token.
-#   2. Give the API a token: Kaggle -> Settings -> API -> "Create New Token"
-#      downloads kaggle.json. Put it at ~/.kaggle/kaggle.json, chmod 600.
-#      (Or export KAGGLE_USERNAME and KAGGLE_KEY instead.)
+#   2. Give the API a token: https://www.kaggle.com/settings/api ->
+#      "Generate New Token", then
+#          echo '<token>' > ~/.kaggle/access_token && chmod 600 ~/.kaggle/access_token
+#      (or export KAGGLE_API_TOKEN=<token>). Current CLI versions do not accept
+#      the old kaggle.json username/key file.
 #
 # The kaggle CLI goes into a venv of its own, run with PYTHONPATH unset, for
 # the reason scripts/upload_hf_release.sh does: the cineca-ai module puts its
@@ -46,13 +48,20 @@ if [[ "${KAGGLE_BIN}" == "${VENV}/bin/kaggle" ]]; then
         echo "ERROR: could not install the kaggle CLI (outbound HTTPS?)" >&2; exit 1; }
 fi
 
-if [[ -z "${KAGGLE_USERNAME:-}" && ! -f "${HOME}/.kaggle/kaggle.json" \
+# The CLI changed its credentials. Current versions authenticate with a single
+# API token -- KAGGLE_API_TOKEN, or ~/.kaggle/access_token -- or an OAuth login
+# (`kaggle auth login`). The legacy kaggle.json (username + key) is still read
+# by some versions and not by others, so its presence proves nothing; it is
+# accepted here only so the CLI gets to say for itself whether it works.
+if [[ -z "${KAGGLE_API_TOKEN:-}" && ! -s "${HOME}/.kaggle/access_token" \
+      && -z "${KAGGLE_USERNAME:-}" && ! -f "${HOME}/.kaggle/kaggle.json" \
       && ! -f "${HOME}/.config/kaggle/kaggle.json" ]]; then
     cat >&2 <<EOF
 ERROR: no Kaggle credentials.
-  Kaggle -> Settings -> API -> Create New Token, then:
-      mkdir -p ~/.kaggle && mv kaggle.json ~/.kaggle/ && chmod 600 ~/.kaggle/kaggle.json
-  and accept the rules at https://www.kaggle.com/c/${COMP}/rules
+  1. https://www.kaggle.com/settings/api -> "Generate New Token", copy it
+  2. mkdir -p ~/.kaggle && echo '<token>' > ~/.kaggle/access_token \\
+       && chmod 600 ~/.kaggle/access_token
+  3. accept the rules at https://www.kaggle.com/c/${COMP}/rules
 EOF
     exit 1
 fi
@@ -61,15 +70,34 @@ fi
 ARCHIVE="${DEST}/${COMP}.zip"
 if [[ ! -s "${ARCHIVE}" ]]; then
     echo "  downloading ${COMP} (a few GB)"
-    if ! env -u PYTHONPATH "${KAGGLE_BIN}" competitions download -c "${COMP}" -p "${DEST}"; then
-        cat >&2 <<EOF
-ERROR: the download failed. A 403 almost always means the competition rules
-       have not been accepted for this account:
-           https://www.kaggle.com/c/${COMP}/rules
-       A 401 means the token is wrong or expired.
+    log="$(mktemp)"
+    env -u PYTHONPATH "${KAGGLE_BIN}" competitions download -c "${COMP}" -p "${DEST}" \
+        2>&1 | tee "${log}"
+    rc=${PIPESTATUS[0]}
+    # Diagnose from what the CLI actually said. The first version of this
+    # printed "403: accept the rules" for every failure, including the CLI
+    # saying outright that it had found no credentials it could use.
+    if [[ ${rc} -ne 0 ]] || grep -qiE "authentication required|401|403" "${log}"; then
+        if grep -qiE "authentication required|401|unauthori" "${log}"; then
+            cat >&2 <<EOF
+ERROR: the CLI did not accept any credentials. Current versions want an API
+       TOKEN, not the old kaggle.json:
+         1. https://www.kaggle.com/settings/api -> "Generate New Token"
+         2. echo '<token>' > ~/.kaggle/access_token && chmod 600 ~/.kaggle/access_token
+            (or: export KAGGLE_API_TOKEN=<token>)
 EOF
+        elif grep -qiE "403|forbidden" "${log}"; then
+            cat >&2 <<EOF
+ERROR: 403 -- the token works, but this account has not accepted the
+       competition rules: https://www.kaggle.com/c/${COMP}/rules
+EOF
+        else
+            echo "ERROR: the download failed; the CLI's output is above." >&2
+        fi
+        rm -f "${log}"
         exit 1
     fi
+    rm -f "${log}"
 fi
 
 # --- unpack ------------------------------------------------------------------ #
