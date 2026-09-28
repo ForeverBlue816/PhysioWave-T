@@ -75,6 +75,11 @@ Different, on purpose (details in `EEG/eegpt_bench_common.py`):
 - BCIC comes from BNCI Horizon 2020 (001-2014, 004-2014): the competition
   recordings, openly downloadable, with evaluation-session labels in the files.
 - KaggleERN needs a Kaggle account that has accepted the competition rules.
-  EEGPT scores the ten test subjects against `true_labels.csv`; if the download
-  does not contain it, the fetch script says so and the converter refuses to
-  build a test set rather than guess.
+  The download has no `true_labels.csv`, so the 10 Kaggle test subjects cannot
+  be scored. The converter then builds train/val/test from the 16 labelled
+  subjects in EEGPT's fold shape: the 4 subjects their fold leaves out are the
+  test set, 2 of their 12 training subjects validate, 10 train. Subject-
+  disjoint and valid, but not EEGPT's test subjects — their KaggleERN row is a
+  reference, not a comparison on the same data. If a `true_labels.csv` turns
+  up, drop it in the raw directory and rebuild the split; `--test-split auto`
+  switches to their test set.

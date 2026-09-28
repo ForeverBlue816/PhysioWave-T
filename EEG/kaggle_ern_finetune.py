@@ -41,6 +41,14 @@ WHAT IS REPRODUCED from EEGPT's `read_kaggle_ern_{train,test}` and
                 frontend and embeds channels by name, so nothing constrains it
                 to their subset, exactly as with P300's 64
 
+TEST LABELS. The Kaggle download does not include true_labels.csv, and it is
+not published anywhere this could find. Without it (the default --test-split
+auto picks this) train, val and test all come from the 16 labelled subjects:
+EEGPT's fold leaves 4 of them out, those are the test set, and 2 of its 12
+training subjects validate. That is a valid subject-disjoint benchmark, but
+its test subjects are not EEGPT's, so their Table 4 row is a reference, not a
+comparison on the same data.
+
 WHAT DIFFERS: EEGPT scales each trial by its own min-max into [-1, 1]. That
 divides away the amplitude an error-related negativity is measured by, so here
 the normalisation is a per-channel z-score over the whole session, after a
@@ -181,20 +189,42 @@ def main(argv=None) -> int:
                    help="all 56 (default) or EEGPT's 19")
     p.add_argument("--highpass", type=float, default=0.5,
                    help="Hz, on the continuous session; 0 disables")
+    p.add_argument("--test-split", default="auto",
+                   choices=["auto", "kaggle", "labelled"],
+                   help="kaggle: the 10 Kaggle test subjects, scored against "
+                        "true_labels.csv (EEGPT's). labelled: train/val/test all "
+                        "from the 16 labelled subjects. auto (default): kaggle if "
+                        "true_labels.csv exists, else labelled")
     p.add_argument("--train-subjects", default=None,
                    help="override, comma-separated -- for smoke tests")
     p.add_argument("--test-subjects", default=None,
                    help="override, comma-separated -- for smoke tests")
     args = p.parse_args(argv)
 
-    train = EEGPT_FOLDS[args.fold]
-    val = [s for s in TRAIN_SUBJECTS if s not in train]
-    test = TEST_SUBJECTS
+    have_true = os.path.isfile(os.path.join(args.raw_dir, "true_labels.csv"))
+    mode = args.test_split
+    if mode == "auto":
+        mode = "kaggle" if have_true else "labelled"
+        if not have_true:
+            print("  NOTE: no true_labels.csv, so the 10 Kaggle test subjects "
+                  "cannot be scored.\n        Building train/val/test from the "
+                  "16 LABELLED subjects instead (--test-split labelled).\n"
+                  "        The test set is therefore not EEGPT's: their Table 4 "
+                  "row is a different set of subjects.", file=sys.stderr)
+    if mode == "kaggle":
+        train = EEGPT_FOLDS[args.fold]
+        val = [s for s in TRAIN_SUBJECTS if s not in train]
+        test = TEST_SUBJECTS
+    else:
+        train, val, test = labelled_split(args.fold)
     if args.train_subjects:
         pool = [int(v) for v in args.train_subjects.split(",")]
         train, val = pool[:-1], pool[-1:]
     if args.test_subjects:
         test = [int(v) for v in args.test_subjects.split(",")]
+    if not args.test_subjects and not args.train_subjects:
+        assert not set(train) & set(val) and not set(train) & set(test) \
+            and not set(val) & set(test), "split is not subject-disjoint"
     split = {"train": train, "val": val, "test": test}
 
     # The montage: from the first file's header, so a column order different
@@ -222,13 +252,18 @@ def main(argv=None) -> int:
         "clip_sigma": bc.CLIP_SIGMA, "sampling_rate": bc.FS_OUT,
         "resampler": "scipy.signal.resample_poly", "fold": args.fold,
         "eegpt_fold": args.fold + 1, "split": split, "channels": keep,
-        "protocol": "EEGPT's fold; left-out training subjects validate, "
-                    "test subjects select nothing",
+        "test_split": mode,
+        "protocol": ("EEGPT's fold; left-out training subjects validate, "
+                     "the 10 Kaggle test subjects are the test set"
+                     if mode == "kaggle" else
+                     "labelled subjects only (no true_labels.csv): EEGPT fold's "
+                     "4 left-out subjects are the test set, 2 of its 12 "
+                     "training subjects validate -- NOT EEGPT's test set"),
     }
 
     rows = []
     for name, subs in split.items():
-        folder = "test" if name == "test" else "train"
+        folder = "test" if (name == "test" and mode == "kaggle") else "train"
         X, Y, S, K = [], [], [], []
         for s in subs:
             for k in SESSIONS:
@@ -271,6 +306,24 @@ def main(argv=None) -> int:
                    "skipped_sessions": skipped, "dropped_epochs": dropped}, f, indent=2)
     print(f"  wrote {args.out_dir}/{{train,val,test}}.h5  (--num-classes 2)")
     return 0
+
+
+def labelled_split(fold: int, seed: int = 7):
+    """Train/val/test from the 16 labelled subjects, in EEGPT's fold shape.
+
+    For when true_labels.csv is not available and the Kaggle test subjects
+    cannot be scored -- the usual situation, since the Kaggle download does not
+    contain it. EEGPT's fold `fold` trains on 12 of the 16 and leaves 4 out;
+    those 4 become the TEST set here, and 2 of the 12, drawn deterministically,
+    the validation set. 10/2/4, subject-disjoint, every label from
+    TrainLabels.csv.
+    """
+    twelve = EEGPT_FOLDS[fold]
+    test = [s for s in TRAIN_SUBJECTS if s not in twelve]
+    rng = np.random.default_rng(seed + fold)
+    val = sorted(int(v) for v in rng.choice(twelve, size=2, replace=False))
+    train = [s for s in twelve if s not in val]
+    return train, val, test
 
 
 def test_order(raw_dir: str, subjects: list) -> list:

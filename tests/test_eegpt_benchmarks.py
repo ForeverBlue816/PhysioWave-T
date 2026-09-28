@@ -234,11 +234,43 @@ def test_ern_eegpt19_selects_their_electrodes_in_their_order(tmp_path):
     assert names[:3] == ["Fp1", "Fp2", "F7"] and len(names) == 19
 
 
-def test_ern_refuses_to_build_a_test_set_without_its_labels(tmp_path):
+def test_ern_refuses_the_kaggle_test_set_without_its_labels(tmp_path):
     _write_ern(str(tmp_path / "raw"), np.random.default_rng(6))
     os.remove(tmp_path / "raw" / "true_labels.csv")
-    r = _ern(tmp_path / "raw", tmp_path / "out")
+    r = _ern(tmp_path / "raw", tmp_path / "out", "--test-split", "kaggle")
     assert r.returncode != 0 and "true_labels.csv" in (r.stdout + r.stderr)
+
+
+def test_ern_labelled_split_is_eegpts_fold_shape_and_subject_disjoint():
+    sys.path.insert(0, os.path.join(ROOT, "EEG"))
+    import kaggle_ern_finetune as k
+    for fold in range(4):
+        tr, va, te = k.labelled_split(fold)
+        assert (len(tr), len(va), len(te)) == (10, 2, 4)
+        assert set(tr) | set(va) | set(te) == set(k.TRAIN_SUBJECTS)
+        assert not (set(tr) & set(va) or set(tr) & set(te) or set(va) & set(te))
+        # the test set is exactly what EEGPT's fold leaves out of training
+        assert set(te) == set(k.TRAIN_SUBJECTS) - set(k.EEGPT_FOLDS[fold])
+
+
+def test_ern_without_true_labels_builds_from_the_labelled_subjects(tmp_path):
+    """The Kaggle download has no true_labels.csv, so this is the usual case."""
+    import kaggle_ern_finetune as k
+    _write_ern(str(tmp_path / "raw"), np.random.default_rng(8),
+               train=tuple(k.TRAIN_SUBJECTS), test=())
+    os.remove(tmp_path / "raw" / "true_labels.csv")
+    r = subprocess.run(
+        [sys.executable, "EEG/kaggle_ern_finetune.py", "--raw-dir",
+         str(tmp_path / "raw"), "--out-dir", str(tmp_path / "out"), "--fold", "0"],
+        cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert "LABELLED subjects" in r.stderr
+    split = json.loads((tmp_path / "out" / "split.json").read_text())
+    assert split["provenance"]["test_split"] == "labelled"
+    with h5py.File(tmp_path / "out" / "test.h5") as f:
+        assert set(np.unique(f["subject"][:])) == {2, 6, 7, 11}
+    with h5py.File(tmp_path / "out" / "train.h5") as f:
+        assert len(np.unique(f["subject"][:])) == 10
 
 
 # --------------------------------------------------------------------------- #

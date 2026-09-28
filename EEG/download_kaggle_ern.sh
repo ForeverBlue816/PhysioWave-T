@@ -138,23 +138,22 @@ n_train=$(ls "${DEST}"/train/Data_S*.csv 2>/dev/null | wc -l | tr -d ' ')
 n_test=$(ls "${DEST}"/test/Data_S*.csv 2>/dev/null | wc -l | tr -d ' ')
 echo "  train sessions ${n_train} (expect 80)   test sessions ${n_test} (expect 50)"
 rc=0
-for f in TrainLabels.csv true_labels.csv; do
-    if [[ -f "${DEST}/${f}" ]]; then
-        echo "  ${f}  $(($(wc -l < "${DEST}/${f}") - 1)) rows"
-    else
-        echo "  MISSING ${f}" >&2
-        rc=1
-    fi
-done
-if [[ ! -f "${DEST}/true_labels.csv" ]]; then
-    cat >&2 <<EOF
-
-  true_labels.csv holds the TEST subjects' labels, and EEGPT scores against
-  it. It was not in this download. Look on the competition's data page for a
-  labels file released after the competition, and put it at
-      ${DEST}/true_labels.csv
-  (a 'label' column, one row per test feedback, in SampleSubmission.csv order,
-  or an IdFeedBack column). Without it the converter refuses to build a test set.
+if [[ -f "${DEST}/TrainLabels.csv" ]]; then
+    echo "  TrainLabels.csv  $(($(wc -l < "${DEST}/TrainLabels.csv") - 1)) rows"
+else
+    echo "  MISSING TrainLabels.csv" >&2
+    rc=1
+fi
+if [[ -f "${DEST}/true_labels.csv" ]]; then
+    echo "  true_labels.csv  $(($(wc -l < "${DEST}/true_labels.csv") - 1)) rows" \
+         "-- the 10 Kaggle test subjects can be scored, as EEGPT does"
+else
+    # Not a failure: the Kaggle download does not contain it. The converter
+    # then builds train/val/test from the 16 labelled subjects.
+    cat <<EOF
+  NOTE: no true_labels.csv (the Kaggle download does not include it).
+        EEG/kaggle_ern_finetune.py will build train/val/test from the 16
+        labelled subjects instead -- see its docstring.
 EOF
 fi
 [[ "${n_train}" -gt 0 && "${n_test}" -gt 0 ]] || rc=1

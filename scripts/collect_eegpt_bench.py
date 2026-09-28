@@ -102,6 +102,11 @@ def main(argv=None) -> int:
                     print(f"  {task} f{fold}{tag}: pretrained - scratch {key} "
                           f"= {(r[key] or 0) - base:+.4f}")
 
+    if any(r["task"] == "kaggleern" for r in rows):
+        print("\n  KaggleERN: without true_labels.csv (the Kaggle download has none) the")
+        print("  test set is 4 of the 16 labelled subjects, not EEGPT's 10 Kaggle test")
+        print("  subjects -- their row is a reference, not the same test data. The")
+        print("  split's split.json says which ('test_split').")
     print("\n  EEGPT's rows: frozen encoder + linear probe, mean over folds, scored on")
     print("  their validation subjects. Ours: one fold, test subjects select nothing.")
     if args.json:
