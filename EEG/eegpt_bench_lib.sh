@@ -16,7 +16,23 @@ EEGPT_TASKS=(bcic2a bcic2b kaggleern)
 # one, say -- is never picked up by a later one just because its test.h5 exists.
 eegpt_prep_version() {
     python -c "import sys; sys.path.insert(0, 'EEG'); \
-import eegpt_bench_common as b; print(b.PREP_VERSION)"
+import eegpt_bench_common as b; print(b.PREPS['${1:-pretrain}'])"
+}
+
+# PREP=pretrain (default) or eegpt. eegpt is BCIC-only; KaggleERN always uses
+# the pretraining pipeline, so a PREP=eegpt run leaves its ERN split and results
+# exactly where the default run put them.
+eegpt_prep_for() {
+    case "$1" in kaggleern) echo pretrain ;; *) echo "${PREP:-pretrain}" ;; esac
+}
+
+# The result-directory tag: TAG, plus the preprocessing when it is not the
+# default, so a PREP=eegpt run sits next to the default one instead of
+# overwriting it. Word characters only -- the collector parses it.
+eegpt_tag() {
+    local t="${TAG:-}"
+    [[ "$(eegpt_prep_for "$1")" != pretrain ]] && t="${t:+${t}_}$(eegpt_prep_for "$1")prep"
+    echo "${t}"
 }
 
 eegpt_num_classes() {
@@ -35,7 +51,7 @@ eegpt_raw_dir() {
 
 # eegpt_split_dir TASK FOLD [VERSION]
 eegpt_split_dir() {
-    local v="${3:-$(eegpt_prep_version)}"
+    local v="${3:-$(eegpt_prep_version "$(eegpt_prep_for "$1")")}"
     echo "${PW_DATA_EEG}/eegpt_bench/${1}_f${2}_${v}"
 }
 
@@ -51,8 +67,10 @@ eegpt_build_split() {
     echo "building the ${task} fold-${fold} split -> ${out}"
     case "${task}" in
         bcic2a)    python EEG/bcic_iv2_finetune.py --dataset 2a \
+                       --prep "$(eegpt_prep_for "${task}")" \
                        --raw-dir "${raw}" --out-dir "${out}" --fold "${fold}" ;;
         bcic2b)    python EEG/bcic_iv2_finetune.py --dataset 2b \
+                       --prep "$(eegpt_prep_for "${task}")" \
                        --raw-dir "${raw}" --out-dir "${out}" --fold "${fold}" ;;
         kaggleern) python EEG/kaggle_ern_finetune.py \
                        --raw-dir "${raw}" --out-dir "${out}" --fold "${fold}" ;;

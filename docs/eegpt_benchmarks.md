@@ -58,6 +58,24 @@ information these tasks rely on survives it: a band-power classifier on 2a
 subject 1, trained on one session and tested on the other, scores 0.569 with it
 and 0.573 without (4 classes, chance 0.25).
 
+### Alternative for BCIC: EEGPT's preprocessing
+
+```bash
+PREP=eegpt TASKS="bcic2a bcic2b" bash scripts/run_eegpt_bench.sh
+```
+
+`PREP=eegpt` restores EEGPT's pipeline on BCIC — 0–38 Hz low-pass and 256 Hz on
+each run, then per session file Euclidean alignment, common average and the
+±20 clip — byte-for-byte what these converters produced before the switch to
+the pretraining pipeline. Its splits (`*_eegpt-v1`) and results
+(`*_eegptprep`) sit beside the default ones, and each `ft` is compared with the
+`scratch` control trained under the same preprocessing. KaggleERN ignores it.
+
+The reason to try it: on BCIC the pretraining pipeline trailed EEGPT's numbers
+widely, and Euclidean alignment — aligning each subject's spatial covariance
+to the identity — has no counterpart in pretraining and is known to matter for
+cross-subject motor imagery.
+
 ## Training
 
 30 epochs, batch 64, AdamW (wd 0.01), lr 2.5e-4, linear warmup over the first

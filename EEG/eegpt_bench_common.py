@@ -72,9 +72,20 @@ from physiowave.eeg_c1 import preprocess as pp                  # noqa: E402
 
 FS_OUT = 256
 MAINS_HZ = 50.0
-#: Stamped into every file and into the split directory's name, so a split
-#: built by an older pipeline is never silently reused by a newer one.
-PREP_VERSION = "pretrain-v1"
+#: Two preprocessings, each with a version stamped into every file and into the
+#: split directory's name, so a split built by one is never picked up by a run
+#: that asked for the other.
+#:
+#:   pretrain  the pretraining pipeline (the default; see the top of this file)
+#:   eegpt     EEGPT's: 0-38 Hz low-pass, then per session Euclidean alignment
+#:             and a common average. BCIC only. Kept because on BCIC the
+#:             pretraining pipeline trailed EEGPT by a wide margin, and EA --
+#:             which aligns each subject's spatial covariance to the identity --
+#:             is the one step with no counterpart in pretraining that is known
+#:             to matter for cross-subject motor imagery.
+PREPS = {"pretrain": "pretrain-v1", "eegpt": "eegpt-v1"}
+PREP_VERSION = PREPS["pretrain"]
+EEGPT_LOWPASS_HZ = 38.0
 #: The pretraining defaults, one object, so nothing here restates a number.
 CFG = pp.PreprocessConfig(notch_hz=MAINS_HZ)
 
@@ -98,9 +109,79 @@ def normalise_windows(epochs: np.ndarray) -> np.ndarray:
     return pp.zscore_windows(epochs, valid, CFG.zscore_eps, CFG.clip_sigma)
 
 
-def provenance(extra: Dict) -> Dict:
-    return CFG.provenance({"prep_version": PREP_VERSION,
-                           "target_sampling_rate": FS_OUT, **extra})
+def provenance(extra: Dict, prep: str = "pretrain") -> Dict:
+    if prep == "pretrain":
+        return CFG.provenance({"prep": prep, "prep_version": PREPS[prep],
+                               "target_sampling_rate": FS_OUT, **extra})
+    return {"prep": prep, "prep_version": PREPS[prep],
+            "pipeline": (f"butterworth low-pass {EEGPT_LOWPASS_HZ:g} Hz (order 4, "
+                         f"zero-phase) -> resample_poly {FS_OUT} Hz -> epoch -> "
+                         f"Euclidean alignment per session file -> common "
+                         f"average -> clip +-{CFG.clip_sigma:g}"),
+            "target_sampling_rate": FS_OUT, **extra}
+
+
+# --------------------------------------------------------------------------- #
+# The EEGPT preprocessing (--prep eegpt), BCIC only. Restored as it was before
+# the pretraining pipeline replaced it: same filter, same order, same checks.
+# --------------------------------------------------------------------------- #
+
+def eegpt_continuous(x: np.ndarray, fs: float) -> np.ndarray:
+    """0-38 Hz and 256 Hz, on a CONTINUOUS run.
+
+    MNE's `filter(0, 38, method='iir')` is a 4th-order Butterworth run forward
+    and backward, which is what this is. EEGPT applies it to 4 s epochs; here
+    it runs on the whole run before epoching, so the edge transient falls at
+    the ends of the recording rather than at the ends of every trial.
+    """
+    from scipy.signal import butter, sosfiltfilt
+    sos = butter(4, EEGPT_LOWPASS_HZ / (fs / 2.0), btype="lowpass", output="sos")
+    return pp.resample_to(sosfiltfilt(sos, np.asarray(x, np.float64), axis=-1),
+                          fs, FS_OUT)
+
+
+def euclidean_alignment(epochs: np.ndarray) -> np.ndarray:
+    """``R^{-1/2} x`` with ``R`` the mean trial covariance of this set.
+
+    EEGPT's `Data_process.utils.EA`, applied the way they apply it: once per
+    session file, over every trial in it. Label-free, so it is applied to the
+    test subject's sessions too -- as theirs is -- using that subject's own
+    unlabelled trials.
+
+    MUST RUN BEFORE the common-average reference, which is EEGPT's order too.
+    A common average makes the channels sum to zero, so R loses a rank:
+    singular outright on 2b's three channels, singular to within rounding on
+    2a's twenty-two -- where R^{-1/2} still comes out finite. Hence eigh and an
+    explicit conditioning check rather than a finiteness test.
+    """
+    x = epochs.astype(np.float64)
+    R = np.einsum("nct,ndt->cd", x, x) / len(x)
+    w, V = np.linalg.eigh((R + R.T) / 2.0)
+    if w.min() <= w.max() * 1e-8:
+        raise ValueError(
+            f"Euclidean alignment: the session covariance is rank-deficient "
+            f"(eigenvalues {w.min():.3g} .. {w.max():.3g}). A common-average "
+            f"reference applied before EA does this; so does a flat or "
+            f"duplicated channel.")
+    # errstate: numpy's matmul on some BLAS builds reports divide-by-zero on
+    # well-conditioned input. Conditioning is checked above, the outcome below.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        Rm = (V / np.sqrt(w)) @ V.T
+        out = np.einsum("dc,nct->ndt", Rm, x)
+    if not (np.all(np.isfinite(Rm)) and np.all(np.isfinite(out))):
+        raise ValueError("Euclidean alignment produced non-finite values")
+    return out
+
+
+def common_average(x: np.ndarray) -> np.ndarray:
+    """Subtract the channel mean at every sample -- AFTER alignment."""
+    return x - x.mean(axis=-2, keepdims=True)
+
+
+def eegpt_session(epochs: np.ndarray) -> np.ndarray:
+    """One session file's epochs: EA, then common average, then the ±20 clip."""
+    x = common_average(euclidean_alignment(epochs))
+    return np.clip(x, -CFG.clip_sigma, CFG.clip_sigma).astype(np.float32)
 
 
 def epoch_at(x: np.ndarray, onsets: Sequence[int], length: int) -> np.ndarray:
@@ -179,7 +260,7 @@ def write_split(path: str, epochs: List[np.ndarray], labels: List[np.ndarray],
                          data=np.array([c.encode() for c in channels], dtype="S32"))
         f.attrs["sampling_rate"] = float(FS_OUT)
         f.attrs["window_samples"] = int(X.shape[-1])
-        f.attrs["prep_version"] = PREP_VERSION
+        f.attrs["prep_version"] = prov.get("prep_version", PREP_VERSION)
         f.attrs["class_names"] = json.dumps(list(class_names))
         f.attrs["provenance"] = json.dumps(prov, default=str)
 

@@ -14,6 +14,9 @@
 #         note on protocol below.
 # TAG     optional suffix on the output directory, to keep runs of different
 #         encoders apart: TAG=best, TAG=final.
+# PREP    pretrain (default) or eegpt -- BCIC only; see eegpt_bench_common.py.
+#         PREP=eegpt adds "eegptprep" to the tag, so it never overwrites the
+#         default run.
 #
 # PRETRAINED is an exported encoder (scripts/export_eeg_pretrained_encoder.py
 # with no --route, or eeg_c1_encoder.pth from the release). A pretraining
@@ -62,7 +65,8 @@ RAW_DIR="${RAW_DIR:-$(eegpt_raw_dir "${TASK}")}"
 DATA_DIR="${DATA_DIR:-$(eegpt_split_dir "${TASK}" "${FOLD}")}"
 # TAG names WHICH encoder, so two of them -- best.pth and latest.pth, say --
 # do not write into the same directory: TAG=final -> bcic2a_f0_ft_final.
-OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${MODE}${TAG:+_${TAG}}}"
+RUN_TAG="$(eegpt_tag "${TASK}")"
+OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${MODE}${RUN_TAG:+_${RUN_TAG}}}"
 # pw_check_output_dir wants the parent to exist, and on a first run
 # $PW_CKPT_ROOT/eegpt_bench does not. Checking the parent first keeps what the
 # guard is for -- an unset PW_CKPT_ROOT puts the parent at /eegpt_bench, whose

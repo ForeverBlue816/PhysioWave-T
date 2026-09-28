@@ -23,6 +23,9 @@
 #   TAG          suffix on the result directories, to keep encoders apart:
 #                  PRETRAINED=.../latest.pth TAG=final MODES=ft bash scripts/run_eegpt_bench.sh
 #   MODES        default "ft scratch"
+#   PREP         pretrain (default) or eegpt -- EEGPT's preprocessing, BCIC
+#                only. Results get an "eegptprep" tag, beside the default run:
+#                  PREP=eegpt TASKS="bcic2a bcic2b" bash scripts/run_eegpt_bench.sh
 #   SKIP_DOWNLOAD=1  only check what is on disk
 #   DRY_RUN=1        print the sbatch commands instead of submitting
 # ============================================================================
@@ -41,7 +44,7 @@ FOLD="${FOLD:-0}"
 MODES="${MODES:-ft scratch}"
 
 echo "============================================================"
-echo "  EEGPT benchmarks   tasks: ${TASKS}   fold ${FOLD}   modes: ${MODES}"
+echo "  EEGPT benchmarks   tasks: ${TASKS}   fold ${FOLD}   modes: ${MODES}   prep: ${PREP:-pretrain}"
 echo "  encoder  ${PRETRAINED}"
 echo "  data     ${PW_DATA_EEG}"
 echo "  results  ${PW_CKPT_ROOT}/eegpt_bench"
@@ -94,7 +97,7 @@ fi
 ids=()
 for t in "${ready[@]}"; do
     cmd=(sbatch --parsable
-         "--export=ALL,TASK=${t},FOLD=${FOLD},MODES=${MODES},PRETRAINED=${PRETRAINED}${TAG:+,TAG=${TAG}}"
+         "--export=ALL,TASK=${t},FOLD=${FOLD},MODES=${MODES},PREP=${PREP:-pretrain},PRETRAINED=${PRETRAINED}${TAG:+,TAG=${TAG}}"
          scripts/slurm/cineca_eegpt_bench.sbatch)
     if [[ "${DRY_RUN:-0}" == 1 ]]; then
         echo "[${t}] would run: ${cmd[*]}"

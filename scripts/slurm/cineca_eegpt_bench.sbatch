@@ -52,7 +52,7 @@ export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 
 echo "============================================================"
 echo "  EEGPT benchmark ${TASK} fold ${FOLD}, modes: ${MODES}  (job ${SLURM_JOB_ID:-?})"
-echo "  encoder ${PRETRAINED:-<none>}"
+echo "  encoder ${PRETRAINED:-<none>}   preprocessing ${PREP:-pretrain} (BCIC; ERN always pretrain)"
 pw_print_layout
 echo "============================================================"
 
@@ -70,7 +70,8 @@ export DATA_DIR
 pids=()
 for i in "${!MODE_LIST[@]}"; do
     mode="${MODE_LIST[$i]}"
-    log="${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${mode}${TAG:+_${TAG}}.log"
+    run_tag="$(eegpt_tag "${TASK}")"
+    log="${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${mode}${run_tag:+_${run_tag}}.log"
     mkdir -p "$(dirname "${log}")"
     echo "  starting ${mode} on GPU ${i}  -> ${log}"
     CUDA_VISIBLE_DEVICES="${i}" MODE="${mode}" \

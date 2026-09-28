@@ -63,6 +63,32 @@ def test_windows_are_z_scored_per_window_and_channel_and_clipped():
     assert z.max() <= 20.0                             # pretraining's clip
 
 
+def test_ea_whitens_the_session_covariance():
+    rng = np.random.default_rng(0)
+    mix = rng.normal(size=(6, 6))
+    x = np.einsum("dc,nct->ndt", mix, rng.normal(size=(40, 6, 200)))
+    y = bc.euclidean_alignment(x)
+    R = np.einsum("nct,ndt->cd", y, y) / len(y)
+    assert np.allclose(R, np.eye(6), atol=1e-6)
+
+
+def test_ea_refuses_a_common_average_applied_first():
+    """CAR makes the channels sum to zero, so R loses a rank -- singular on
+    3 channels, singular to rounding on 22 where R^{-1/2} still looks finite."""
+    rng = np.random.default_rng(1)
+    for C in (3, 22):
+        x = bc.common_average(rng.normal(size=(30, C, 200)))
+        with pytest.raises(ValueError, match="rank-deficient"):
+            bc.euclidean_alignment(x)
+
+
+def test_the_eegpt_session_step_aligns_then_references():
+    """EA first, CAR second: the output sums to zero over channels."""
+    rng = np.random.default_rng(2)
+    out = bc.eegpt_session(rng.normal(size=(20, 5, 256)) * 30)
+    assert np.allclose(out.sum(axis=1), 0, atol=1e-4)
+
+
 def test_an_epoch_running_off_the_recording_is_refused():
     with pytest.raises(ValueError, match="runs off"):
         bc.epoch_at(np.zeros((2, 100)), [90], 20)
@@ -110,10 +136,11 @@ def _write_bnci(path, n_eeg, n_eog, cue_s, rng, runs=2, trials=8, n_cls=4,
     sio.savemat(path, {"data": np.array(data, dtype=object)})
 
 
+@pytest.mark.parametrize("prep", ["pretrain", "eegpt"])
 @pytest.mark.parametrize("dataset,n_eeg,n_eog,cue,n_cls,calib", [
     ("2a", 22, 3, 2.0, 4, 3), ("2b", 3, 3, 3.0, 2, 0)])
 def test_bcic_epochs_start_at_the_cue_and_carry_their_labels(
-        tmp_path, dataset, n_eeg, n_eog, cue, n_cls, calib):
+        tmp_path, dataset, n_eeg, n_eog, cue, n_cls, calib, prep):
     rng = np.random.default_rng(7)
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -126,14 +153,14 @@ def test_bcic_epochs_start_at_the_cue_and_carry_their_labels(
     r = subprocess.run(
         [sys.executable, "EEG/bcic_iv2_finetune.py", "--dataset", dataset,
          "--raw-dir", str(raw), "--out-dir", str(out), "--fold", "0",
-         "--subjects", "1,2,3"],
+         "--subjects", "1,2,3", "--prep", prep],
         cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-2000:]
 
     with h5py.File(out / "test.h5") as f:
         X, y = f["data"][:], f["label"][:]
         assert f.attrs["sampling_rate"] == 256
-        assert f.attrs["prep_version"] == bc.PREP_VERSION
+        assert f.attrs["prep_version"] == bc.PREPS[prep]
         assert X.shape[1:] == (n_eeg, 1024)
         assert set(np.unique(f["subject"][:])) == {1}          # fold 0 -> subject 1
         assert set(np.unique(f["session"][:])) == {0, 1}       # both T and E
@@ -144,10 +171,17 @@ def test_bcic_epochs_start_at_the_cue_and_carry_their_labels(
     power = (X ** 2)
     first, rest = power[:, :, :256].mean(-1), power[:, :, 300:].mean(-1)
     for i, lab in enumerate(y):
-        # Per-window z-score gives every channel the same total power, so the
-        # burst shows as that power concentrated in the first second.
-        assert first[i].argmax() == lab, f"epoch {i}: label {lab}"
-        assert first[i, lab] > 3 * rest[i, lab]
+        # The burst shows as power concentrated in the first second after the
+        # cue. Under the pretraining prep (per-window z-score) it also stays on
+        # its own channel; EA + CAR mix channels, so only timing is checked.
+        if prep == "pretrain":
+            assert first[i].argmax() == lab, f"epoch {i}: label {lab}"
+            assert first[i, lab] > 3 * rest[i, lab]
+        else:
+            # EA whitens: the burst channels dominate the session covariance,
+            # so R^{-1/2} scales them down and total power says little. The
+            # burst's OWN channel still carries it in the first second.
+            assert first[i, lab] > 3 * rest[i, lab], f"epoch {i}: label {lab}"
 
 
 # --------------------------------------------------------------------------- #

@@ -10,11 +10,14 @@ SOURCE. BNCI Horizon 2020's copies, data sets 001-2014 (= IV-2a) and 004-2014
 (= IV-2b), fetched by EEG/download_eegpt_benchmarks.py: the competition
 recordings, with the evaluation sessions' labels inside the files.
 
-PREPROCESSING is the pretraining pipeline (EEG/eegpt_bench_common.py), run on
-each continuous run before it is epoched: microvolts, linear detrend, 50 Hz
-notch, 0.5 Hz high-pass, 256 Hz, then a per-window z-score. Not EEGPT's 0-38 Hz
-band-pass, Euclidean alignment and common average -- the encoder saw none of
-those in pretraining.
+PREPROCESSING, two choices (EEG/eegpt_bench_common.py):
+
+    --prep pretrain  (default) the pretraining pipeline, on each continuous
+                     run: microvolts, linear detrend, 50 Hz notch, 0.5 Hz
+                     high-pass, 256 Hz, then a per-window z-score
+    --prep eegpt     EEGPT's: 0-38 Hz low-pass and 256 Hz on each run, then
+                     per session file Euclidean alignment, common average and
+                     the ±20 clip
 
 THE TASK, as EEGPT defines it:
 
@@ -72,7 +75,7 @@ FS_IN = 250.0
 EPOCH_S = 4.0
 
 
-def load_file(path: str, spec: dict):
+def load_file(path: str, spec: dict, prep: str = "pretrain"):
     """One BNCI session file -> ``(epochs [N, C, 1024], labels [N], run [N])``.
 
     Each run goes through the pretraining pipeline continuous, then is epoched
@@ -96,11 +99,17 @@ def load_file(path: str, spec: dict):
         if len(trial) != len(y):
             raise SystemExit(f"{path} run {ri}: {len(trial)} trials, {len(y)} labels")
         x = np.asarray(run.X, dtype=np.float64)[:, :spec["n_eeg"]].T   # [C, T], µV
-        x = bc.pretrain_pipeline(x, FS_IN, unit="uV")
+        if prep == "pretrain":
+            x = bc.pretrain_pipeline(x, FS_IN, unit="uV")
+        else:
+            x = bc.eegpt_continuous(x, FS_IN)
         # `trial` is 1-based MATLAB indexing into X.
         onsets = np.round((trial - 1 + spec["cue_s"] * FS_IN)
                           * bc.FS_OUT / FS_IN).astype(np.int64)
-        X_all.append(bc.normalise_windows(bc.epoch_at(x, onsets, length)))
+        ep = bc.epoch_at(x, onsets, length)
+        # pretrain normalises each window; eegpt normalises the session file,
+        # below, once all its runs are in.
+        X_all.append(bc.normalise_windows(ep) if prep == "pretrain" else ep)
         y_all.append(y - 1)
         r_all.append(np.full(len(y), ri, dtype=np.int64))
     if not X_all:
@@ -108,7 +117,8 @@ def load_file(path: str, spec: dict):
     return np.concatenate(X_all), np.concatenate(y_all), np.concatenate(r_all)
 
 
-def prepare_subject(raw_dir: str, dataset: str, subject: int):
+def prepare_subject(raw_dir: str, dataset: str, subject: int,
+                    prep: str = "pretrain"):
     """Both session files of one subject."""
     spec = DATASETS[dataset]
     out = []
@@ -118,7 +128,11 @@ def prepare_subject(raw_dir: str, dataset: str, subject: int):
             raise SystemExit(f"missing {path}\n  fetch it with: python "
                              f"EEG/download_eegpt_benchmarks.py --dataset {dataset} "
                              f"--dest {raw_dir}")
-        X, y, _ = load_file(path, spec)
+        X, y, _ = load_file(path, spec, prep)
+        if prep == "eegpt":
+            # Per session FILE, as EEGPT's get_data applies EA(session_1) and
+            # EA(session_2): alignment, then the common average, then clip.
+            X = bc.eegpt_session(X)
         n_cls = len(spec["classes"])
         if y.min() < 0 or y.max() >= n_cls:
             raise SystemExit(f"{path}: labels {np.unique(y)} outside 0..{n_cls - 1}")
@@ -137,6 +151,10 @@ def main(argv=None) -> int:
                    help="index into --subjects of the held-out TEST subject")
     p.add_argument("--subjects", default=",".join(map(str, SUBJECTS)),
                    help="comma-separated subject numbers (default: all nine)")
+    p.add_argument("--prep", default="pretrain", choices=sorted(bc.PREPS),
+                   help="pretrain: the pretraining pipeline (default). eegpt: "
+                        "EEGPT's 0-38 Hz low-pass + Euclidean alignment + "
+                        "common average, per session")
     p.add_argument("--seed", type=int, default=7)
     args = p.parse_args(argv)
 
@@ -147,9 +165,14 @@ def main(argv=None) -> int:
 
     print(f"BCIC-IV-{args.dataset}: fold {args.fold}  "
           f"train {split['train']}  val {split['val']}  test {split['test']}")
-    print(f"  {len(spec['channels'])} channels, cue+0..{EPOCH_S:g} s, pretraining "
-          f"pipeline ({bc.PREP_VERSION}): detrend, {bc.MAINS_HZ:g} Hz notch, "
-          f"{bc.CFG.highpass_hz:g} Hz high-pass, {bc.FS_OUT} Hz, window z-score")
+    if args.prep == "pretrain":
+        how = (f"pretraining pipeline ({bc.PREPS['pretrain']}): detrend, "
+               f"{bc.MAINS_HZ:g} Hz notch, {bc.CFG.highpass_hz:g} Hz high-pass, "
+               f"{bc.FS_OUT} Hz, window z-score")
+    else:
+        how = (f"EEGPT pipeline ({bc.PREPS['eegpt']}): {bc.EEGPT_LOWPASS_HZ:g} Hz "
+               f"low-pass, {bc.FS_OUT} Hz, EA per session, common average")
+    print(f"  {len(spec['channels'])} channels, cue+0..{EPOCH_S:g} s, {how}")
 
     prov = bc.provenance({
         "dataset": f"BCIC-IV-{args.dataset}",
@@ -158,13 +181,14 @@ def main(argv=None) -> int:
         "epoch": f"cue + [0, {EPOCH_S}) s, cue at trial + {spec['cue_s']} s",
         "fold": args.fold, "split": split,
         "protocol": "leave-one-subject-out, test selects nothing",
-    })
+    }, prep=args.prep)
 
     rows = []
     for name, subs in split.items():
         X, Y, S, K = [], [], [], []
         for s in subs:
-            for Xs, ys, si in prepare_subject(args.raw_dir, args.dataset, s):
+            for Xs, ys, si in prepare_subject(args.raw_dir, args.dataset, s,
+                                              args.prep):
                 X.append(Xs); Y.append(ys)
                 S.append(np.full(len(ys), s)); K.append(np.full(len(ys), si))
         rows.append(bc.write_split(os.path.join(args.out_dir, f"{name}.h5"),
