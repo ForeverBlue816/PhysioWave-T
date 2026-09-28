@@ -13,8 +13,9 @@ NOT like-for-like with ours, and the table says so rather than leaving it to a
 footnote: theirs are a frozen-encoder linear probe averaged over folds (nine
 LOSO folds on BCIC, four on KaggleERN) and scored on the subjects that were
 also their validation set. Ours is one fold, with a test set nothing selected
-on. The `probe` rows are the ones shaped like theirs; `ft` is full fine-tuning,
-and `scratch` is the control that says whether pretraining did anything.
+on, and every parameter fine-tuned. `ft` starts from the pretrained encoder;
+`scratch` is the same model from random initialisation -- the control that
+says whether pretraining did anything.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ EEGPT = {
 }
 #: The third column EEGPT reports: weighted F1 for multi-class, AUROC for binary.
 THIRD = {"bcic2a": "weighted_f1", "bcic2b": "auroc", "kaggleern": "auroc"}
-MODE_ORDER = {"probe": 0, "ft": 1, "scratch": 2}
+MODE_ORDER = {"ft": 0, "scratch": 1}
 
 
 def main(argv=None) -> int:
@@ -46,7 +47,7 @@ def main(argv=None) -> int:
 
     rows = []
     for path in glob.glob(os.path.join(args.root, "*", "results.json")):
-        m = re.fullmatch(r"(bcic2a|bcic2b|kaggleern)_f(\d+)_(ft|scratch|probe)(?:_(\w+))?",
+        m = re.fullmatch(r"(bcic2a|bcic2b|kaggleern)_f(\d+)_(ft|scratch)(?:_(\w+))?",
                          os.path.basename(os.path.dirname(path)))
         if not m:
             continue

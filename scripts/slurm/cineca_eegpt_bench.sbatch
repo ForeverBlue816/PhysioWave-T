@@ -5,10 +5,10 @@
 #   sbatch --export=ALL,TASK=bcic2a,PRETRAINED=$HOME/hf_release/eeg_c1_encoder.pth \
 #          scripts/slurm/cineca_eegpt_bench.sbatch
 #
-# Runs MODES side by side, one GPU each, on one node: by default ft (the
-# pretrained encoder, fine-tuned), scratch (the same model from random
-# initialisation -- the control), and probe (encoder frozen -- the mode shaped
-# like EEGPT's published rows). The three finish in roughly the time of one.
+# Runs MODES side by side, one GPU each, on one node: ft (the pretrained
+# encoder, every parameter fine-tuned) and scratch (the same model from random
+# initialisation -- the control). The difference between the two is the
+# measurement; either alone is only a number.
 #
 # All three tasks:
 #
@@ -26,7 +26,7 @@
 # =============================================================================
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
-#SBATCH --time=4:00:00
+#SBATCH --time=2:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
@@ -45,7 +45,7 @@ cd "${PROJECT_DIR}"
 
 TASK="${TASK:?set TASK=bcic2a|bcic2b|kaggleern}"
 FOLD="${FOLD:-0}"
-MODES="${MODES:-ft scratch probe}"
+MODES="${MODES:-ft scratch}"
 read -r -a MODE_LIST <<< "${MODES}"
 export TASK FOLD NUM_GPUS=1 PROGRESS="${PROGRESS:-auto}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"

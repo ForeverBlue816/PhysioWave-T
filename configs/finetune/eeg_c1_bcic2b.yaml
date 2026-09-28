@@ -54,29 +54,28 @@ model:
                                 # 1024 / 64 = 16 positions, x 3 = 48 tokens
     pool: mean
     head_dropout: 0.1
-    # Only read under --freeze-encoder (MODE=probe). The frontend and patcher
-    # here are fresh, so a probe freezes what was PRETRAINED and keeps them
-    # trainable; freezing them too would put a random projection in front of
-    # the pretrained transformer. See FREEZE_SCOPES in downstream.py.
-    freeze_scope: pretrained
     pretrained: null           # set it, or leave it for the from-scratch control
 
-# EEGPT's downstream budget, from linear_probe_EEGPT_BCIC2B.py: 100 epochs,
-# batch 64, AdamW weight_decay=0.01, OneCycleLR max_lr=4e-4 pct_start=0.2,
-# plain CrossEntropyLoss.
+# 30 epochs of full fine-tuning. EEGPT's linear_probe_EEGPT_BCIC2B.py trains
+# 100 epochs, but that is a probe on a frozen encoder; every parameter moves
+# here, and on a few thousand windows 100 epochs is mostly memorisation.
+#
+# The schedule, per step: linear warmup over the first 10% (3 epochs), then a
+# cosine to 1% of the peak by the last step -- annealed fully inside the run, so
+# the last epochs are low-LR refinement rather than a truncated decay.
 train:
-  epochs: 100
-  warmup_ratio: 0.2            # OneCycle's pct_start, in steps
-  lr: 2.5e-4                   # their 4e-4 trains a frozen-encoder probe; this
-                               # updates every parameter, so it is scaled down by
-                               # the same factor as eeg_c1_p300.yaml. PROBE=1 in
-                               # EEG/finetune_eegpt_bench.sh freezes the encoder
-                               # and uses their 4e-4 -- that run is the one
-                               # comparable to their table.
-  min_lr_ratio: 0.01
+  epochs: 30
+  warmup_ratio: 0.1            # 3 of 30 epochs. 0.2 (EEGPT's pct_start) would
+                               # spend 6 epochs warming up a 30-epoch run.
+  lr: 2.5e-4
+  min_lr_ratio: 0.01           # cosine floor: 2.5e-6
   weight_decay: 0.01
   batch_size: 64
   precision: bf16
   grad_clip: 1.0
-  label_smoothing: 0.0
+  label_smoothing: 0.1         # EEGPT uses none. Smoothing only moves the loss
+                               # floor -- on two classes the smoothed loss cannot
+                               # go below ~0.2 however good the model -- and the
+                               # checkpoint is selected on the metric below, not
+                               # on the loss, so a flat-looking loss is expected.
   select_by: auroc                  # binary: EEGPT reports BAC, kappa, AUROC

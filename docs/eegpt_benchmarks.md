@@ -3,7 +3,7 @@
 The three downstream tasks from EEGPT (NeurIPS 2024) Table 4, run on the C1
 pretrained encoder.
 
-| task | classes | channels | epoch | EEGPT (probe, fold mean) |
+| task | classes | channels | epoch | EEGPT (linear probe, fold mean) |
 |---|---|---|---|---|
 | BCIC-IV-2a | 4 (L/R hand, feet, tongue) | 22 | cue + 0..4 s, 1024 @ 256 Hz | BAC 0.5846, κ 0.4462, wF1 0.5715 |
 | BCIC-IV-2b | 2 (L/R hand) | 3 (bipolar C3/Cz/C4) | cue + 0..4 s, 1024 @ 256 Hz | BAC 0.7212, κ 0.4426, AUROC 0.8059 |
@@ -22,9 +22,9 @@ python EEG/download_eegpt_benchmarks.py --dataset 2b --dest $PW_DATA_EEG/bcic_iv
 bash   EEG/download_kaggle_ern.sh $PW_DATA_EEG/kaggle_ern     # needs a Kaggle token
 ```
 
-Then one job per task. Each runs three modes in parallel on one node — `ft`
-(pretrained, fine-tuned), `scratch` (same model, random init: the control), and
-`probe` (pretrained parts frozen: the mode shaped like EEGPT's rows):
+Then one job per task. Each runs two modes in parallel on one node — `ft`
+(pretrained encoder, every parameter fine-tuned) and `scratch` (same model,
+random init: the control). The difference between them is the measurement.
 
 ```bash
 ENC=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth     # or an exported eeg_c1_encoder.pth
@@ -40,8 +40,13 @@ python scripts/collect_eegpt_bench.py --root $PW_CKPT_ROOT/eegpt_bench
 ```
 
 Comparing two encoders (best vs last epoch): add `TAG=best` / `TAG=final` to the
-`--export` list, and `MODES=ft` or `MODES="ft probe"` on the second so the
-scratch control is not rerun.
+`--export` list, and `MODES=ft` on the second so the scratch control is not
+rerun.
+
+Training: 30 epochs, batch 64, AdamW (wd 0.01), lr 2.5e-4 with linear warmup
+over the first 10% of steps and a cosine to 1% by the last, label smoothing
+0.1. Checkpoint selected on κ (2a) or AUROC (2b, KaggleERN) on the validation
+subjects, then scored once on the test subjects.
 
 ## What is reproduced, and what is not
 
@@ -60,11 +65,10 @@ Different, on purpose (details in `EEG/eegpt_bench_common.py`):
   Here validation is a separate subject set, so these numbers are pessimistic
   relative to theirs.
 - **One fold, not a mean over folds.** `FOLD=k` picks which.
-- **The wavelet frontend and patcher are fresh**, not pretrained. The probe
-  therefore freezes exactly what *was* pretrained (channel embedding, gate,
-  transformer) and trains the fresh input layers with the head —
-  `freeze_scope: pretrained`. Freezing a randomly initialised frontend would
-  put a random projection in front of the transformer.
+- **Full fine-tuning, 30 epochs.** EEGPT trains a linear probe on a frozen
+  encoder for 100 epochs.
+- **The wavelet frontend, patcher and classification head are fresh**; the
+  channel embedding, its gate and the shared transformer come from pretraining.
 
 ## Data notes
 

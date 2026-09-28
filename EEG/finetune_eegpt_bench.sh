@@ -10,9 +10,6 @@
 # MODE    ft       every parameter trains, from the pretrained encoder
 #         scratch  the same architecture, from random initialisation -- the
 #                  control. Without it "ft" is a number, not a result.
-#         probe    encoder frozen, only the head (and any spatial adapter)
-#                  trains. EEGPT's published rows are linear probes, so this
-#                  is the mode comparable to their table; ft is not.
 # FOLD    which fold's split (default 0). One fold, not an average -- see the
 #         note on protocol below.
 # TAG     optional suffix on the output directory, to keep runs of different
@@ -33,9 +30,10 @@
 # PROTOCOL, stated so the number is not read as more than it is. EEGPT's rows
 # are a mean over folds (nine LOSO folds on BCIC, four on KaggleERN) of a
 # frozen-encoder probe scored on the subjects it also validated on. Here one
-# fold is run, its held-out subjects are a TEST set nothing selects on, and
-# validation is a separate set of subjects. The comparison is therefore
-# pessimistic for this model, and "probe" is the only mode shaped like theirs.
+# fold is run with every parameter fine-tuned, its held-out subjects are a TEST
+# set nothing selects on, and validation is a separate set of subjects. The
+# comparison is therefore not like-for-like, and pessimistic for this model on
+# the evaluation side.
 # ============================================================================
 
 set -euo pipefail
@@ -60,8 +58,8 @@ case "${TASK}" in
     *) echo "ERROR: TASK must be bcic2a, bcic2b or kaggleern, not '${TASK}'" >&2; exit 1 ;;
 esac
 case "${MODE}" in
-    ft|scratch|probe) ;;
-    *) echo "ERROR: MODE must be ft, scratch or probe, not '${MODE}'" >&2; exit 1 ;;
+    ft|scratch) ;;
+    *) echo "ERROR: MODE must be ft or scratch, not '${MODE}'" >&2; exit 1 ;;
 esac
 
 [[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
@@ -118,11 +116,7 @@ PY
     esac
     SET_ARGS+=("model.eeg_c1.pretrained=${ENCODER}")
 fi
-if [[ "${MODE}" == "probe" ]]; then
-    # EEGPT's learning rate for these three probes (max_lr=4e-4 in each
-    # linear_probe_EEGPT_*.py); the config's 2.5e-4 is the full-finetune one.
-    EXTRA_ARGS+=(--freeze-encoder --lr "${LR:-4e-4}")
-elif [[ -n "${LR:-}" ]]; then
+if [[ -n "${LR:-}" ]]; then
     EXTRA_ARGS+=(--lr "${LR}")
 fi
 [[ -n "${EPOCHS:-}" ]]     && EXTRA_ARGS+=(--epochs "${EPOCHS}")
