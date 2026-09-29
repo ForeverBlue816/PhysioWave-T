@@ -61,10 +61,13 @@ export DATASET
 
 PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
 cd "${PROJECT_DIR}"
-# The preparation venv, as for EEG: numpy, scipy, h5py and wfdb, no torch.
-if [[ -f "${PWPREP:-${HOME}/pwprep}/bin/activate" ]]; then
+# The training venv plus wfdb (pip install wfdb once). Not pwprep: the
+# ECG path imports the shared preprocessing module, which imports torch, and
+# $HOME/pw is the environment known to have it. PREP_VENV overrides.
+PREP_VENV="${PREP_VENV:-${HOME}/pw}"
+if [[ -f "${PREP_VENV}/bin/activate" ]]; then
     # shellcheck disable=SC1091
-    source "${PWPREP:-${HOME}/pwprep}/bin/activate"
+    source "${PREP_VENV}/bin/activate"
 fi
 
 # One worker per core leaves nothing for h5py's gzip and the zip reads; the

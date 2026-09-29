@@ -86,13 +86,16 @@ fi
 PYTHON="${PYTHON:-python}"
 _missing="$("${PYTHON}" - <<'PYEOF'
 import importlib.util as u
-print(" ".join(m for m in ("numpy", "scipy", "h5py", "wfdb")
+print(" ".join(m for m in ("numpy", "scipy", "h5py", "wfdb", "torch")
                if u.find_spec(m) is None))
 PYEOF
 )"
 if [[ -n "${_missing}" ]]; then
     echo "ERROR: $("${PYTHON}" -c 'import sys;print(sys.prefix)') lacks: ${_missing}" >&2
-    echo "       pip install ${_missing}   (torch is not needed to preprocess)" >&2
+    echo "       The training venv has everything but wfdb:" >&2
+    echo "         source \$HOME/pw/bin/activate && pip install wfdb" >&2
+    echo "       (torch is imported, not used: the shared EEG preprocessing" >&2
+    echo "        module pulls in the channel vocabulary, which imports it.)" >&2
     exit 1
 fi
 

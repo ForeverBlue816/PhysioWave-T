@@ -322,8 +322,15 @@ get_pulsedb() {
         "${PYTHON}" - "${d}" "PulseDB_${half}.zip" <<'PYEOF' || return 1
 import os, sys, zipfile
 sys.path.insert(0, os.path.join(os.environ["PW_REPO"], "ECG"))
-from preprocess_ecg_corpus import _open_archive
 root, name = sys.argv[1], sys.argv[2]
+try:
+    from preprocess_ecg_corpus import _open_archive
+except ImportError as exc:
+    # The piece sizes were already checked byte for byte; this is the extra
+    # check, and it needs the repository's environment (numpy, h5py, torch).
+    print(f"    {name}: every piece is the right size; archive directory NOT "
+          f"read ({exc}). source $HOME/pw/bin/activate and rerun to check it.")
+    sys.exit(0)
 with _open_archive(os.path.join(root, name)) as fh, zipfile.ZipFile(fh) as zf:
     n = sum(1 for i in zf.infolist() if i.filename.endswith(".mat"))
 print(f"    {name}: {n} subject file(s) in the archive directory")
