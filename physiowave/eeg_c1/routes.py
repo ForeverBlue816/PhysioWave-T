@@ -260,11 +260,16 @@ DATASET_IDS: Tuple[str, ...] = tuple(PRETRAIN_DATASETS)
 DOWNSTREAM_ONLY: Tuple[str, ...] = ("deap", "sleep_edf", "erpbci", "physio_p300")
 
 
-def datasets_for_route(route_id: str) -> List[str]:
-    return [d for d, s in PRETRAIN_DATASETS.items() if s.route_id == route_id]
+def datasets_for_route(route_id: str,
+                       datasets: Optional[Dict[str, DatasetSpec]] = None
+                       ) -> List[str]:
+    datasets = PRETRAIN_DATASETS if datasets is None else datasets
+    return [d for d, s in datasets.items() if s.route_id == route_id]
 
 
-def balanced_sampling_weights() -> Dict[str, float]:
+def balanced_sampling_weights(
+        routes: Optional[Dict[str, Route]] = None,
+        datasets: Optional[Dict[str, DatasetSpec]] = None) -> Dict[str, float]:
     """P(route) = 1/4, then uniform over that route's datasets.
 
     Every route gets equal attention regardless of how much data happened to be
@@ -277,10 +282,11 @@ def balanced_sampling_weights() -> Dict[str, float]:
     point is the four frontends rather than the corpus this is the right
     trade -- but it is no longer the default.
     """
+    routes = ROUTES if routes is None else routes
     weights: Dict[str, float] = {}
-    per_route = 1.0 / len(ROUTES)
-    for route_id in ROUTES:
-        members = datasets_for_route(route_id)
+    per_route = 1.0 / len(routes)
+    for route_id in routes:
+        members = datasets_for_route(route_id, datasets)
         if not members:
             continue
         for dataset_id in members:
@@ -290,7 +296,8 @@ def balanced_sampling_weights() -> Dict[str, float]:
 
 def proportional_sampling_weights(
         window_counts: Dict[str, int],
-        batch_by_route: Optional[Dict[str, int]] = None) -> Dict[str, float]:
+        batch_by_route: Optional[Dict[str, int]] = None,
+        datasets: Optional[Dict[str, DatasetSpec]] = None) -> Dict[str, float]:
     """Each dataset contributes windows in proportion to how many it has.
 
     An epoch is then one pass over the corpus: every window is seen once, and a
@@ -309,11 +316,12 @@ def proportional_sampling_weights(
     equal to each dataset's share of the corpus.
     """
     batch_by_route = batch_by_route or {}
+    datasets = PRETRAIN_DATASETS if datasets is None else datasets
     raw: Dict[str, float] = {}
     for dataset_id, n in window_counts.items():
-        if n <= 0 or dataset_id not in PRETRAIN_DATASETS:
+        if n <= 0 or dataset_id not in datasets:
             continue
-        route_id = PRETRAIN_DATASETS[dataset_id].route_id
+        route_id = datasets[dataset_id].route_id
         b = float(batch_by_route.get(route_id, 1) or 1)
         raw[dataset_id] = float(n) / b
     total = sum(raw.values())
@@ -324,7 +332,8 @@ def proportional_sampling_weights(
 
 def temperature_sampling_weights(
         window_counts: Dict[str, int], alpha: float,
-        batch_by_route: Optional[Dict[str, int]] = None) -> Dict[str, float]:
+        batch_by_route: Optional[Dict[str, int]] = None,
+        datasets: Optional[Dict[str, DatasetSpec]] = None) -> Dict[str, float]:
     """``P(d) ∝ n_d**alpha / b_d`` -- the dial between the two extremes.
 
     ``alpha=1`` is proportional sampling and ``alpha=0`` makes every dataset
@@ -339,11 +348,12 @@ def temperature_sampling_weights(
     windows.
     """
     batch_by_route = batch_by_route or {}
+    datasets = PRETRAIN_DATASETS if datasets is None else datasets
     raw: Dict[str, float] = {}
     for dataset_id, n in window_counts.items():
-        if n <= 0 or dataset_id not in PRETRAIN_DATASETS:
+        if n <= 0 or dataset_id not in datasets:
             continue
-        b = float(batch_by_route.get(PRETRAIN_DATASETS[dataset_id].route_id, 1) or 1)
+        b = float(batch_by_route.get(datasets[dataset_id].route_id, 1) or 1)
         raw[dataset_id] = (float(n) ** float(alpha)) / b
     total = sum(raw.values())
     if total <= 0:

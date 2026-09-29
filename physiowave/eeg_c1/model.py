@@ -515,6 +515,24 @@ class MultiRouteEEGPretrainer(nn.Module):
         if budget == 0:
             return torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
 
+        scores = self._mask_scores(tokens, generator)
+        if valid_tokens is not None:
+            scores = scores.masked_fill(~valid_tokens, float("-inf"))
+        idx = torch.topk(scores, budget, dim=1).indices
+        mask = torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
+        mask.scatter_(1, idx, True)
+        return mask
+
+    def _mask_scores(self, tokens, generator):
+        """``[B, L]`` -- higher is masked first. Padding is the caller's job.
+
+        Split out of ``_select_mask`` so a subclass can change WHICH tokens a
+        score selects (physiowave.ecg_c1 masks the six limb leads together)
+        without a second copy of how the score is made. The random draw
+        happens here and only here, in the same order as before, so a seeded
+        validation mask is the mask it always was.
+        """
+        B, L, D = tokens.shape
         if generator is None:
             noise = torch.rand(B, L, device=tokens.device)
         else:
@@ -545,13 +563,7 @@ class MultiRouteEEGPretrainer(nn.Module):
                       + (1 - self.importance_ratio) * noise)
         else:
             scores = noise
-
-        if valid_tokens is not None:
-            scores = scores.masked_fill(~valid_tokens, float("-inf"))
-        idx = torch.topk(scores, budget, dim=1).indices
-        mask = torch.zeros(B, L, device=tokens.device, dtype=torch.bool)
-        mask.scatter_(1, idx, True)
-        return mask
+        return scores
 
     # -- forward ------------------------------------------------------------ #
     def encode(self, x, route_id, channel_meta=None):

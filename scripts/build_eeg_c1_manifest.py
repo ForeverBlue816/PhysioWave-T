@@ -4,6 +4,7 @@
 Merge per-dataset (and per-shard) manifests into the two the trainer reads.
 
     python scripts/build_eeg_c1_manifest.py --corpus-root $DATA_ROOT
+    python scripts/build_eeg_c1_manifest.py --modality ecg --corpus-root $ECG_CORPUS
 
     <corpus-root>/
         tueg/     manifest_train.0000.jsonl  manifest_train.0001.jsonl  ...
@@ -36,6 +37,18 @@ from typing import Dict, List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from physiowave.eeg_c1.routes import PRETRAIN_DATASETS      # noqa: E402
+
+
+#: ``--modality`` -> (the registry, what is never pretrained on). ECG's corpus
+#: is written by ECG/preprocess_ecg_corpus.py into the same manifest layout, so
+#: the merge and its checks are the same program.
+def _registry(modality: str):
+    if modality == "ecg":
+        from physiowave.ecg_c1.routes import DOWNSTREAM_ONLY
+        from physiowave.ecg_c1.routes import PRETRAIN_DATASETS as ECG
+        return ECG, DOWNSTREAM_ONLY
+    from physiowave.eeg_c1.routes import DOWNSTREAM_ONLY
+    return PRETRAIN_DATASETS, DOWNSTREAM_ONLY
 
 
 #: How much of a shard to actually read. ``meta`` is the shape and attributes
@@ -83,6 +96,23 @@ def _check_one(row):
     return None
 
 
+def load_sidecar_subjects(dataset_dir: str, split: str) -> set:
+    """Subjects listed in ``subjects_{split}[.NNNN].txt``, if the corpus has them.
+
+    An ECG shard holds ~1,000 records from ~1,000 patients, so the subject
+    list lives beside the manifest instead of in every row -- in the rows it
+    would be millions of strings loaded by every training rank. The leak check
+    below reads both.
+    """
+    out = set()
+    for pattern in (os.path.join(dataset_dir, f"subjects_{split}.txt"),
+                    os.path.join(dataset_dir, f"subjects_{split}.*.txt")):
+        for path in sorted(glob.glob(pattern)):
+            with open(path) as f:
+                out.update(ln.strip() for ln in f if ln.strip())
+    return out
+
+
 def load_rows(dataset_dir: str, split: str) -> List[Dict]:
     """Every manifest row for one dataset and split, sharded or not."""
     rows = []
@@ -108,6 +138,8 @@ def main(argv=None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--corpus-root", required=True)
+    p.add_argument("--modality", choices=["eeg", "ecg"], default="eeg",
+                   help="which registry the datasets belong to (default eeg)")
     p.add_argument("--out-dir", default=None,
                    help="default: <corpus-root>/merged")
     p.add_argument("--datasets", default=None,
@@ -139,8 +171,21 @@ def main(argv=None) -> int:
 
     root = args.corpus_root
     out_dir = args.out_dir or os.path.join(root, "merged")
+    registry, downstream_only = _registry(args.modality)
     wanted = ([d.strip() for d in args.datasets.split(",") if d.strip()]
-              if args.datasets else list(PRETRAIN_DATASETS))
+              if args.datasets else list(registry))
+    refused = [d for d in wanted if d in downstream_only]
+    unknown = [d for d in wanted if d not in registry and d not in refused]
+    if refused or unknown:
+        if refused:
+            print(f"ERROR: {', '.join(refused)} is downstream evaluation data "
+                  f"and is never merged into a pretraining corpus.",
+                  file=sys.stderr)
+        if unknown:
+            print(f"ERROR: not {args.modality} pretraining datasets: "
+                  f"{', '.join(unknown)} (have {', '.join(registry)})",
+                  file=sys.stderr)
+        return 1
 
     present, missing = [], []
     for d in wanted:
@@ -173,7 +218,8 @@ def main(argv=None) -> int:
             counts[f"{split}_windows"] = sum(r["n_windows"] for r in rows)
             for r in rows:
                 subjects[d][split].update(r.get("subjects", ()))
-        counts["route_id"] = PRETRAIN_DATASETS[d].route_id
+            subjects[d][split].update(load_sidecar_subjects(dataset_dir, split))
+        counts["route_id"] = registry[d].route_id
         counts["subjects"] = len(subjects[d]["train"] | subjects[d]["val"])
         per_dataset[d] = counts
 
@@ -281,7 +327,12 @@ def main(argv=None) -> int:
                     c[f"{split}_windows"] = sum(r["n_windows"] for r in rows)
                     for r in rows:
                         seen[split].update(r.get("subjects", ()))
-                subjects[d] = seen
+                # Rows without a subject list (ECG keeps them in sidecar
+                # files) cannot say which subjects a dropped shard took with
+                # it; the sidecar count stands, as an upper bound.
+                if any("subjects" in r for split in ("train", "val")
+                       for r in merged[split] if r["dataset_id"] == d):
+                    subjects[d] = seen
                 c["subjects"] = len(seen["train"] | seen["val"])
             print(f"dropped {len(bad)} unreadable shard(s), {lost:,} window(s)",
                   flush=True)

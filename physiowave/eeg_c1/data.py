@@ -139,13 +139,17 @@ class EEGWindowDataset(Dataset):
     num_workers > 0.
     """
 
-    def __init__(self, index: CorpusIndex, dataset_id: str):
+    def __init__(self, index: CorpusIndex, dataset_id: str,
+                 routes: Optional[Dict[str, Route]] = None):
         self.dataset_id = dataset_id
         self.shards = [s for s in index.shards if s.dataset_id == dataset_id]
         if not self.shards:
             raise KeyError(f"no shards for dataset {dataset_id!r}")
         self.route_id = self.shards[0].route_id
-        self.route = ROUTES[self.route_id]
+        # ``routes`` is the registry the corpus belongs to -- EEG's four by
+        # default, and physiowave.ecg_c1 passes its own. The window reader is
+        # identical for both; only the table of shapes differs.
+        self.route = (ROUTES if routes is None else routes)[self.route_id]
         # offsets[i] is the global index of shard i's first window
         self.offsets = np.cumsum([0] + [s.n_windows for s in self.shards])
         self._handles: "OrderedDict[int, object]" = OrderedDict()
@@ -294,8 +298,15 @@ class RouteSchedule:
     def __init__(self, index: CorpusIndex, weights: Optional[Dict[str, float]] = None,
                  steps_per_epoch: Optional[int] = None, seed: int = 42,
                  batch_by_route: Optional[Dict[str, int]] = None,
-                 num_replicas: int = 1, rank: int = 0):
+                 num_replicas: int = 1, rank: int = 0,
+                 routes: Optional[Dict[str, Route]] = None,
+                 datasets: Optional[Dict[str, object]] = None):
         self.index = index
+        # The registry this schedule draws from. Defaults to the EEG corpus;
+        # physiowave.ecg_c1 passes its own routes and datasets, and nothing
+        # below reads the module-level tables directly.
+        self.routes = dict(ROUTES if routes is None else routes)
+        self.datasets = dict(PRETRAIN_DATASETS if datasets is None else datasets)
         self.seed = int(seed)
         self.num_replicas = max(1, int(num_replicas))
         self.rank = int(rank)
@@ -312,11 +323,12 @@ class RouteSchedule:
         if weights is None or (isinstance(weights, str) and
                                weights.lower() in ("balanced", "uniform")):
             self.weight_policy = "balanced"
-            w = balanced_sampling_weights()
+            w = balanced_sampling_weights(self.routes, self.datasets)
         elif isinstance(weights, str) and \
                 weights.lower() in ("proportional", "size", "auto"):
             self.weight_policy = "proportional"
-            w = proportional_sampling_weights(counts, self.batch_by_route)
+            w = proportional_sampling_weights(counts, self.batch_by_route,
+                                              self.datasets)
         elif isinstance(weights, str) and weights.lower().startswith("temperature"):
             # "temperature:0.5" -- the dial between the two.
             try:
@@ -331,7 +343,8 @@ class RouteSchedule:
                     f"temperature exponent {alpha} is outside [0, 1]. Above 1 "
                     f"amplifies the largest corpus beyond its own share.")
             self.weight_policy = f"temperature:{alpha:g}"
-            w = temperature_sampling_weights(counts, alpha, self.batch_by_route)
+            w = temperature_sampling_weights(counts, alpha, self.batch_by_route,
+                                             self.datasets)
         elif isinstance(weights, str):
             raise SystemExit(
                 f"unknown sampling policy {weights!r}. Use 'balanced' "
@@ -372,7 +385,7 @@ class RouteSchedule:
             # min is the exact one-pass length rather than a floor set by
             # whichever corpus is most starved.
             per_step = np.array(
-                [self.batch_by_route[PRETRAIN_DATASETS[d].route_id] * self.num_replicas
+                [self.batch_by_route[self.datasets[d].route_id] * self.num_replicas
                  for d in self.dataset_ids], dtype=np.float64)
             n = np.array([counts.get(d, 0) for d in self.dataset_ids],
                          dtype=np.float64)
@@ -427,7 +440,7 @@ class RouteSchedule:
         which one is "the mixture" is a choice this records rather than hides.
         """
         plan = self.plan()
-        per_step = {d: self.batch_by_route[PRETRAIN_DATASETS[d].route_id]
+        per_step = {d: self.batch_by_route[self.datasets[d].route_id]
                     * self.num_replicas for d in self.dataset_ids}
         steps: Dict[str, int] = {}
         windows: Dict[str, int] = {}
@@ -469,7 +482,7 @@ class RouteSchedule:
         rng.integers(0, 2 ** 31 - 1, size=self.steps_per_epoch)
 
         for step, dataset_id in enumerate(plan):
-            route_id = PRETRAIN_DATASETS[dataset_id].route_id
+            route_id = self.datasets[dataset_id].route_id
             per_rank = self.batch_by_route[route_id]
             n_total = per_rank * self.num_replicas
             n_avail = max(1, int(lengths.get(dataset_id, 0)))
@@ -495,7 +508,7 @@ class RouteBatchLoader:
     def __init__(self, index: CorpusIndex, schedule: RouteSchedule):
         self.index = index
         self.schedule = schedule
-        self.datasets = {d: EEGWindowDataset(index, d)
+        self.datasets = {d: EEGWindowDataset(index, d, routes=schedule.routes)
                          for d in schedule.dataset_ids}
         self.lengths = {d: len(ds) for d, ds in self.datasets.items()}
 

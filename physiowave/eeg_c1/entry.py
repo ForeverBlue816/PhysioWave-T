@@ -81,8 +81,11 @@ def build_smoke_corpus(root: str, datasets: Optional[List[str]] = None,
 SMOKE_CORPUS_TIMEOUT_S = 300
 
 
-def _smoke_corpus_once(root: str) -> Dict[str, str]:
+def _smoke_corpus_once(root: str, build=None) -> Dict[str, str]:
     """Build on rank 0, wait on the rest. Returns the merged manifest paths.
+
+    ``build`` writes the corpus and returns its merged manifests; EEG's
+    ``build_smoke_corpus`` by default, and physiowave.ecg_c1 passes its own.
 
     Called BEFORE ``setup_distributed``, so the rank comes from torchrun's
     environment rather than from a process group that does not exist yet, and
@@ -92,7 +95,7 @@ def _smoke_corpus_once(root: str) -> Dict[str, str]:
     paths = {split: os.path.join(merged, f"manifest_{split}.jsonl")
              for split in ("train", "val")}
     if int(os.environ.get("RANK", "0")) == 0:
-        built = build_smoke_corpus(root)
+        built = (build or build_smoke_corpus)(root)
         print(f"  smoke corpus (SYNTHETIC) written to {root}", flush=True)
         return built
 
@@ -107,10 +110,36 @@ def _smoke_corpus_once(root: str) -> Dict[str, str]:
         f"smoke corpus; if it failed, its error is the one to read.")
 
 
+#: A smoke run's per-rank batch. Two windows a route is enough to exercise
+#: every shape; it has to fit on a CPU in seconds.
+SMOKE_BATCH_BY_ROUTE = {"E19_256": 2, "E32_512": 2, "E64_256": 2,
+                        "E128_512": 2}
+
+#: What to say when the manifests are not set, per modality.
+MISSING_MANIFEST_HINT = (
+    "Preprocess the corpora first (EEG/preprocess_pretrain_corpus.py, one run "
+    "per dataset) and merge their manifests, then point this at the result.")
+
+
 def run(cfg: Dict, out_dir: str, args) -> int:
     """Build the trainer this config asks for and run it."""
-    from ..train.utils import set_seed, setup_distributed, cleanup_distributed
     from .train import EEGC1Trainer
+    return run_trainer(cfg, out_dir, args, EEGC1Trainer,
+                       smoke_build=build_smoke_corpus,
+                       smoke_batch_by_route=SMOKE_BATCH_BY_ROUTE,
+                       missing_manifest_hint=MISSING_MANIFEST_HINT)
+
+
+def run_trainer(cfg: Dict, out_dir: str, args, trainer_cls, smoke_build,
+                smoke_batch_by_route: Dict[str, int],
+                missing_manifest_hint: str) -> int:
+    """The run itself, for any trainer built on EEGC1Trainer.
+
+    Shared with physiowave.ecg_c1, which differs in the trainer class, the
+    synthetic corpus a smoke run builds and the routes its batch names -- and
+    in nothing about how a run is set up, resumed or initialised.
+    """
+    from ..train.utils import set_seed, setup_distributed, cleanup_distributed
 
     smoke = bool(getattr(args, "smoke_test", False))
     if smoke:
@@ -132,7 +161,8 @@ def run(cfg: Dict, out_dir: str, args) -> int:
         # temp dir gave -- is worse still, because the ranks would then train
         # on different corpora and the schedule assumes they agree on every
         # dataset's length.
-        corpus = _smoke_corpus_once(os.path.join(out_dir, "smoke_corpus"))
+        corpus = _smoke_corpus_once(os.path.join(out_dir, "smoke_corpus"),
+                                    build=smoke_build)
         cfg.setdefault("data", {})
         cfg["data"]["manifest_train"] = corpus["train"]
         cfg["data"]["manifest_val"] = corpus["val"]
@@ -143,24 +173,21 @@ def run(cfg: Dict, out_dir: str, args) -> int:
                             warmup_epochs=0, grad_accumulation_steps=1,
                             steps_per_epoch=int(getattr(args, "max_steps", 5) or 5),
                             precision="fp32",
-                            batch_size_by_route={"E19_256": 2, "E32_512": 2,
-                                                 "E64_256": 2, "E128_512": 2})
+                            batch_size_by_route=dict(smoke_batch_by_route))
     else:
         data = cfg.get("data", {})
         for key in ("manifest_train", "manifest_val"):
             if not data.get(key):
                 raise SystemExit(
-                    f"data.{key} is not set. Preprocess the corpora first "
-                    f"(EEG/preprocess_pretrain_corpus.py, one run per dataset) "
-                    f"and merge their manifests, then point this at the result. "
+                    f"data.{key} is not set. {missing_manifest_hint} "
                     f"--smoke-test runs on synthetic data instead; nothing "
                     f"falls back to it silently.")
 
     info = setup_distributed()
     set_seed(int(cfg.get("seed", 42)) + getattr(info, "rank", 0), True)
     try:
-        trainer = EEGC1Trainer(cfg, out_dir, info,
-                               max_steps=getattr(args, "max_steps", None))
+        trainer = trainer_cls(cfg, out_dir, info,
+                              max_steps=getattr(args, "max_steps", None))
         init_from = getattr(args, "init_from", None)
         resume = getattr(args, "resume", None)
         if init_from and resume:

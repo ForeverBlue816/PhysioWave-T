@@ -65,12 +65,12 @@ def parse_args(argv=None) -> argparse.Namespace:
                         "optimizer, no scheduler position, no step count. What "
                         "you want when the mixture or the epoch length changes, "
                         "because a resumed scheduler counts in the old epoch's "
-                        "units. eeg_c1 only.")
+                        "units. eeg_c1 and ecg_c1 only.")
     p.add_argument("--max-steps", type=int, default=None, help="cap steps (smoke tests)")
     p.add_argument("--dry-run", action="store_true", help="validate config/data and exit")
     p.add_argument("--smoke-test", action="store_true",
-                   help="run on synthetic data. Only the eeg_c1_moe trainer "
-                        "implements it, and it is the ONLY way that path "
+                   help="run on synthetic data. Only the eeg_c1_moe and "
+                        "ecg_c1_moe trainers implement it, and it is the ONLY way that path "
                         "fabricates signal -- nothing falls back to it.")
     return p.parse_args(argv)
 
@@ -204,6 +204,9 @@ def main(argv=None) -> int:
     if cfg.get("trainer") == "eeg_c1_moe":
         from ..eeg_c1.entry import run as run_eeg_c1
         return run_eeg_c1(cfg, out_dir, args)
+    if cfg.get("trainer") == "ecg_c1_moe":
+        from ..ecg_c1.entry import run as run_ecg_c1
+        return run_ecg_c1(cfg, out_dir, args)
 
     if args.dry_run:
         return run_dry_run(cfg, out_dir)

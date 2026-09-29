@@ -114,6 +114,10 @@ ARCH_KEYS: Tuple[str, ...] = (
     "use_separate_channel", "scale_fold", "fold_synthesis", "fold_gamma",
     "masking_strategy", "importance_ratio", "mask_ratio", "dropout",
     "channel_encoding", "channel_injection", "channel_embed_dim",
+    # ECG only (physiowave.ecg_c1): masking the limb leads as one unit is a
+    # different reconstruction task. Absent from every EEG config, so it is
+    # skipped there.
+    "lead_group_masking",
 )
 
 #: Schedule fields. A resume restores the optimizer and the cosine's position,

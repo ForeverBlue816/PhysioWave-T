@@ -98,8 +98,9 @@ class ValIterator:
 
     def __init__(self, index: CorpusIndex, batch_by_route: Dict[str, int],
                  num_replicas: int = 1, rank: int = 0,
-                 max_batches_per_dataset: Optional[int] = None):
-        self.datasets = {d: EEGWindowDataset(index, d)
+                 max_batches_per_dataset: Optional[int] = None,
+                 routes: Optional[Dict] = None):
+        self.datasets = {d: EEGWindowDataset(index, d, routes=routes)
                          for d in sorted(index.by_dataset())}
         self.batch_by_route = dict(batch_by_route)
         self.num_replicas = max(1, num_replicas)
@@ -382,6 +383,16 @@ BEST_LABEL = {"total": "total", "spec": "spec", "raw": "raw",
 # --------------------------------------------------------------------------- #
 
 class EEGC1Trainer:
+    #: The registry this trainer draws from, and the label its banner prints.
+    #: Class attributes rather than module globals read in place, so that
+    #: physiowave.ecg_c1 can reuse this loop -- schedule, validation, metrics,
+    #: checkpoint selection, resume -- by naming its own tables and model,
+    #: rather than by keeping a second copy of all of it.
+    routes_table = ROUTES
+    datasets_table = PRETRAIN_DATASETS
+    default_batch_by_route = DEFAULT_BATCH_BY_ROUTE
+    banner_title = "EEG C1 multi-route pretraining"
+
     def __init__(self, cfg: Dict, out_dir: str, info, max_steps: Optional[int] = None):
         self.cfg = cfg
         self.out_dir = out_dir
@@ -439,7 +450,7 @@ class EEGC1Trainer:
         # whatever a step turns out to cost.
         self.log_seconds = float(os.environ.get("PW_LOG_SECONDS")
                                  or tcfg.get("log_seconds", 120))
-        self.batch_by_route = {**DEFAULT_BATCH_BY_ROUTE,
+        self.batch_by_route = {**self.default_batch_by_route,
                                **(tcfg.get("batch_size_by_route") or {})}
 
         # -- data ---------------------------------------------------------- #
@@ -453,35 +464,12 @@ class EEGC1Trainer:
             seed=int(cfg.get("seed", 42)),
             batch_by_route=self.batch_by_route,
             num_replicas=getattr(info, "world_size", 1),
-            rank=getattr(info, "rank", 0))
+            rank=getattr(info, "rank", 0),
+            routes=self.routes_table, datasets=self.datasets_table)
         self.loader = RouteBatchLoader(self.train_index, self.schedule)
 
         # -- model --------------------------------------------------------- #
-        self.model = MultiRouteEEGPretrainer(
-            embed_dim=int(mcfg.get("embed_dim", 384)),
-            depth=int(mcfg.get("depth", 6)),
-            num_heads=int(mcfg.get("num_heads", 6)),
-            mlp_ratio=float(mcfg.get("mlp_ratio", 4.0)),
-            dropout=float(mcfg.get("dropout", 0.1)),
-            norm=mcfg.get("norm", "rmsnorm"), ffn=mcfg.get("ffn", "swiglu"),
-            qk_norm=bool(mcfg.get("qk_norm", True)),
-            max_level=int(mcfg.get("max_level", 3)),
-            wave_kernel_size=int(mcfg.get("wave_kernel_size", 16)),
-            wavelet_names=mcfg.get("wavelet_names"),
-            wave_init_mode=mcfg.get("wave_init_mode", "pad"),
-            use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
-            mask_before_frontend=self.mask_before_frontend,
-            normalize_spec_target=self.normalize_spec_target,
-            fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
-            fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
-            masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
-            importance_ratio=float(mcfg.get("importance_ratio", 0.6)),
-            mask_ratio=self.mask_ratio,
-            channel_encoding=mcfg.get("channel_encoding", "id"),
-            channel_injection=mcfg.get("channel_injection", "token"),
-            channel_embed_dim=int(mcfg.get("channel_embed_dim", 64)),
-            channel_token_gate_init=float(mcfg.get("channel_token_gate_init", 0.0)),
-        ).to(self.device)
+        self.model = self.build_model(mcfg).to(self.device)
 
         self.raw_model = self.model
         if self.distributed:
@@ -530,6 +518,42 @@ class EEGC1Trainer:
             except Exception:                                 # noqa: BLE001
                 self.tb = None
 
+    # -- what a subclass for another modality replaces ------------------- #
+    def build_model(self, mcfg: Dict):
+        """The pretrainer, from the config's ``model:`` block."""
+        return MultiRouteEEGPretrainer(
+            embed_dim=int(mcfg.get("embed_dim", 384)),
+            depth=int(mcfg.get("depth", 6)),
+            num_heads=int(mcfg.get("num_heads", 6)),
+            mlp_ratio=float(mcfg.get("mlp_ratio", 4.0)),
+            dropout=float(mcfg.get("dropout", 0.1)),
+            norm=mcfg.get("norm", "rmsnorm"), ffn=mcfg.get("ffn", "swiglu"),
+            qk_norm=bool(mcfg.get("qk_norm", True)),
+            max_level=int(mcfg.get("max_level", 3)),
+            wave_kernel_size=int(mcfg.get("wave_kernel_size", 16)),
+            wavelet_names=mcfg.get("wavelet_names"),
+            wave_init_mode=mcfg.get("wave_init_mode", "pad"),
+            use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
+            mask_before_frontend=self.mask_before_frontend,
+            normalize_spec_target=self.normalize_spec_target,
+            fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
+            fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
+            masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
+            importance_ratio=float(mcfg.get("importance_ratio", 0.6)),
+            mask_ratio=self.mask_ratio,
+            channel_encoding=mcfg.get("channel_encoding", "id"),
+            channel_injection=mcfg.get("channel_injection", "token"),
+            channel_embed_dim=int(mcfg.get("channel_embed_dim", 64)),
+            channel_token_gate_init=float(mcfg.get("channel_token_gate_init", 0.0)),
+        )
+
+    def vocab_payload(self) -> Dict:
+        """The channel vocabulary's size and hash, as recorded in checkpoints."""
+        return vocab_payload()
+
+    def save_vocab(self, path: str):
+        save_vocab(path)
+
     @staticmethod
     def _lr_lambda(step, warmup, total, min_ratio):
         if warmup and step < warmup:
@@ -543,7 +567,7 @@ class EEGC1Trainer:
             return
         os.makedirs(self.out_dir, exist_ok=True)
         os.makedirs(os.path.join(self.out_dir, "figures"), exist_ok=True)
-        save_vocab(os.path.join(self.out_dir, "channel_vocab.json"))
+        self.save_vocab(os.path.join(self.out_dir, "channel_vocab.json"))
         # Written here rather than in pretrain_main: this trainer is dispatched
         # before that function reaches its own copy of these, so leaving them to
         # it produced a run directory with no record of what produced it.
@@ -567,8 +591,8 @@ class EEGC1Trainer:
                              "sampling_rate": r.sampling_rate,
                              "patch_size": list(r.patch_size),
                              "n_tokens": r.n_tokens}
-                       for rid, r in ROUTES.items()},
-            "datasets": {d: {"route_id": PRETRAIN_DATASETS[d].route_id,
+                       for rid, r in self.routes_table.items()},
+            "datasets": {d: {"route_id": self.datasets_table[d].route_id,
                              "n_windows": self.train_index.window_counts().get(d, 0)}
                          for d in self.schedule.dataset_ids},
             "target_weights": self.schedule.weights,
@@ -582,10 +606,10 @@ class EEGC1Trainer:
             json.dump(manifest, f, indent=2)
 
         print("=" * 66)
-        print("  EEG C1 multi-route pretraining")
+        print(f"  {self.banner_title}")
         print(f"  total parameters        {report['total']:,}")
         print(f"  shared transformer      {report['shared_transformer']:,}")
-        for rid in ROUTES:
+        for rid in self.routes_table:
             print(f"  frontend {rid:<10s}     {report[f'wavelet_frontend.{rid}']:,}")
         for rate in sorted(self.raw_model.patch_embed_by_rate):
             print(f"  patch_embed {rate:<7s}    {report[f'patch_embed.{rate}']:,}"
@@ -605,7 +629,7 @@ class EEGC1Trainer:
             print(f"  channel encoder (C1)    {report['channel_encoder']:,}"
                   f"  + proj {report['channel_to_token']:,}")
         print("  routes:")
-        for rid, r in ROUTES.items():
+        for rid, r in self.routes_table.items():
             print(f"    {r.describe()}")
         counts = self.train_index.window_counts()
         total_w = max(1, sum(counts.values()))
@@ -615,7 +639,7 @@ class EEGC1Trainer:
         print(f"  mixture policy: {policy}")
         print("    dataset          corpus%   step%  window%   passes/epoch")
         for d in self.schedule.dataset_ids:
-            b = self.schedule.batch_by_route[PRETRAIN_DATASETS[d].route_id]
+            b = self.schedule.batch_by_route[self.datasets_table[d].route_id]
             seen = (mixture["by_step"][d] * self.schedule.steps_per_epoch
                     * b * self.schedule.num_replicas)
             # passes/epoch is the number that says whether a small corpus is
@@ -626,7 +650,7 @@ class EEGC1Trainer:
             print(f"    {d:<14s} {counts.get(d,0)/total_w*100:7.2f}% "
                   f"{mixture['by_step'][d]*100:6.2f}% "
                   f"{mixture['by_window'][d]*100:7.2f}%   {passes:6.2f}x")
-        print(f"  channel vocab sha256    {vocab_payload()['channel_vocab_sha256'][:16]}")
+        print(f"  channel vocab sha256    {self.vocab_payload()['channel_vocab_sha256'][:16]}")
 
         # -- the training budget, spelled out ------------------------------- #
         # These four numbers are what an epoch length actually buys, and every
@@ -648,7 +672,7 @@ class EEGC1Trainer:
                  else f"first {self.val_max_batches} batch(es) per dataset "
                       f"-- a CURVE, not a final number"))
         print(f"    per-route batch size       " + "  ".join(
-            f"{rid}={self.batch_by_route[rid]}" for rid in ROUTES
+            f"{rid}={self.batch_by_route[rid]}" for rid in self.routes_table
             if rid in self.batch_by_route))
         print(f"    passes per dataset/epoch   " + "  ".join(
             f"{d}={oversampled[d]:.2f}x" for d in self.schedule.dataset_ids))
@@ -735,7 +759,7 @@ class EEGC1Trainer:
                 "numpy": np.random.get_state(),
             },
             "config": self.cfg,
-            **vocab_payload(),
+            **self.vocab_payload(),
         }
 
     def save(self, name: str):
@@ -776,7 +800,7 @@ class EEGC1Trainer:
         """An embedding row means whichever electrode held that id when it was
         learned. A checkpoint from a different vocabulary is relabelled."""
         recorded = ck.get("channel_vocab_sha256")
-        current = vocab_payload()["channel_vocab_sha256"]
+        current = self.vocab_payload()["channel_vocab_sha256"]
         if recorded and recorded != current:
             raise SystemExit(
                 f"{path} was trained under channel vocabulary "
@@ -1048,7 +1072,8 @@ class EEGC1Trainer:
         it = ValIterator(self.val_index, self.batch_by_route,
                          getattr(self.info, "world_size", 1),
                          getattr(self.info, "rank", 0),
-                         max_batches_per_dataset=max_batches)
+                         max_batches_per_dataset=max_batches,
+                         routes=self.routes_table)
         val_t0 = last_val_log = time.time()
         n_val_batches = len(it)
         for vb, batch in enumerate(progress(it, f"val {self.epoch}",
