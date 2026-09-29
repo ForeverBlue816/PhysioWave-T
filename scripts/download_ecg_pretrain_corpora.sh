@@ -417,6 +417,31 @@ get_icentia11k() {
         --include "_s(${alt})\\.(hea|dat)\$" --jobs "${ICENTIA_JOBS}"
 }
 
+# ONE DOWNLOADER PER CORPUS, across login nodes. Two processes resuming the
+# same file (curl -C - from both) interleave their bytes into a file of the
+# right size and the wrong content, and nothing afterwards can tell. A second
+# login node running an older loop is exactly how that happens, so each corpus
+# is claimed with an atomic mkdir on the shared filesystem. A holder killed
+# with SIGKILL leaves the claim behind; the message says how to clear it.
+LOCK_HELD=""
+release_lock() {
+    [[ -n "${LOCK_HELD}" ]] && rm -rf "${LOCK_HELD}"
+    LOCK_HELD=""
+}
+trap release_lock EXIT
+trap 'release_lock; exit 143' TERM INT
+
+claim() {
+    local lock; lock="$(raw_dir "$1")/.downloading"
+    if ! mkdir "${lock}" 2>/dev/null; then
+        warn "$1: already being downloaded by $(cat "${lock}/owner" 2>/dev/null || echo 'another process') -- skipping."
+        warn "  If that process is gone (killed with -9, node rebooted): rm -r ${lock}"
+        return 1
+    fi
+    echo "$(hostname) pid $$, since $(date '+%F %T')" > "${lock}/owner"
+    LOCK_HELD="${lock}"
+}
+
 run_one() {
     local ds="$1" rc
     if is_done "${ds}"; then
@@ -424,9 +449,11 @@ run_one() {
         return 0
     fi
     mkdir -p "$(raw_dir "${ds}")"
+    claim "${ds}" || return 3
     say "${ds} -> $(raw_dir "${ds}")"
     "get_${ds}"
     rc=$?
+    release_lock
     if [[ ${rc} -eq 0 ]]; then
         mark_done "${ds}"
         say "${ds}: complete"
