@@ -427,35 +427,102 @@ def test_medalcare_reader_takes_one_variant_and_the_torso_as_subject(tmp_path):
     np.testing.assert_allclose(rec.data, sig, atol=1e-6)
 
 
-def test_heedb_patient_ids_come_from_metadata(tmp_path):
+def test_sph_reader_joins_patients_and_windows_long_records(tmp_path):
+    import h5py
     sys.path.insert(0, os.path.join(ROOT, "ECG"))
     import preprocess_ecg_corpus as prep
-    site = tmp_path / "ECG" / "I0006"
-    wf = site / "WFDB" / "2012"
-    (site / "metadata").mkdir(parents=True)
-    for i, fs in enumerate((500, 250, 500)):
-        _write_wfdb(str(wf), f"rec{i}", _ecg(float(fs), 10.0, seed=i), fs, LEADS_12)
-    with open(site / "metadata" / "metadata.csv", "w", newline="") as f:
+    (tmp_path / "records").mkdir()
+    for ecg_id, secs in (("A00001", 10.0), ("A00002", 34.0)):
+        with h5py.File(tmp_path / "records" / f"{ecg_id}.h5", "w") as f:
+            f.create_dataset("ecg", data=_ecg(500.0, secs).astype(np.float16))
+    with open(tmp_path / "metadata.csv", "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["BDSPPatientID", "FileName", "FileID"])
-        w.writerow(["P1", "WFDB/2012/rec0.hea", "1"])
-        w.writerow(["P1", "WFDB/2012/rec1.hea", "2"])
-    ad = prep.HEEDB()
+        w.writerow(["ECG_ID", "AHA_Code", "Patient_ID", "Age", "Sex", "N", "Date"])
+        w.writerow(["A00001", "1", "S00001", 50, "M", 5000, "2020-01-01"])
+        w.writerow(["A00002", "1", "S00001", 50, "M", 17000, "2020-02-01"])
+    ad = prep.SPH()
     keys = ad.list_keys(str(tmp_path))
-    subj = [ad.read(str(tmp_path), k, {}).subject_id for k in keys]
-    assert subj == ["heedb_P1", "heedb_P1", "heedb_rec2"]
-    r1 = ad.read(str(tmp_path), keys[1], {})
-    assert r1.fs == 250.0
-    out = process_ecg_record(r1.data, r1.lead_names, r1.fs, r1.unit,
-                             ROUTES["L12_500"], 60.0, ECGPreprocessConfig())
-    assert out.windows.shape == (1, 12, 5000)
+    recs = [ad.read(str(tmp_path), k, {}) for k in keys]
+    assert [r.subject_id for r in recs] == ["sph_S00001", "sph_S00001"]
+    out = process_ecg_record(recs[1].data, recs[1].lead_names, recs[1].fs,
+                             recs[1].unit, ROUTES["L12_500"], 50.0,
+                             ECGPreprocessConfig())
+    assert out.windows.shape == (3, 12, 5000)          # 34 s -> three windows
 
 
-def test_code2_refuses_rather_than_guessing(tmp_path):
+def _pulsedb_mat(path, subject, segments, include=None):
+    """A MATLAB 7.3 file the way PulseDB's are laid out: a 1xN struct of refs."""
+    import h5py
+    with h5py.File(path, "w") as f:
+        refs = f.create_group("#refs#")
+        S = f.create_group("Subj_Wins")
+        n = len(segments)
+        include = include if include is not None else [1] * n
+
+        def field(name, values):
+            r = [refs.create_dataset(f"{name}_{i}", data=v).ref
+                 for i, v in enumerate(values)]
+            S.create_dataset(name, data=np.array([r], dtype=h5py.ref_dtype))
+
+        field("ECG_Record", [np.asarray(x, float)[None, :] for x in segments])
+        # ECG_Raw is min-max scaled in the real files; it must not be read.
+        field("ECG_Raw", [np.full((1, 1250), 0.5) for _ in segments])
+        field("SubjectID", [np.array([[ord(c)] for c in subject], np.uint16)] * n)
+        field("SegmentID", [np.array([[float(i)]]) for i in range(n)])
+        field("IncludeFlag", [np.array([[v]], np.uint8) for v in include])
+
+
+def test_pulsedb_reader_from_split_zip_pieces(tmp_path):
     sys.path.insert(0, os.path.join(ROOT, "ECG"))
     import preprocess_ecg_corpus as prep
-    with pytest.raises(SystemExit, match="no reader"):
-        prep.ADAPTERS["code2"].list_keys(str(tmp_path))
+    tree = tmp_path / "tree"
+    segs = [_ecg(125.0, 10.0, leads=1, seed=i)[0] for i in range(3)]
+    for half in ("MIMIC", "Vital"):
+        (tree / f"PulseDB_{half}").mkdir(parents=True)
+        # The same subject id in both halves: two different people.
+        _pulsedb_mat(tree / f"PulseDB_{half}" / "p000188.mat", "p000188", segs,
+                     include=[1, 0, 1])
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    for half in ("MIMIC", "Vital"):
+        z = tmp_path / f"PulseDB_{half}.zip"
+        with zipfile.ZipFile(z, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            src = tree / f"PulseDB_{half}" / "p000188.mat"
+            zf.write(src, f"PulseDB_{half}/p000188.mat")
+        blob = z.read_bytes()
+        step = max(1, len(blob) // 3 + 1)                # three pieces
+        for i in range(0, len(blob), step):
+            (raw / f"PulseDB_{half}.zip.{i // step + 1:03d}").write_bytes(
+                blob[i:i + step])
+    os.environ["PW_ECG_TMP"] = str(tmp_path / "tmp")
+    ad = prep.PulseDB()
+    keys = ad.list_keys(str(raw))
+    assert len(keys) == 2 and all("|" in k for k in keys)
+    recs = [r for k in keys for r in ad.read_records(str(raw), k, {})]
+    assert len(recs) == 4                                # IncludeFlag 0 skipped
+    assert {r.subject_id for r in recs} == {"pulsedb_mimic_p000188",
+                                            "pulsedb_vital_p000188"}
+    np.testing.assert_allclose(recs[0].data[0], segs[0])  # ECG_Record, not ECG_Raw
+    assert recs[0].fs == 125.0 and recs[0].lead_names == ["II"]
+    assert not os.listdir(tmp_path / "tmp")              # inflated file removed
+    # The unpacked tree reads the same.
+    assert len([r for k in ad.list_keys(str(tree))
+                for r in ad.read_records(str(tree), k, {})]) == 4
+
+
+def test_single_lead_corpora_share_a_route_and_keep_their_lead():
+    """Icentia's patch lead and PulseDB's lead II: one frontend, two identities."""
+    from physiowave.ecg_c1.leads import lead_id
+    icentia, pulsedb = PRETRAIN_DATASETS["icentia11k"], PRETRAIN_DATASETS["pulsedb"]
+    assert icentia.route_id == pulsedb.route_id == "L1_250"
+    x = _ecg(125.0, 10.0, leads=1)
+    out = process_ecg_record(x, ["II"], 125.0, "mV", ROUTES["L1_250"], 60.0,
+                             ECGPreprocessConfig(), slots=pulsedb.lead_slots)
+    assert out.windows.shape == (1, 1, 2500)          # 125 Hz -> 250 Hz
+    assert out.channel_ids == [lead_id("II")] != [lead_id("patch1")]
+    with pytest.raises(Exception, match="missing"):
+        process_ecg_record(x, ["II"], 125.0, "mV", ROUTES["L1_250"], 60.0,
+                           ECGPreprocessConfig(), slots=icentia.lead_slots)
 
 
 # --------------------------------------------------------------------------- #

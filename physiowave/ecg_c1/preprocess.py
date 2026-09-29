@@ -321,8 +321,19 @@ class ProcessedRecord:
 def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
                        fs: float, unit: str, route, mains_hz: Optional[float],
                        cfg: ECGPreprocessConfig,
-                       record_key: str = "") -> ProcessedRecord:
-    """One record, start to finish. Raises ECGPreprocessError to be counted."""
+                       record_key: str = "",
+                       slots: Optional[Sequence[str]] = None) -> ProcessedRecord:
+    """One record, start to finish. Raises ECGPreprocessError to be counted.
+
+    ``slots`` are the corpus's leads on the route, in row order -- the route's
+    own when not given. Two corpora can share a route's shape and record
+    different leads (Icentia11k's chest patch and PulseDB's lead II are both
+    one lead at 250 Hz), and the shard's channel ids are what tell them apart.
+    """
+    slots = tuple(slots) if slots else tuple(route.slots)
+    if len(slots) != route.n_channels:
+        raise ECGPreprocessError(
+            f"{len(slots)} slots for {route.route_id}'s {route.n_channels} rows")
     x = to_millivolts(data, unit)
     if x.ndim != 2:
         raise ECGPreprocessError(f"expected [leads, samples], got {x.shape}")
@@ -350,10 +361,10 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
     x = highpass(x, fs, cfg.highpass_hz)
     x = resample_to(x, fs, route.sampling_rate)
 
-    mapping = map_leads(x, lead_names, route.slots, cfg.derive_limb_leads)
+    mapping = map_leads(x, lead_names, slots, cfg.derive_limb_leads)
     if mapping.empty_slots:
         raise ECGPreprocessError(
-            f"{route.route_id} needs {list(route.slots)}; missing "
+            f"{route.route_id} needs {list(slots)}; missing "
             f"{mapping.empty_slots} (recorded: {list(lead_names)[:14]})")
 
     win = int(round(cfg.window_seconds * route.sampling_rate))
@@ -361,7 +372,7 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
     windows, starts = window_signal(mapping.placed, win, stride)
     n_cand = int(windows.shape[0])
     if n_cand == 0:
-        return ProcessedRecord(np.zeros((0, len(route.slots), win), np.float32),
+        return ProcessedRecord(np.zeros((0, len(slots), win), np.float32),
                                np.zeros(0), mapping.valid, [], mapping.derived,
                                {r: 0 for r in QC_REASONS}, 0)
 
@@ -384,7 +395,7 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
     windows, starts = windows[keep], starts[keep]
     windows = normalise_windows(windows, mapping.valid, cfg)
 
-    ids, _ = lead_ids_for(route.slots)
+    ids, _ = lead_ids_for(slots)
     ids = [i if mapping.valid[k] else 0 for k, i in enumerate(ids)]
     return ProcessedRecord(windows, starts / float(route.sampling_rate),
                            mapping.valid, ids, mapping.derived, qc, n_cand)

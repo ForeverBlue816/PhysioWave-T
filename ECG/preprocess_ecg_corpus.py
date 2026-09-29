@@ -19,7 +19,9 @@ One ECG corpus -> HDF5 shards and manifests for ECG C1 pretraining.
 
 ``--root`` is the raw download: a directory, or for the WFDB corpora the
 PhysioNet zip itself -- records are read out of the archive one at a time, so
-Icentia11k's 1.1 TB never has to be unpacked.
+Icentia11k's 1.1 TB never has to be unpacked. PulseDB's root is the directory
+of its downloaded pieces (``PulseDB_MIMIC.zip.001`` ...), read as the archive
+they were cut from, one subject inflated at a time into ``--tmp-dir``.
 
 HOW THE WORK IS CUT. The records are listed once (cached in
 ``<out-dir>/record_list.txt``), sorted, and cut into UNITS of
@@ -33,8 +35,7 @@ killed and resubmitted skips every unit with a part file and redoes the rest.
 THE SPLIT IS BY SUBJECT, by hash: ``subject_split_side`` decides a subject's
 side from its id alone, so every task, in any order, puts a subject on the
 same side and no shard ever spans both. Where a corpus carries no patient id
-(Georgia, MedalCare-XL, the Norwegian athletes) the record is its own subject,
-and the log says so.
+(Georgia) the record is its own subject, and the log says so.
 
 Everything a window goes through after it is read is
 physiowave.ecg_c1.preprocess -- the same for every corpus.
@@ -47,6 +48,7 @@ import concurrent.futures as cf
 import csv
 import glob
 import hashlib
+import io
 import json
 import os
 import re
@@ -269,12 +271,19 @@ def _wfdb_record(root, stem, ctx, subject, dataset_note=None) -> ECGRecord:
 class Adapter:
     #: Whether the corpus carries a patient id. False means record == subject.
     has_subject_ids = True
+    #: Keys per unit of work (one shard pair). None: 1000 on 12-lead routes,
+    #: 64 on single-lead ones.
+    records_per_unit: Optional[int] = None
 
     def list_keys(self, root: str) -> List[str]:
         raise NotImplementedError
 
     def read(self, root: str, key: str, ctx: Dict) -> ECGRecord:
         raise NotImplementedError
+
+    def read_records(self, root: str, key: str, ctx: Dict) -> List[ECGRecord]:
+        """Every record behind one key. One, except where a file holds many."""
+        return [self.read(root, key, ctx)]
 
 
 class MimicIVECG(Adapter):
@@ -307,7 +316,7 @@ class MimicIVECG(Adapter):
 
 
 class GenericWFDB(Adapter):
-    """One record per subject: Georgia, the Norwegian athletes, HEEDB-as-WFDB."""
+    """One record per subject: Georgia, which carries no patient id."""
 
     has_subject_ids = False
 
@@ -477,97 +486,285 @@ class MedalCareXL(Adapter):
                          self.FS, self.UNIT, {"variant": self.VARIANT})
 
 
-class HEEDB(Adapter):
-    """Harvard-Emory ECG Database: WFDB, 250 or 500 Hz, patients in metadata.csv.
+class SPH(Adapter):
+    """Shandong Provincial Hospital 12-lead database (figshare collection 5779802).
 
-    ``ECG/<site>/WFDB/...`` holds the records -- ``.hea`` with ``.mat`` at MGH
-    (I0001) and ``.dat`` at Emory (I0006) -- and ``ECG/<site>/metadata/
-    metadata.csv`` maps ``FileName`` to ``BDSPPatientID``. A patient has many
-    ECGs, so splitting by record would put one person on both sides: the
-    patient id is resolved when the corpus is LISTED, once, and carried in the
-    record key (``<stem>|subject=<id>``), so no worker ever loads the
-    eleven-million-row table.
-
-    A record the metadata does not name keeps its own stem as its subject, and
-    the listing says how many there were. The exact form of ``FileName`` is
-    not public; it is matched on the record's path, then on its file name.
+    ``records/<ECG_ID>.h5``, one dataset ``ecg`` of shape [12, N], float16, in
+    mV at 500 Hz; leads I, II, III, aVR, aVL, aVF, V1-V6. 10 to 56 s, so a
+    record gives one to five windows. ``metadata.csv`` maps ECG_ID to
+    Patient_ID -- 1,066 patients have more than one record, so the split is by
+    patient, not by file. The machine already removed mains, baseline wander
+    and muscle noise; the shared pipeline's notch and high-pass run anyway, and
+    change little.
     """
 
+    FS = 500.0
+    LEADS = ["I", "II", "III", "aVR", "aVL", "aVF",
+             "V1", "V2", "V3", "V4", "V5", "V6"]
+
     def list_keys(self, root):
-        stems = list_wfdb_records(root)
-        by_path: Dict[str, str] = {}
-        by_name: Dict[str, str] = {}
-        n_meta = 0
+        return sorted(os.path.relpath(p, root) for p in
+                      glob.glob(os.path.join(root, "**", "A*.h5"),
+                                recursive=True))
+
+    def _patients(self, root, ctx) -> Dict[str, str]:
+        pat = ctx.get(("sph_patients", root))
+        if pat is None:
+            pat = {}
+            for p in glob.glob(os.path.join(root, "**", "metadata.csv"),
+                               recursive=True):
+                with open(p, newline="") as f:
+                    for r in csv.DictReader(f):
+                        if r.get("ECG_ID") and r.get("Patient_ID"):
+                            pat[r["ECG_ID"]] = r["Patient_ID"]
+            ctx[("sph_patients", root)] = pat
+        return pat
+
+    def read(self, root, key, ctx):
+        import h5py
+        ecg_id = os.path.splitext(os.path.basename(key))[0]
+        patient = self._patients(root, ctx).get(ecg_id)
+        if patient is None:
+            raise ECGPreprocessError(
+                f"{ecg_id} is not in metadata.csv, so its patient -- and "
+                f"therefore its split side -- is unknown")
+        with h5py.File(os.path.join(root, key), "r") as f:
+            x = np.asarray(f["ecg"][...], dtype=np.float64)
+        if x.shape[0] != 12 and x.shape[-1] == 12:
+            x = x.T
+        return ECGRecord(ecg_id, f"sph_{patient}", x, list(self.LEADS),
+                         self.FS, "mV")
+
+
+class _PartsFile(io.RawIOBase):
+    """``NAME.001``, ``NAME.002``, ... read as the one file they were cut from.
+
+    PulseDB ships each half as a ZIP64 archive split into 15 GB pieces with no
+    multi-volume structure: the pieces concatenate to an ordinary zip. This
+    reads across them without writing the 388 GB concatenation, and zipfile
+    and the member reader below take it like any seekable file.
+    """
+
+    def __init__(self, paths: Sequence[str]):
+        self.paths = list(paths)
+        self.sizes = [os.path.getsize(p) for p in self.paths]
+        self.starts = np.cumsum([0] + self.sizes)
+        self.pos = 0
+        self._fh: Dict[int, object] = {}
+
+    def readable(self):
+        return True
+
+    def seekable(self):
+        return True
+
+    def tell(self):
+        return self.pos
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        if whence == io.SEEK_SET:
+            self.pos = offset
+        elif whence == io.SEEK_CUR:
+            self.pos += offset
+        else:
+            self.pos = int(self.starts[-1]) + offset
+        return self.pos
+
+    def _part(self, i):
+        fh = self._fh.get(i)
+        if fh is None:
+            fh = open(self.paths[i], "rb")
+            self._fh[i] = fh
+        return fh
+
+    def read(self, n=-1):
+        total = int(self.starts[-1])
+        if n is None or n < 0:
+            n = total - self.pos
+        n = max(0, min(n, total - self.pos))
+        out = bytearray()
+        while n > 0:
+            i = int(np.searchsorted(self.starts, self.pos, side="right") - 1)
+            local = self.pos - int(self.starts[i])
+            take = min(n, self.sizes[i] - local)
+            fh = self._part(i)
+            fh.seek(local)
+            chunk = fh.read(take)
+            if not chunk:
+                break
+            out += chunk
+            self.pos += len(chunk)
+            n -= len(chunk)
+        return bytes(out)
+
+    def readinto(self, b):
+        data = self.read(len(b))
+        b[:len(data)] = data
+        return len(data)
+
+    def close(self):
+        for fh in self._fh.values():
+            fh.close()
+        self._fh.clear()
+        super().close()
+
+
+def _open_archive(path: str):
+    """``path`` if it is a whole file, else its ``.001 ... .NNN`` pieces."""
+    if os.path.isfile(path):
+        return open(path, "rb")
+    parts = sorted(glob.glob(glob.escape(path) + ".[0-9][0-9][0-9]"))
+    if not parts:
+        raise ECGPreprocessError(f"neither {path} nor {path}.001... exists")
+    return _PartsFile(parts)
+
+
+class PulseDB(Adapter):
+    """PulseDB (pulselabteam/PulseDB): 10 s ICU/OR segments from MIMIC-III and VitalDB.
+
+    One MATLAB 7.3 (HDF5) file per subject, ``PulseDB_{MIMIC,Vital}/pNNNNNN.mat``,
+    holding a 1xN struct array ``Subj_Wins``: one element per 10 s segment,
+    with the ECG, PPG and ABP in several renderings. The ECG taken here is
+    ``ECG_Record`` -- lead II at 125 Hz in mV, as recorded. NOT ``ECG_Raw`` or
+    ``ECG_F``: those are min-max scaled to [0, 1] per segment, which destroys
+    the amplitude the normalisation and the QC work from.
+
+    THE SUBJECT KEY INCLUDES THE SOURCE. The two halves number their subjects
+    independently and 28 ids occur in both; ``p000188`` in MIMIC and in VitalDB
+    are different people.
+
+    ``--root`` is either the unpacked tree, or the directory holding the
+    downloaded ``PulseDB_MIMIC.zip.001 ...`` and ``PulseDB_Vital.zip.001 ...``
+    pieces, which are read in place: listing takes each archive's directory
+    from its last piece, and a subject's .mat is inflated into ``--tmp-dir`` for
+    as long as it is being read and then deleted. The largest is ~3 GB.
+    """
+
+    FS = 125.0
+    records_per_unit = 4             # subjects; ~1,000 segments each on average
+    ARCHIVES = ("PulseDB_MIMIC.zip", "PulseDB_Vital.zip")
+    _SOURCE = re.compile(r"PulseDB_(MIMIC|Vital)", re.I)
+
+    def list_keys(self, root):
+        keys = []
         for dirpath, _dirs, files in os.walk(root, followlinks=True):
-            if "metadata.csv" not in files:
+            for fn in files:
+                if fn.endswith(".mat") and self._SOURCE.search(dirpath):
+                    keys.append(os.path.relpath(os.path.join(dirpath, fn), root))
+        if keys:
+            return sorted(keys)
+        for name in self.ARCHIVES:
+            path = os.path.join(root, name)
+            if not (os.path.isfile(path) or os.path.isfile(path + ".001")):
                 continue
-            with open(os.path.join(dirpath, "metadata.csv"), newline="") as f:
-                for r in csv.DictReader(f):
-                    fn, pid = r.get("FileName"), r.get("BDSPPatientID")
-                    if not fn or not pid:
-                        continue
-                    stem = os.path.splitext(fn.replace("\\", "/").lstrip("./"))[0]
-                    by_path[stem] = pid
-                    by_name[os.path.basename(stem)] = pid
-                    n_meta += 1
-        keys, unmatched = [], 0
-        for s in stems:
-            norm = s.replace(os.sep, "/")
-            pid = by_path.get(norm) or by_name.get(os.path.basename(norm))
-            if pid is None:
-                for cut in range(1, norm.count("/") + 1):
-                    pid = by_path.get(norm.split("/", cut)[-1])
-                    if pid:
+            with _open_archive(path) as fh, zipfile.ZipFile(fh) as zf:
+                for i in zf.infolist():
+                    if i.filename.endswith(".mat"):
+                        keys.append(f"{i.filename}|{name}:{i.header_offset}:"
+                                    f"{i.compress_size}:{i.file_size}:"
+                                    f"{i.compress_type}")
+        return sorted(keys)
+
+    def _materialise(self, root, key, ctx) -> Tuple[str, bool]:
+        """A path h5py can open, and whether it is a temporary to delete."""
+        member, _, spec = key.partition("|")
+        if not spec:
+            return os.path.join(root, member), False
+        import struct
+        import zlib
+        name, off, csize, usize, method = spec.rsplit(":", 4)
+        off, csize, usize, method = int(off), int(csize), int(usize), int(method)
+        tmp_dir = ctx.get("tmp_dir") or os.environ.get("PW_ECG_TMP") \
+            or tempfile.gettempdir()
+        os.makedirs(tmp_dir, exist_ok=True)
+        dst = os.path.join(tmp_dir, f"pulsedb_{os.getpid()}_"
+                                    f"{os.path.basename(member)}")
+        with _open_archive(os.path.join(root, name)) as fh:
+            fh.seek(off)
+            head = fh.read(30)
+            if head[:4] != b"PK\x03\x04":
+                raise ECGPreprocessError(
+                    f"{member}: no local header at {off} -- the pieces changed "
+                    f"since the listing (--refresh-list)")
+            n_name, n_extra = struct.unpack("<HH", head[26:30])
+            fh.seek(off + 30 + n_name + n_extra)
+            inflate = (zlib.decompressobj(-15) if method == zipfile.ZIP_DEFLATED
+                       else None)
+            if method not in (zipfile.ZIP_DEFLATED, zipfile.ZIP_STORED):
+                raise ECGPreprocessError(f"{member}: zip method {method}")
+            left, written = csize, 0
+            with open(dst, "wb") as out:
+                while left > 0:
+                    chunk = fh.read(min(left, 1 << 24))
+                    if not chunk:
                         break
-            if pid is None:
-                unmatched += 1
-                keys.append(s)
-            else:
-                keys.append(f"{s}|subject={pid}")
-        print(f"  HEEDB: {len(stems):,} record(s), {n_meta:,} metadata row(s); "
-              f"{unmatched:,} record(s) with no patient id "
-              f"{'(each is its own subject)' if unmatched else ''}", flush=True)
-        if stems and not n_meta:
-            print("  WARNING: no metadata.csv under the root -- every record is "
-                  "its own subject, and a patient's ECGs can land on both "
-                  "sides of the split.", flush=True)
-        return keys
+                    left -= len(chunk)
+                    data = inflate.decompress(chunk) if inflate else chunk
+                    out.write(data)
+                    written += len(data)
+                if inflate:
+                    tail = inflate.flush()
+                    out.write(tail)
+                    written += len(tail)
+        if written != usize:
+            os.unlink(dst)
+            raise ECGPreprocessError(
+                f"{member}: inflated to {written} bytes, expected {usize} -- a "
+                f"missing or truncated piece")
+        return dst, True
+
+    def read_records(self, root, key, ctx):
+        import h5py
+        member = record_stem(key)
+        m = self._SOURCE.search(member)
+        source = m.group(1).lower() if m else "unknown"
+        path, temporary = self._materialise(root, key, ctx)
+        out: List[ECGRecord] = []
+        try:
+            with h5py.File(path, "r") as f:
+                S = f["Subj_Wins"]
+
+                def text(field, i):
+                    return "".join(map(chr, np.asarray(
+                        f[S[field][0, i]][()]).ravel()))
+
+                refs = S["ECG_Record"][0]
+                include = S["IncludeFlag"][0] if "IncludeFlag" in S else None
+                subject = text("SubjectID", 0) if "SubjectID" in S else \
+                    os.path.splitext(os.path.basename(member))[0]
+                for i in range(len(refs)):
+                    if include is not None and not bool(
+                            np.asarray(f[include[i]][()]).ravel()[0]):
+                        continue
+                    x = np.asarray(f[refs[i]][()], dtype=np.float64).ravel()
+                    seg = int(np.asarray(f[S["SegmentID"][0, i]][()]).ravel()[0]) \
+                        if "SegmentID" in S else i
+                    out.append(ECGRecord(
+                        f"{source}/{subject}/seg{seg:06d}",
+                        f"pulsedb_{source}_{subject}", x[None, :], ["II"],
+                        self.FS, "mV", {"source": source}))
+        finally:
+            if temporary:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        if not out:
+            raise ECGPreprocessError(f"{member}: no included segment")
+        return out
 
     def read(self, root, key, ctx):
-        stem, _, rest = key.partition("|")
-        subject = rest[len("subject="):] if rest.startswith("subject=") \
-            else os.path.basename(stem)
-        return _wfdb_record(root, stem, ctx, f"heedb_{subject}")
-
-
-class Unreadable(Adapter):
-    """A registered corpus with no reader yet. Says so instead of guessing."""
-
-    def __init__(self, why: str):
-        self.why = why
-
-    def list_keys(self, root):
-        raise SystemExit(self.why)
-
-    def read(self, root, key, ctx):
-        raise SystemExit(self.why)
+        return self.read_records(root, key, ctx)[0]
 
 
 ADAPTERS: Dict[str, Adapter] = {
     "mimic_iv_ecg": MimicIVECG(),
     "code15": CODE(),
-    "code2": Unreadable(
-        "CODE-II has no reader yet. Its distribution format is not public "
-        "(the paper describes exams of 2-4 tracings of 7-12 s at 300-1000 Hz "
-        "in a custom format), so it cannot be written before the files are in "
-        "hand. Add an Adapter in ECG/preprocess_ecg_corpus.py that yields "
-        "ECGRecords -- leads by name, rate, unit, patient id -- and register "
-        "it here; everything after reading is shared."),
     "medalcare_xl": MedalCareXL(),
-    "norwegian_athlete": GenericWFDB(),
     "georgia": GenericWFDB(),
-    "heedb": HEEDB(),
     "icentia11k": Icentia11k(),
+    "sph": SPH(),
+    "pulsedb": PulseDB(),
 }
 
 
@@ -578,14 +775,18 @@ ADAPTERS: Dict[str, Adapter] = {
 #: How each corpus spells its leads and at what rate it records, so the smoke
 #: corpus exercises the alias table and the resampler the real one will.
 _SMOKE_NAMES = {
-    "code15": CODE.LEADS, "code2": CODE.LEADS,
-    "norwegian_athlete": ["I", "II", "III", "AVR", "AVL", "AVF",
-                          "V1", "V2", "V3", "V4", "V5", "V6"],
+    "code15": CODE.LEADS,
     # MIMIC-IV-ECG's files store aVF before aVL.
     "mimic_iv_ecg": ["I", "II", "III", "aVR", "aVF", "aVL",
                      "V1", "V2", "V3", "V4", "V5", "V6"],
     "icentia11k": ["patch1"],
+    "pulsedb": ["II"],
 }
+
+#: Record length per corpus, so each smoke corpus has the shape of the real
+#: one: Icentia's long segments exercise the per-record cap, SPH's 10-60 s
+#: records give several windows each.
+_SMOKE_SECONDS = {"icentia11k": 120.0, "sph": 30.0}
 
 
 def synthetic_ecg(n_leads: int, fs: float, seconds: float,
@@ -631,8 +832,7 @@ def smoke_records(dataset_id: str, n: int, seed: int) -> List[ECGRecord]:
                              ["I", "II", "III", "aVR", "aVL", "aVF",
                               "V1", "V2", "V3", "V4", "V5", "V6"])
     fs = float(spec.native_rate or spec.route.sampling_rate)
-    # Continuous corpora get long records so the per-record cap is exercised.
-    seconds = 120.0 if spec.route.n_channels == 1 else 10.0
+    seconds = _SMOKE_SECONDS.get(dataset_id, 10.0)
     out = []
     for r in range(n):
         x = synthetic_ecg(leads, fs, seconds, rng)
@@ -676,6 +876,59 @@ def _keys_sha(keys: Sequence[str]) -> str:
     return hashlib.sha256("\n".join(keys).encode()).hexdigest()[:16]
 
 
+def _process_one(rec: ECGRecord, dataset_id, route, spec, mains_hz, cfg,
+                 stats: Dict, failures: List[Dict], buf: Dict) -> None:
+    """One record through the pipeline, into the unit's train or val buffer."""
+    stats["records_read"] += 1
+    rate_key = f"{rec.fs:g}"
+    stats["source_rates"][rate_key] = stats["source_rates"].get(rate_key, 0) + 1
+    # As the FILE spelled them, for the statistics: the first few
+    # distinct spellings are what tell you the alias table is right.
+    lead_key = ",".join(map(str, [rec.notes["source_lead_name"]]
+                            if "source_lead_name" in rec.notes
+                            else rec.lead_names))
+    seen = stats["source_lead_names"]
+    if lead_key in seen or len(seen) < 8:
+        seen[lead_key] = seen.get(lead_key, 0) + 1
+    try:
+        out = process_ecg_record(rec.data, rec.lead_names, rec.fs,
+                                 rec.unit, route, mains_hz, cfg,
+                                 record_key=f"{dataset_id}:{rec.record_id}",
+                                 slots=spec.lead_slots)
+    except ECGPreprocessError as exc:
+        stats["records_failed"] += 1
+        failures.append({"record": rec.record_id, "reason": str(exc)})
+        return
+    except Exception as exc:                               # noqa: BLE001
+        stats["records_failed"] += 1
+        failures.append({"record": rec.record_id, "reason": str(exc),
+                         "traceback": traceback.format_exc(limit=2)})
+        return
+    stats["windows_candidate"] += out.n_candidate_windows
+    if out.n_candidate_windows == 0:
+        # Not a failure and not QC: the record holds no whole window. A
+        # corpus of 10 s ECGs never does this; CODE's shorter exams do,
+        # and the count is how you find out how many.
+        stats["records_shorter_than_window"] += 1
+    for r, c in out.qc.items():
+        stats["qc_dropped"][r] += int(c)
+    if out.derived:
+        stats["derived_limb_leads"] += 1
+    n = out.windows.shape[0]
+    if n == 0:
+        return
+    stats["records_with_windows"] += 1
+    stats["windows_kept"] += n
+    buf["_ids"] = out.channel_ids
+    side = subject_split_side(rec.subject_id, cfg.val_fraction,
+                              cfg.split_seed)
+    # The windows are all a shard needs of the record; its raw signal -- up
+    # to 70 minutes for an Icentia11k segment -- is let go now rather than
+    # held until the unit's shards are written.
+    rec.data = None
+    buf[side].append((out, rec))
+
+
 def process_unit(payload) -> Dict:
     """Read, preprocess and write one unit. Returns its part-file content.
 
@@ -690,7 +943,7 @@ def process_unit(payload) -> Dict:
     adapter = ADAPTERS[dataset_id]
     t0 = time.time()
 
-    buf = {"train": [], "val": []}
+    buf = {"train": [], "val": [], "_ids": None}
     stats = {"records_read": 0, "records_with_windows": 0,
              "records_shorter_than_window": 0,
              "windows_candidate": 0, "windows_kept": 0,
@@ -707,7 +960,7 @@ def process_unit(payload) -> Dict:
         # inside a generator finishes it, so the first unreadable record
         # would silently end the unit.
         try:
-            rec = synthetic[j] if smoke else adapter.read(root, k, _CTX)
+            recs = [synthetic[j]] if smoke else adapter.read_records(root, k, _CTX)
         except ECGPreprocessError as exc:
             stats["records_failed"] += 1
             failures.append({"record": record_stem(k), "reason": str(exc)})
@@ -717,53 +970,16 @@ def process_unit(payload) -> Dict:
             failures.append({"record": record_stem(k), "reason": f"unreadable: {exc}",
                              "traceback": traceback.format_exc(limit=2)})
             continue
-        stats["records_read"] += 1
-        rate_key = f"{rec.fs:g}"
-        stats["source_rates"][rate_key] = stats["source_rates"].get(rate_key, 0) + 1
-        # As the FILE spelled them, for the statistics: the first few
-        # distinct spellings are what tell you the alias table is right.
-        lead_key = ",".join(map(str, [rec.notes["source_lead_name"]]
-                                if "source_lead_name" in rec.notes
-                                else rec.lead_names))
-        seen = stats["source_lead_names"]
-        if lead_key in seen or len(seen) < 8:
-            seen[lead_key] = seen.get(lead_key, 0) + 1
-        try:
-            out = process_ecg_record(rec.data, rec.lead_names, rec.fs,
-                                     rec.unit, route, mains_hz, cfg,
-                                     record_key=f"{dataset_id}:{rec.record_id}")
-        except ECGPreprocessError as exc:
-            stats["records_failed"] += 1
-            failures.append({"record": rec.record_id, "reason": str(exc)})
-            continue
-        except Exception as exc:                               # noqa: BLE001
-            stats["records_failed"] += 1
-            failures.append({"record": rec.record_id, "reason": str(exc),
-                             "traceback": traceback.format_exc(limit=2)})
-            continue
-        stats["windows_candidate"] += out.n_candidate_windows
-        if out.n_candidate_windows == 0:
-            # Not a failure and not QC: the record holds no whole window. A
-            # corpus of 10 s ECGs never does this; CODE's shorter exams do,
-            # and the count is how you find out how many.
-            stats["records_shorter_than_window"] += 1
-        for r, c in out.qc.items():
-            stats["qc_dropped"][r] += int(c)
-        if out.derived:
-            stats["derived_limb_leads"] += 1
-        n = out.windows.shape[0]
-        if n == 0:
-            continue
-        stats["records_with_windows"] += 1
-        stats["windows_kept"] += n
-        ids_ref = out.channel_ids
-        side = subject_split_side(rec.subject_id, cfg.val_fraction,
-                                  cfg.split_seed)
-        buf[side].append((out, rec))
+        for rec in recs:
+            _process_one(rec, dataset_id, route, spec, mains_hz, cfg, stats,
+                         failures, buf)
+        if buf["_ids"]:
+            ids_ref = buf["_ids"]
 
     rows = {"train": [], "val": []}
     subjects = {"train": [], "val": []}
-    for side, items in buf.items():
+    for side in ("train", "val"):
+        items = buf[side]
         if not items:
             continue
         windows = np.concatenate([o.windows for o, _ in items])
@@ -786,7 +1002,7 @@ def process_unit(payload) -> Dict:
         path = os.path.abspath(os.path.join(out_dir, "shards",
                                             f"{uid}_{side}.h5"))
         entry = write_shard(path, windows, route, dataset_id,
-                            list(route.slots), ids_ref, items[0][0].valid,
+                            list(spec.lead_slots), ids_ref, items[0][0].valid,
                             subj, rid, starts.tolist(), rates[0], prov)
         subjects[side] = entry.pop("subjects")
         entry["n_subjects"] = len(subjects[side])
@@ -836,7 +1052,13 @@ def inspect(dataset_id: str, root: str, keys: List[str], n: int,
         k = keys[int(i)]
         shown = record_stem(k)[-44:]
         try:
-            rec = adapter.read(root, k, _CTX)
+            recs = adapter.read_records(root, k, _CTX)
+            if len(recs) > 1:
+                # A file of many segments (PulseDB): report its first, and say
+                # how many there are.
+                print(f"  {shown:<44s} {len(recs):,} segment(s) in this file")
+                shown = recs[0].record_id[-44:]
+            rec = recs[0]
             mv = to_millivolts(rec.data, rec.unit)
             p2p = float(np.median(np.nanmax(mv, axis=1) - np.nanmin(mv, axis=1)))
             spelled = ",".join([rec.notes["source_lead_name"]]
@@ -845,7 +1067,8 @@ def inspect(dataset_id: str, root: str, keys: List[str], n: int,
             names_seen[spelled] = names_seen.get(spelled, 0) + 1
             out = process_ecg_record(rec.data, rec.lead_names, rec.fs,
                                      rec.unit, route, mains_hz, cfg,
-                                     record_key=f"{dataset_id}:{rec.record_id}")
+                                     record_key=f"{dataset_id}:{rec.record_id}",
+                                     slots=spec.lead_slots)
             drop = {r: c for r, c in out.qc.items() if c}
             verdict = ("shorter than one window" if not out.n_candidate_windows
                        else "ok" if not drop else f"dropped {drop}")
@@ -886,8 +1109,8 @@ def _task_spec(text: str) -> Tuple[int, int]:
     return i, n
 
 
-#: How long a non-zero array task waits for task 0's listing. Listing HEEDB's
-#: millions of files on Lustre is the slow case; this is a bound, not an
+#: How long a non-zero array task waits for task 0's listing. Listing a
+#: million-file corpus on Lustre is the slow case; this is a bound, not an
 #: estimate, and reaching it means task 0 died.
 LIST_WAIT_S = 4 * 3600
 
@@ -1036,11 +1259,14 @@ def main(argv=None) -> int:
     p.add_argument("--out-dir", required=True)
     p.add_argument("--task", type=_task_spec, default=None, metavar="I/N")
     p.add_argument("--jobs", type=int, default=1)
+    p.add_argument("--tmp-dir", default=None,
+                   help="where archive members are inflated while read "
+                        "(default <out-dir>/tmp)")
     p.add_argument("--records-per-unit", type=int, default=None,
-                   help="records per unit of work (and per shard pair). "
+                   help="keys per unit of work (and per shard pair). "
                         "Default 1000 for 12-lead corpora, 64 for Icentia11k "
-                        "segments. Changing it re-cuts every unit, so a "
-                        "resumed run must keep it.")
+                        "segments, 4 for PulseDB subject files. Changing it "
+                        "re-cuts every unit, so a resumed run must keep it.")
     p.add_argument("--windows-per-shard", type=int, default=None,
                    help=argparse.SUPPRESS)        # smoke only: small units
     p.add_argument("--max-records", type=int, default=None,
@@ -1117,7 +1343,14 @@ def main(argv=None) -> int:
     os.makedirs(os.path.join(args.out_dir, "parts"), exist_ok=True)
     os.makedirs(os.path.join(args.out_dir, "shards"), exist_ok=True)
 
-    per_unit = args.records_per_unit or (64 if route.n_channels == 1 else 1000)
+    per_unit = (args.records_per_unit or ADAPTERS[dataset_id].records_per_unit
+                or (64 if route.n_channels == 1 else 1000))
+    # Scratch for archive members inflated while they are read (PulseDB: up
+    # to ~3 GB per subject per worker). On the corpus's filesystem, not the
+    # node's /tmp, which on a compute node may not hold sixteen of them. The
+    # environment carries it to spawned workers.
+    os.environ["PW_ECG_TMP"] = os.path.abspath(
+        args.tmp_dir or os.path.join(args.out_dir, "tmp"))
     if args.smoke_test:
         keys = [f"smoke_{i:05d}" for i in range(args.smoke_records)]
         per_unit = args.windows_per_shard or per_unit

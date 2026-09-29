@@ -10,7 +10,7 @@ on ECG. About 30 M parameters (512 wide, 9 deep, 8 heads: 30.08 M in total,
 ```bash
 # 1. download (login node; resumable, rerun to continue)
 bash scripts/download_ecg_pretrain_corpora.sh status
-nohup bash scripts/download_ecg_pretrain_corpora.sh all > ~/ecg_download.log 2>&1 &
+nohup bash scripts/download_ecg_pretrain_corpora.sh all > ~/ecg_download.log 2>&1 &   # ~730 GB
 
 # 2. look at each corpus before processing it -- the amplitude column is the unit check
 DATASET=mimic_iv_ecg INSPECT=40 bash ECG/preprocess_ecg_corpus.sh
@@ -40,17 +40,20 @@ python -m physiowave.train.pretrain_main --config pretrain/ecg_c1_moe --smoke-te
 
 | route     | leads | rate   | window | patch | tokens | corpora |
 |-----------|-------|--------|--------|-------|--------|---------|
-| `L12_500` | 12    | 500 Hz | 10 s   | 0.5 s | 240    | MIMIC-IV-ECG, CODE-15%, MedalCare-XL, Norwegian athletes, Georgia, HEEDB, CODE-II |
-| `L1_250`  | 1     | 250 Hz | 10 s   | 0.5 s | 20     | Icentia11k |
+| `L12_500` | 12    | 500 Hz | 10 s   | 0.5 s | 240    | MIMIC-IV-ECG, CODE-15%, SPH, Georgia, MedalCare-XL |
+| `L1_250`  | 1     | 250 Hz | 10 s   | 0.5 s | 20     | Icentia11k (chest patch), PulseDB (lead II) |
 
 As on the EEG side, the route is a property of the recording, carried in the
 data, never learned. Each route has its own wavelet frontend (the filters are
 per lead), each sampling rate its own patch embedding and decoders, and
-everything else is shared. CODE is recorded at 400 Hz and HEEDB partly at
-250 Hz; both are resampled to 500, and each shard records it.
+everything else is shared. CODE is recorded at 400 Hz and resampled to 500;
+PulseDB is 125 Hz and resampled to 250 (a 0.5 s patch at 125 Hz would be 62.5
+samples, so it cannot have a route of its own). Each shard records the
+resampling. The two single-lead corpora share one frontend and are told apart
+by their lead names: `patch1` for Icentia's chest patch, `II` for PulseDB.
 
 **What 10 s costs.** Most corpora store 10 s records, so a record is one
-window. CODE-15% does not: about 59% of its exams are 7.3 s and give no 10 s
+window. CODE-15% does not: about 58% of its exams are 7.3 s and give no 10 s
 window. Preprocessing reports them as `records_shorter_than_window`, and
 Georgia's 52 five-second records are dropped the same way.
 `WINDOW_SECONDS = 5.0` in `physiowave/ecg_c1/routes.py` keeps all of them,
@@ -104,28 +107,33 @@ sample, has a flat lead, or exceeds 25 mV, and drops are counted per reason.
 |----|--------------|--------|-------|
 | `mimic_iv_ecg` | 12 @ 500 | open (PhysioNet) | read from the 36 GB zip, not unpacked. Files store aVF before aVL; leads are placed by name |
 | `code15` | 12 @ 400 | open (Zenodo) | zero padding stripped; the extra `exam_id 0` row per file skipped; values are mV despite the README's "1e-4 V"; patient from exams.csv |
+| `sph` | 12 @ 500 | open, CC0 (figshare) | Shandong Provincial Hospital, 25,770 ECGs of 10–56 s, so a record gives 1–5 windows. Float16 mV, already filtered by the machine. Patient from `metadata.csv`; 50 Hz mains |
 | `medalcare_xl` | 12 @ 500 | open (Zenodo) | simulated. One rendering of three (`noise`, via `--medalcare-variant`); the subject is the torso model `run_SXX` |
-| `norwegian_athlete` | 12 @ 500 | open (PhysioNet) | 28 records. Each lead is rescaled to full int16 range in the files, so its amplitudes are not physical |
 | `georgia` | 12 @ 500 | open (PhysioNet Challenge 2021) | recursive HTTP, since there is no zip or open S3 copy. No patient id |
-| `heedb` | 12 @ 250/500 | credentialed (bdsp.io) | synced from its S3 access point with your credentials; patient from `metadata.csv` |
 | `icentia11k` | 1 @ 250 | open (PhysioNet) | read from the 202 GB zip; 16 random windows per 70-minute segment |
-| `code2` | 12 | restricted | by request. Its format is not public, so there is no reader until the files are in hand |
+| `pulsedb` | 1 @ 125 | open (Box); MIMIC half ODbL, VitalDB half CC BY-NC-SA | ~5.2 M 10 s segments of lead II from MIMIC-III and VitalDB, resampled to 250 Hz. Read from the 26 downloaded pieces (388 GB) without joining or unpacking them: one subject's `.mat` is inflated at a time. Takes `ECG_Record` (mV), not `ECG_Raw`/`ECG_F`, which are min-max scaled. The subject key includes the half, since 28 ids occur in both |
 
 Never pretrained on: `ptbxl`, `cpsc2018` and `chapman_shaoxing`, the
 repository's ECG fine-tuning benchmarks. Preprocessing and the merge refuse
 them by name.
 
 The split is by subject hash (5% validation), so every array task puts a given
-patient on the same side. Georgia and the athletes carry no patient id, so
-each of their records is its own subject.
+patient on the same side. Georgia carries no patient id, so each of its
+records is its own subject.
 
 The adapters were checked against real files on 2026-09-29:
 
 - a MIMIC-IV-ECG record, read from a zip;
 - Georgia `.mat` records, including a 5 s one;
 - an Icentia11k segment, read from a zip;
-- all 28 athletes;
-- CODE-15%'s `exams_part17`.
+- CODE-15%'s `exams_part17`;
+- 7 SPH records;
+- a PulseDB MIMIC subject and a VitalDB subject, read both unpacked and from
+  deflated, split pieces.
 
-MedalCare-XL and HEEDB were checked against their documented layouts only.
-Run `INSPECT` before an array on either.
+MedalCare-XL was checked against its documented layout only. Run `INSPECT`
+before an array on it.
+
+The Norwegian athlete set, HEEDB and CODE-II were dropped on 2026-09-29. The
+athletes' leads are each rescaled to full int16 range, so their amplitudes are
+not physical. HEEDB and CODE-II need credentials or a request.

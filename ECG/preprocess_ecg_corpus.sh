@@ -4,8 +4,8 @@
 #
 #   DATASET=mimic_iv_ecg INSPECT=40 bash ECG/preprocess_ecg_corpus.sh   # look
 #   DATASET=mimic_iv_ecg JOBS=16 bash ECG/preprocess_ecg_corpus.sh      # do
-#   DATASET=heedb LIST_ONLY=1 bash ECG/preprocess_ecg_corpus.sh         # list once
-#   sbatch --export=ALL,DATASET=heedb --array=0-63 \
+#   DATASET=pulsedb LIST_ONLY=1 bash ECG/preprocess_ecg_corpus.sh       # list once
+#   sbatch --export=ALL,DATASET=pulsedb --array=0-7 \
 #          scripts/slurm/cineca_ecg_corpus_preprocess.sbatch            # in parallel
 #
 # The raw location follows scripts/download_ecg_pretrain_corpora.sh:
@@ -18,8 +18,8 @@
 # in uV and every threshold would be wrong).
 #
 # ENVIRONMENT VARIABLES:
-#   DATASET        mimic_iv_ecg | code15 | medalcare_xl | norwegian_athlete |
-#                  georgia | heedb | icentia11k | code2           (required)
+#   DATASET        mimic_iv_ecg | code15 | sph | georgia | medalcare_xl |
+#                  icentia11k | pulsedb                            (required)
 #   ECG_ROOT       download root  (/leonardo_scratch/large/userexternal/ychen003/bio/ecg)
 #   RAW_ROOT       this corpus's raw download       ($ECG_ROOT/<Name>/raw[/x.zip])
 #   DATA_ROOT      corpus root                      ($ECG_ROOT/ecg_c1_corpus)
@@ -45,14 +45,13 @@ DATASET="${DATASET:-}"
 case "${DATASET}" in
     mimic_iv_ecg)       NAME=MIMIC-IV-ECG ;;
     code15)             NAME=CODE-15 ;;
-    medalcare_xl)       NAME=MedalCare-XL ;;
-    norwegian_athlete)  NAME=NorwegianAthlete ;;
+    sph)                NAME=SPH ;;
     georgia)            NAME=Georgia ;;
-    heedb)              NAME=HEEDB ;;
+    medalcare_xl)       NAME=MedalCare-XL ;;
     icentia11k)         NAME=Icentia11k ;;
-    code2)              NAME=CODE-II ;;
-    "") echo "ERROR: set DATASET. One of: mimic_iv_ecg code15 medalcare_xl" >&2
-        echo "       norwegian_athlete georgia heedb icentia11k code2" >&2
+    pulsedb)            NAME=PulseDB ;;
+    "") echo "ERROR: set DATASET. One of: mimic_iv_ecg code15 sph georgia" >&2
+        echo "       medalcare_xl icentia11k pulsedb" >&2
         exit 1 ;;
     *)  echo "ERROR: unknown DATASET '${DATASET}'." >&2; exit 1 ;;
 esac

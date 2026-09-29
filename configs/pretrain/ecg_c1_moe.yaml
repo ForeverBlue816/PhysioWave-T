@@ -9,14 +9,13 @@
 #
 #   route     leads  rate   window  patch   tokens   corpora
 #   L12_500   12     500    10 s    0.5 s   240      MIMIC-IV-ECG, CODE-15%,
-#                                                    MedalCare-XL, Norwegian
-#                                                    athletes, Georgia, HEEDB,
-#                                                    CODE-II
-#   L1_250     1     250    10 s    0.5 s    20      Icentia11k
+#                                                    SPH, Georgia, MedalCare-XL
+#   L1_250     1     250    10 s    0.5 s    20      Icentia11k (chest patch),
+#                                                    PulseDB (lead II)
 #
 # The window is not a config key: it is what the shards were cut to, so it
 # lives in physiowave/ecg_c1/routes.py (WINDOW_SECONDS) beside the reason it
-# is 10 s -- and what that costs: ~59% of CODE-15%'s exams are 7.3 s and give
+# is 10 s -- and what that costs: ~58% of CODE-15%'s exams are 7.3 s and give
 # no 10 s window.
 #
 # Like the EEG config, deliberately not `defaults: [base, ...]`: nothing of
@@ -33,12 +32,16 @@ data:
   manifest_train: null
   manifest_val: null
   # temperature:0.5 for the reason the EEG config gives, and the spread here
-  # is wider: HEEDB is ~11.7 M windows and the Norwegian athletes are 28. Under
-  # `proportional` HEEDB would be ~75% of every epoch and the athletes would
-  # never be drawn; under `balanced` the single-lead route would get half the
-  # steps. At 0.5 a corpus 100x larger gets 10x the windows. The banner prints
-  # the passes/epoch this actually buys per corpus -- the smallest ones are
-  # re-read many times by design, and warned about.
+  # is wide: Icentia11k (~8.7 M windows at 16 per segment) and PulseDB (~5.2 M)
+  # are single-lead and together ~90% of all windows, against ~1 M 12-lead
+  # windows from MIMIC-IV-ECG and far fewer from Georgia and MedalCare-XL.
+  # Under `proportional` the 12-lead route would get about a tenth of the
+  # windows and Georgia almost none; under `balanced` half of all steps would
+  # go to the single-lead route. At 0.5 a corpus 100x larger gets 10x the
+  # windows, which by these counts leaves ~3/4 of STEPS -- and ~4/5 of tokens
+  # -- on the 12-lead route. The banner prints the realised mixture and the
+  # passes/epoch per corpus; the small ones are re-read by design, and warned
+  # about.
   weights: temperature:0.5
 
 objective:
