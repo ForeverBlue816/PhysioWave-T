@@ -66,10 +66,9 @@ PW_REPO="$(cd "${HERE}/.." && pwd)"
 export PW_REPO
 PYTHON="${PYTHON:-python}"
 
-# MIMIC-IV-ECG last: it comes only from PhysioNet's zip endpoint, measured at
-# ~0.04 MB/s per connection on 2026-09-29 (days for 36 GB), and nothing fast
-# should queue behind it. It is not on the open S3 bucket; logged in to
-# PhysioNet, the project page shows an AWS command that may be faster.
+# MIMIC-IV-ECG last: it needs the Kaggle CLI and a token, and without them
+# (MIMIC_SOURCE=physionet) it is days at PhysioNet's current speed; nothing
+# fast should queue behind either.
 OPEN_DATASETS="georgia sph medalcare_xl code15 icentia11k pulsedb mimic_iv_ecg"
 
 # --------------------------------------------------------------------------- #
@@ -81,6 +80,17 @@ OPEN_DATASETS="georgia sph medalcare_xl code15 icentia11k pulsedb mimic_iv_ecg"
 # it too.
 MIMIC_URL="${MIMIC_URL:-https://physionet.org/content/mimic-iv-ecg/get-zip/1.0/}"
 MIMIC_ZIP="${MIMIC_ZIP:-mimic-iv-ecg-diagnostic-electrocardiogram-matched-subset-1.0.zip}"
+# MIMIC-IV-ECG from a Kaggle re-upload of PhysioNet's v1.0 tree, not from
+# PhysioNet: its zip endpoint served ~80 KB/s from Leonardo (5 days for
+# 36 GB), and the open S3 prefix the AWS registry names is empty. This copy's
+# unpacked size is 97,017,195,666 bytes -- the published 90.4 GiB -- and it
+# carries the published SHA256SUMS.txt, which is checked against PhysioNet's
+# own before the download counts as complete, together with a hashed sample
+# of the files (MIMIC_VERIFY_SAMPLE=0 hashes all of them). Needs the Kaggle CLI
+# and a token, as EEG/download_kaggle_ern.sh does. MIMIC_SOURCE=physionet
+# goes back to the slow route.
+MIMIC_SOURCE="${MIMIC_SOURCE:-kaggle}"
+MIMIC_KAGGLE="${MIMIC_KAGGLE:-subhashhenry/mimic-iv-ecg-demo-diagnostic-ecg-matched-subset}"
 ICENTIA_URL="${ICENTIA_URL:-https://physionet.org/content/icentia11k-continuous-ecg/get-zip/1.0/}"
 ICENTIA_ZIP="${ICENTIA_ZIP:-icentia11k-single-lead-continuous-raw-electrocardiogram-dataset-1.0.zip}"
 # Icentia11k comes from PhysioNet's OPEN S3 bucket, file by file, not from the
@@ -362,6 +372,7 @@ PYEOF
 
 get_mimic_iv_ecg() {
     local d; d="$(raw_dir mimic_iv_ecg)"
+    [[ "${MIMIC_SOURCE}" == "kaggle" ]] && { get_mimic_iv_ecg_kaggle; return; }
     local zip="${d}/${MIMIC_ZIP}"
     fetch "${MIMIC_URL}" "${zip}" || return 1
     zip_ok "${zip}" || { warn "${zip} does not open as a zip"; return 1; }
@@ -391,6 +402,43 @@ get_code15() {
     local n; n=$(find "${d}" -name 'exams_part*.hdf5' | wc -l)
     echo "    ${n} of ${CODE15_PARTS} part file(s)"
     [[ ${n} -eq ${CODE15_PARTS} ]]
+}
+
+get_mimic_iv_ecg_kaggle() {
+    local d; d="$(raw_dir mimic_iv_ecg)"
+    local zip="${d}/${MIMIC_KAGGLE##*/}.zip"
+    local kaggle="${KAGGLE_BIN:-${HOME}/kaggleenv/bin/kaggle}"
+    if [[ ! -x "${kaggle}" ]]; then
+        say "installing the kaggle CLI into ${kaggle%/bin/kaggle}"
+        python3 -m venv "${kaggle%/bin/kaggle}" && \
+            env -u PYTHONPATH "${kaggle%/kaggle}/pip" install -q -U pip kaggle \
+            || { warn "could not install the kaggle CLI"; return 1; }
+    fi
+    if [[ -z "${KAGGLE_API_TOKEN:-}" && ! -s "${HOME}/.kaggle/access_token" \
+          && ! -f "${HOME}/.kaggle/kaggle.json" \
+          && ! -f "${HOME}/.config/kaggle/kaggle.json" ]]; then
+        warn "no Kaggle credentials: https://www.kaggle.com/settings/api -> Generate New Token, then"
+        warn "  mkdir -p ~/.kaggle && echo '<token>' > ~/.kaggle/access_token && chmod 600 ~/.kaggle/access_token"
+        return 1
+    fi
+    # The PhysioNet zip, if a slow download of it was started: preprocessing
+    # takes the one zip it finds here, and two would be refused.
+    if [[ -f "${d}/${MIMIC_ZIP}" ]]; then
+        warn "removing the partial PhysioNet zip ${MIMIC_ZIP} ($(local_size "${d}/${MIMIC_ZIP}") bytes): the Kaggle copy replaces it"
+        rm -f "${d}/${MIMIC_ZIP}"
+    fi
+    if [[ ! -s "${zip}" ]] || ! zip_ok "${zip}"; then
+        say "Kaggle ${MIMIC_KAGGLE} -> ${d} (~36 GB zip, kept zipped)"
+        env -u PYTHONPATH "${kaggle}" datasets download -d "${MIMIC_KAGGLE}" \
+            -p "${d}" || { warn "kaggle download failed"; return 1; }
+    fi
+    zip_ok "${zip}" || { warn "${zip} does not open as a zip"; return 1; }
+    # A re-upload is only as good as its match to the publisher's checksums.
+    say "checking it against PhysioNet's SHA256SUMS (a few minutes)"
+    "${PYTHON}" "${HERE}/verify_zip_checksums.py" "${zip}" \
+        --official "${MIMIC_SUMS_URL:-https://physionet.org/files/mimic-iv-ecg/1.0/SHA256SUMS.txt}" \
+        --sample "${MIMIC_VERIFY_SAMPLE:-2000}" || return 1
+    echo "    kept zipped: ECG/preprocess_ecg_corpus.sh reads records out of it"
 }
 
 get_icentia11k() {
