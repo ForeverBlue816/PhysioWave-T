@@ -28,7 +28,7 @@
 #   $ECG_ROOT/SPH/raw/records/A*.h5, metadata.csv
 #   $ECG_ROOT/Georgia/raw/...               .hea + .mat
 #   $ECG_ROOT/MedalCare-XL/raw/...          unpacked
-#   $ECG_ROOT/Icentia11k/raw/<zip>          read in place (1.1 TB unpacked)
+#   $ECG_ROOT/Icentia11k/raw/pNN/pNNNNN/... every fifth segment, from S3
 #   $ECG_ROOT/PulseDB/raw/PulseDB_{MIMIC,Vital}.zip.NNN
 #                                           the Box pieces, read in place
 #   $ECG_ROOT/ecg_c1_corpus/<dataset>/      written by preprocessing
@@ -39,7 +39,9 @@
 #   MedalCare-XL        9.3 GB zip                  -> 28.2 GB unpacked
 #   MIMIC-IV-ECG        36.3 GB zip, kept zipped    (90.4 GB if unpacked)
 #   CODE-15%            46.3 GB in 18 zips          -> ~68 GB of hdf5
-#   Icentia11k          202.2 GB zip, kept zipped   (1.1 TB if unpacked)
+#   Icentia11k          ~230 GB: every fifth 70-min segment, from open S3
+#                       (all of it is 1.1 TB; the 202 GB zip is served at
+#                       ~0.04 MB/s by PhysioNet -- see ICENTIA_SOURCE)
 #   PulseDB             388.4 GB in 26 Box pieces, kept as they are
 #                       (~636 GB if unpacked; almost all of it PPG and ABP)
 #   about 730 GB in all once done; `all` checks free space before it starts.
@@ -64,7 +66,11 @@ PW_REPO="$(cd "${HERE}/.." && pwd)"
 export PW_REPO
 PYTHON="${PYTHON:-python}"
 
-OPEN_DATASETS="georgia sph medalcare_xl mimic_iv_ecg code15 icentia11k pulsedb"
+# MIMIC-IV-ECG last: it comes only from PhysioNet's zip endpoint, measured at
+# ~0.04 MB/s per connection on 2026-09-29 (days for 36 GB), and nothing fast
+# should queue behind it. It is not on the open S3 bucket; logged in to
+# PhysioNet, the project page shows an AWS command that may be faster.
+OPEN_DATASETS="georgia sph medalcare_xl code15 icentia11k pulsedb mimic_iv_ecg"
 
 # --------------------------------------------------------------------------- #
 # Sources. Pinned versions: a republished dataset moves to a new URL and the
@@ -77,6 +83,20 @@ MIMIC_URL="${MIMIC_URL:-https://physionet.org/content/mimic-iv-ecg/get-zip/1.0/}
 MIMIC_ZIP="${MIMIC_ZIP:-mimic-iv-ecg-diagnostic-electrocardiogram-matched-subset-1.0.zip}"
 ICENTIA_URL="${ICENTIA_URL:-https://physionet.org/content/icentia11k-continuous-ecg/get-zip/1.0/}"
 ICENTIA_ZIP="${ICENTIA_ZIP:-icentia11k-single-lead-continuous-raw-electrocardiogram-dataset-1.0.zip}"
+# Icentia11k comes from PhysioNet's OPEN S3 bucket, file by file, not from the
+# zip above: on 2026-09-29 the zip endpoint served ~0.04 MB/s per connection
+# (a month for 202 GB) and S3 served the same files at full speed. The zip
+# route stays, as ICENTIA_SOURCE=zip, for when that changes.
+#
+# NOT EVERY SEGMENT. A patient's recording is ~50 segments of 70 minutes and
+# preprocessing keeps 16 random 10 s windows per segment, so all 50 is 1.1 TB
+# for windows that mostly repeat the same person. Every fifth segment -- ten
+# per patient, spread across the up-to-two-week recording -- is ~230 GB, keeps
+# all 11,000 patients, and gives ~1.7 M windows. ICENTIA_SEGMENTS="00 01 ..."
+# takes more or fewer (two digits each).
+ICENTIA_SOURCE="${ICENTIA_SOURCE:-s3}"
+ICENTIA_SEGMENTS="${ICENTIA_SEGMENTS:-00 05 10 15 20 25 30 35 40 45}"
+ICENTIA_JOBS="${ICENTIA_JOBS:-16}"
 # Challenge 2021 has no zip and no open S3 prefix; the Challenge 2020 tarball
 # on Google Cloud is gone (NoSuchBucket). Recursive HTTP is what remains.
 GEORGIA_HTTP="${GEORGIA_HTTP:-https://physionet.org/files/challenge-2021/1.0.3/training/georgia/}"
@@ -158,7 +178,7 @@ need_gb() {
         medalcare_xl)      echo 38 ;;
         mimic_iv_ecg)      echo 37 ;;
         code15)            echo 75 ;;
-        icentia11k)        echo 204 ;;
+        icentia11k)        echo 235 ;;
         *)                 echo 0 ;;
     esac
 }
@@ -376,9 +396,25 @@ get_code15() {
 get_icentia11k() {
     local d; d="$(raw_dir icentia11k)"
     local zip="${d}/${ICENTIA_ZIP}"
-    fetch "${ICENTIA_URL}" "${zip}" || return 1
-    zip_ok "${zip}" || { warn "${zip} does not open as a zip"; return 1; }
-    echo "    kept zipped (1.1 TB unpacked): records are read out of it"
+    if [[ "${ICENTIA_SOURCE}" == "zip" ]]; then
+        fetch "${ICENTIA_URL}" "${zip}" || return 1
+        zip_ok "${zip}" || { warn "${zip} does not open as a zip"; return 1; }
+        echo "    kept zipped (1.1 TB unpacked): records are read out of it"
+        return 0
+    fi
+    # A partial zip from the PhysioNet route would be picked up by
+    # preprocessing in place of the tree, so it goes.
+    if [[ -f "${zip}" ]]; then
+        warn "removing the partial PhysioNet zip ${zip##*/} ($(local_size "${zip}") bytes): the S3 files replace it"
+        rm -f "${zip}"
+    fi
+    local segs alt=""
+    for segs in ${ICENTIA_SEGMENTS}; do alt="${alt:+${alt}|}${segs}"; done
+    say "S3 s3://physionet-open/icentia11k-continuous-ecg/1.0/, segments ${ICENTIA_SEGMENTS}"
+    echo "    listing takes ~5 min (1.6 M keys); then ${ICENTIA_JOBS} downloads at a time"
+    "${PYTHON}" "${HERE}/fetch_s3_open.py" --bucket physionet-open \
+        --prefix icentia11k-continuous-ecg/1.0/ --dest "${d}" \
+        --include "_s(${alt})\\.(hea|dat)\$" --jobs "${ICENTIA_JOBS}"
 }
 
 run_one() {

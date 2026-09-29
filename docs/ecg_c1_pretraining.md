@@ -26,6 +26,13 @@ python scripts/build_eeg_c1_manifest.py --modality ecg \
 sbatch scripts/slurm/cineca_ecg_c1_moe_pretrain.sbatch
 ```
 
+PhysioNet's own download endpoints were measured at ~0.04 MB/s per
+connection on 2026-09-29, so Icentia11k is fetched file by file from
+PhysioNet's open S3 bucket (`scripts/fetch_s3_open.py`), every fifth
+70-minute segment per patient (~230 GB). MIMIC-IV-ECG has no open S3 copy
+and still comes from the slow zip endpoint; it is last in `all` and can run
+for days, resumably.
+
 `ECG_ROOT` defaults to `/leonardo_scratch/large/userexternal/ychen003/bio/ecg`,
 next to the EEG corpora. Scratch is purged after 40 days; the corpus is
 rebuildable from the raw downloads, checkpoints are not and go to `$FAST`.
