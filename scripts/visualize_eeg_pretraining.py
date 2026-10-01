@@ -722,7 +722,7 @@ def reconstruction_panels(ex: Dict, route: Route) -> List:
     spec_label = ("normalised spec target"
                   if ex.get("normalize_spec_target", True)
                   else "spec target (raw scale)")
-    titles = list(RECONSTRUCTION_PANEL_TITLES)
+    titles = [_sig(t) for t in RECONSTRUCTION_PANEL_TITLES]
     titles[4] = spec_label
     titles[5] = f"masked {spec_label}"
     return [
@@ -865,7 +865,7 @@ def fig_mask_reconstruction(w: FigureWriter, rows, grid, ranks, mask_seed,
         fig.suptitle(title, y=1.005)
         w.save(fig, _recon_name("fig_mask_reconstruction", k), data,
                {"examples": meta_rows,
-                "panels": list(RECONSTRUCTION_PANEL_TITLES),
+                "panels": [_sig(t) for t in RECONSTRUCTION_PANEL_TITLES],
                 "survey_index": k, "n_windows_surveyed": n_drawn,
                 "note": "spec panels use target_spec -- the per-patch "
                         "normalised target the loss is computed against -- not "
@@ -1084,6 +1084,53 @@ LOBE_RULES = (("frontal", ("FP", "AF", "F")), ("central", ("FC", "C", "CP")),
               ("temporal", ("T",)))
 
 
+#: The ECG equivalent: the frontal-plane leads, the chest leads, and the
+#: single-lead recordings, which are neither.
+LOBE_RULES_ECG = (("limb", ("I", "AV")), ("precordial", ("V",)),
+                  ("single-lead", ("PATCH", "ML")))
+
+
+#: Which signal the figures are of. Text is written for EEG and translated at
+#: the moment it is drawn, so the EEG figures -- and the tests that read their
+#: titles -- are untouched.
+SIGNAL = "EEG"
+
+
+def _sig(text: str) -> str:
+    """A caption written for EEG, said of the signal actually drawn."""
+    if SIGNAL == "EEG":
+        return text
+    for old, new in (("z-scored preprocessed EEG", "window-normalised "
+                      "preprocessed ECG"),
+                     ("z-scored EEG", "window-normalised ECG"),
+                     ("raw EDF values", "raw mV values"),
+                     ("z-scored", "window-normalised"),
+                     ("EEG", "ECG")):
+        text = text.replace(old, new)
+    return text
+
+
+def use_ecg_registry():
+    """Point every figure at the ECG routes, corpora, model and lead names.
+
+    The figures read these module-level tables when they run, so swapping
+    them here, before any figure is drawn, is the whole of the ECG support:
+    nothing below this line knows which modality it is drawing.
+    """
+    global ROUTES, PRETRAIN_DATASETS, ROUTE_COLOR, DATASET_COLOR, \
+        CHANNEL_VOCAB, LOBE_RULES, SIGNAL
+    from physiowave.ecg_c1.leads import ECG_LEAD_VOCAB
+    from physiowave.ecg_c1.routes import PRETRAIN_DATASETS as _D
+    from physiowave.ecg_c1.routes import ROUTES as _R
+    ROUTES, PRETRAIN_DATASETS = _R, _D
+    ROUTE_COLOR = {rid: OKABE_ITO[i] for i, rid in enumerate(_R)}
+    DATASET_COLOR = {d: OKABE_ITO[i % len(OKABE_ITO)]
+                     for i, d in enumerate(_D)}
+    CHANNEL_VOCAB = ECG_LEAD_VOCAB
+    LOBE_RULES = LOBE_RULES_ECG
+    SIGNAL = "ECG"
+
+
 def _lobe(name: str) -> str:
     u = name.upper()
     for lobe, prefixes in LOBE_RULES:
@@ -1140,7 +1187,7 @@ def fig_channel_embedding(w: FigureWriter, model, datasets):
     axes[2].set_xlabel(f"PC1 ({S[0]**2/np.sum(S**2)*100:.0f}% var)")
     axes[2].set_ylabel(f"PC2 ({S[1]**2/np.sum(S**2)*100:.0f}% var)")
     axes[2].legend(frameon=False)
-    fig.suptitle("C1 is a learned embedding of the channel NAME. Lobe colours "
+    fig.suptitle("C1 is a learned embedding of the channel NAME. Group colours "
                  "come from a name-prefix rule, not from electrode geometry.",
                  y=1.04)
     w.save(fig, "fig_channel_embedding",
@@ -1195,8 +1242,8 @@ def fig_dual_objective(w: FigureWriter, epoch_rows):
     for ax, (tr, va, title, ylab) in zip(axes[:2], (
             (spec_tr, spec_va, "Spec reconstruction",
              "masked MSE, folded wavelet"),
-            (raw_tr, raw_va, "Raw EEG reconstruction",
-             "masked SmoothL1, z-scored"))):
+            (raw_tr, raw_va, _sig("Raw EEG reconstruction"),
+             _sig("masked SmoothL1, z-scored")))):
         ax.plot(ep, tr, color=OKABE_ITO[0], label="train", marker="o", ms=2.5)
         ax.plot(ep, va, color=OKABE_ITO[1], label="val", marker="s", ms=2.5,
                 ls="--")
@@ -1262,7 +1309,7 @@ def fig_masked_vs_visible(w: FigureWriter, run_dir: str):
 
     fig, axes = plt.subplots(1, 2, figsize=(8.2, 3.0))
     for ax, tag, title in ((axes[0], "spec", "Folded-wavelet patches"),
-                           (axes[1], "raw", "Preprocessed EEG patches")):
+                           (axes[1], "raw", _sig("Preprocessed EEG patches"))):
         for half, colour, ls in (("masked", OKABE_ITO[1], "-"),
                                  ("visible", OKABE_ITO[0], "--")):
             key = f"{tag}_{half}"
@@ -1492,7 +1539,7 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
 
             ax, ax_err = axes[2 * i_row], axes[2 * i_row + 1]
             ax.plot(t, target, color="0.25", lw=0.9,
-                    label="preprocessed EEG (target)")
+                    label=_sig("preprocessed EEG (target)"))
             ax.plot(t, np.where(m, composite, np.nan), color=OKABE_ITO[1],
                     lw=1.1, label="raw head, masked patches only")
             ax.plot(t, composite, color=OKABE_ITO[0], lw=0.6, alpha=0.55,
@@ -1502,7 +1549,7 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
                     ax.axvspan(pi * pt / route.sampling_rate,
                                (pi + 1) * pt / route.sampling_rate,
                                color=OKABE_ITO[4], alpha=0.16, lw=0)
-            ax.set_ylabel("amplitude\n(z-scored)")
+            ax.set_ylabel(_sig("amplitude\n(z-scored)"))
             ax.set_title(
                 f"{rid}  {dsid}  channel {route.slots[ch]}  "
                 f"window {ex['window_index']}   "
@@ -1555,11 +1602,11 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
         for bare in ("time", "target", "pred", "composite", "mask",
                      "masked_error"):
             data[bare] = data[f"{first}_{bare}"]
-        title = ("Raw-head reconstruction, one row per route. The trace is "
-                 "PREPROCESSED, z-scored EEG -- not raw EDF values, and not "
-                 "the folded wavelet representation. Shaded = masked before "
-                 "the frontend; the prediction is drawn only there, because "
-                 "visible patches are unsupervised.")
+        title = _sig("Raw-head reconstruction, one row per route. The trace "
+                     "is PREPROCESSED, z-scored EEG -- not raw EDF values, and "
+                     "not the folded wavelet representation. Shaded = masked "
+                     "before the frontend; the prediction is drawn only there, "
+                     "because visible patches are unsupervised.")
         if n_drawn > 1:
             title += (f"  Window {k + 1} of {n_drawn} surveyed per route.")
         fig.suptitle(title, y=1.005, fontsize=8.5)
@@ -1571,11 +1618,12 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
                 "dataset_id": meta_rows[0]["dataset_id"],
                 "route_id": meta_rows[0]["route_id"],
                 "channel": meta_rows[0]["channel"],
-                "note": "z-scored preprocessed EEG, not raw EDF values, and "
-                        "not the folded wavelet representation; the prediction "
-                        "is shown on masked patches only. One row per route; "
-                        "the unprefixed arrays are the first route's, for "
-                        "scripts written against the single-route version."})
+                "note": _sig("z-scored preprocessed EEG, not raw EDF values, "
+                             "and not the folded wavelet representation; the "
+                             "prediction is shown on masked patches only. One "
+                             "row per route; the unprefixed arrays are the "
+                             "first route's, for scripts written against the "
+                             "single-route version.")})
 
 
 #: Threads for the figures that run the model. A login node has many cores and
@@ -1623,6 +1671,8 @@ def main(argv=None) -> int:
                         "figure_metadata/reconstruction_survey.json")
     p.add_argument("--only", nargs="*", default=None,
                    help="figure names to regenerate")
+    p.add_argument("--modality", default="auto", choices=["auto", "eeg", "ecg"],
+                   help="auto reads the checkpoint's trainer (ecg_c1_moe -> ecg)")
     args = p.parse_args(argv)
 
     # Rank 0 only. Under torchrun every rank would otherwise write the same
@@ -1644,7 +1694,18 @@ def main(argv=None) -> int:
     device = torch.device("cpu")
     objective = resolve_eeg_c1_objective(cfg)
 
-    model = MultiRouteEEGPretrainer(
+    modality = args.modality
+    if modality == "auto":
+        modality = "ecg" if cfg.get("trainer") == "ecg_c1_moe" else "eeg"
+    model_cls, extra = MultiRouteEEGPretrainer, {}
+    if modality == "ecg":
+        use_ecg_registry()
+        from physiowave.ecg_c1.model import MultiRouteECGPretrainer
+        model_cls = MultiRouteECGPretrainer
+        extra = {"lead_group_masking": bool(mcfg.get("lead_group_masking", True))}
+    print(f"  modality: {modality}")
+
+    model = model_cls(**extra,
         embed_dim=int(mcfg.get("embed_dim", 384)),
         depth=int(mcfg.get("depth", 6)), num_heads=int(mcfg.get("num_heads", 6)),
         dropout=float(mcfg.get("dropout", 0.1)),
@@ -1679,7 +1740,7 @@ def main(argv=None) -> int:
     # rather than stored: it is a deterministic function of the seed and the
     # config, and carrying a copy in every checkpoint would double their size.
     torch.manual_seed(int(cfg.get("seed", 42)))
-    init_model = MultiRouteEEGPretrainer(
+    init_model = model_cls(
         embed_dim=int(mcfg.get("embed_dim", 384)),
         depth=int(mcfg.get("depth", 6)), num_heads=int(mcfg.get("num_heads", 6)),
         max_level=int(mcfg.get("max_level", 3)),
@@ -1697,7 +1758,7 @@ def main(argv=None) -> int:
         index = CorpusIndex.from_manifest(manifest_path)
         for d in sorted(index.by_dataset()):
             try:
-                datasets[d] = EEGWindowDataset(index, d)
+                datasets[d] = EEGWindowDataset(index, d, routes=ROUTES)
             except Exception as exc:                          # noqa: BLE001
                 print(f"  skipping {d}: {exc}")
     else:
@@ -1717,6 +1778,7 @@ def main(argv=None) -> int:
         "checkpoint_sha256": sha256_file(ckpt_path),
         "epoch": ck.get("epoch"), "global_step": ck.get("global_step"),
         "channel_vocab_sha256": ck.get("channel_vocab_sha256"),
+        "modality": modality,
         "plotting_script_git_commit": git_commit(),
         "split": args.split, "mask_seed": mask_seed,
         "manifest": manifest_path,

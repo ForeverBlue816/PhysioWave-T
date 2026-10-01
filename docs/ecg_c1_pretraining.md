@@ -37,6 +37,16 @@ for days, resumably.
 next to the EEG corpora. Scratch is purged after 40 days; the corpus is
 rebuildable from the raw downloads, checkpoints are not and go to `$FAST`.
 
+Progress and figures use the EEG scripts, which recognise an ECG run by its
+checkpoint:
+
+```bash
+python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_ecg_c1_moe            # per route
+python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_ecg_c1_moe --by dataset
+python scripts/visualize_eeg_pretraining.py --run-dir $PW_CKPT_ROOT/pretrain_ecg_c1_moe \
+    --checkpoint best.pth --format png
+```
+
 A smoke run needs no data at all:
 
 ```bash

@@ -3,6 +3,7 @@
 """What a pretraining run has actually done so far, per route and per dataset.
 
     python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_eeg_c1_moe_n1
+    python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_ecg_c1_moe      # ECG too
 
 THE LOSS IS NOT THE SUMMARY. `val total` is an average over validation BATCHES,
 and the validation sweep is proportional to corpus size while the training
@@ -118,6 +119,17 @@ def main(argv=None) -> int:
         return 1
 
     keys = ROUTES if args.by == "route" else DATASETS
+    # Whatever the run actually logged, in the known order first. An ECG run
+    # (physiowave.ecg_c1) has routes L12_500 / L1_250 and its own datasets,
+    # and a fixed EEG list would print a table of dashes for it.
+    seen = []
+    for r in data:
+        for k in r:
+            parts = k.split("/")
+            if len(parts) >= 4 and parts[0] == "val" and parts[1] == args.by \
+                    and parts[2] not in seen:
+                seen.append(parts[2])
+    keys = [k for k in keys if k in seen] + [k for k in seen if k not in keys]
     breakdown = f"val/{args.by}/{{k}}/{args.metric}"
     present = [k for k in keys
                if any(breakdown.format(k=k) in r for r in data)]
