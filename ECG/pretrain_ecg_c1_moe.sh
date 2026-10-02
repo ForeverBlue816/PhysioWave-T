@@ -136,6 +136,27 @@ EXTRA=()
 [[ -n "${RESUME}" ]]    && EXTRA+=(--resume "${RESUME}")
 [[ -n "${INIT_FROM}" ]] && EXTRA+=(--init-from "${INIT_FROM}")
 
+# EVERY SHARD STAYS OPEN. A step reads up to 1,024 windows scattered over a
+# corpus of ~6,200 shards, and the loader's default cache keeps 512 open per
+# dataset -- fewer than MIMIC-IV-ECG, PulseDB or Icentia11k have -- so most
+# reads reopened an HDF5 file on Lustre. That made the first ECG run ~50 s a
+# step. Keeping them all open needs the descriptors for it: the soft limit is
+# raised to the hard one, and the per-dataset cap is what that limit allows
+# across seven datasets with room to spare.
+ulimit -n "$(ulimit -Hn)" 2>/dev/null || true
+_fd_limit="$(ulimit -n)"
+if [[ "${_fd_limit}" == "unlimited" ]]; then _fd_limit=1048576; fi
+_cap=$(( (_fd_limit - 1024) / 7 ))
+export PW_MAX_OPEN_SHARDS="${PW_MAX_OPEN_SHARDS:-$(( _cap < 4096 ? _cap : 4096 ))}"
+if [[ "${PW_MAX_OPEN_SHARDS}" -lt 2300 ]]; then
+    echo "WARNING: open-file limit ${_fd_limit} allows ${PW_MAX_OPEN_SHARDS} shards per" >&2
+    echo "  dataset, fewer than Icentia11k's ~2,200: reads will reopen files." >&2
+fi
+export PW_PREFETCH="${PW_PREFETCH:-1}"
+# A rank that waits on a slow read must not take the job down: the first run
+# died at step 408 on the 10-minute default collective timeout.
+export PW_DIST_TIMEOUT_MIN="${PW_DIST_TIMEOUT_MIN:-60}"
+
 pw_check_run_path OUTPUT_DIR "${OUTPUT_DIR}" || exit 1
 # `set -e` is deliberately not on here, so an unchecked mkdir failure
 # carries straight on to srun and dies inside Python on every rank.
@@ -157,6 +178,7 @@ echo "   below prints the values it actually resolved)"
 echo "  train manifest ${MANIFEST_TRAIN}"
 echo "  val   manifest ${MANIFEST_VAL}"
 echo "  out            ${OUTPUT_DIR}"
+echo "  open files     limit ${_fd_limit}, shards kept open per dataset ${PW_MAX_OPEN_SHARDS}, prefetch ${PW_PREFETCH}, collective timeout ${PW_DIST_TIMEOUT_MIN} min"
 [[ -n "${BATCH_SIZE_BY_ROUTE}" ]] && echo "  batch/route    ${BATCH_SIZE_BY_ROUTE}"
 [[ -n "${RESUME}" ]] && echo "  resume         ${RESUME}"
 [[ -n "${INIT_FROM}" ]] && echo "  init from      ${INIT_FROM}  (weights only)"

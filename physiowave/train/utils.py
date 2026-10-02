@@ -64,7 +64,18 @@ def setup_distributed() -> DistInfo:
     if world_size > 1:
         backend = "nccl" if torch.cuda.is_available() else "gloo"
         if not dist.is_initialized():
-            dist.init_process_group(backend=backend, init_method="env://")
+            # PW_DIST_TIMEOUT_MIN raises how long a collective may wait for
+            # the slowest rank before the watchdog aborts the job. Unset keeps
+            # torch's default (10 min on cineca-ai's build), which one rank
+            # stalled on a cold Lustre read exceeded at step 408 of the first
+            # ECG run -- sixteen ranks killed for one slow read.
+            kwargs = {}
+            if os.environ.get("PW_DIST_TIMEOUT_MIN"):
+                import datetime
+                kwargs["timeout"] = datetime.timedelta(
+                    minutes=float(os.environ["PW_DIST_TIMEOUT_MIN"]))
+            dist.init_process_group(backend=backend, init_method="env://",
+                                    **kwargs)
         if torch.cuda.is_available():
             torch.cuda.set_device(local_rank)
             device = torch.device(f"cuda:{local_rank}")

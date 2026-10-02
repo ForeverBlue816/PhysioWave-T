@@ -239,6 +239,40 @@ class EEGWindowDataset(Dataset):
             "recording_id": _decode(h["recording_id"][local]),
         }
 
+    def read_batch(self, indices: Sequence[int]) -> torch.Tensor:
+        """``[len(indices), C, T]`` in the order given, each shard read once.
+
+        What the training loader uses instead of one ``__getitem__`` per
+        window. Same values, in the same order; what it saves is the number of
+        HDF5 calls: the windows of a batch that live in one shard are fetched
+        in a single read, and the per-window subject and recording strings --
+        two more reads each, which no training step looks at -- are not
+        fetched at all. At 1,024 single-lead windows a step that was most of
+        the step's time.
+        """
+        locs = [self.locate(int(i)) for i in indices]
+        by_shard: Dict[int, List[Tuple[int, int]]] = {}
+        for pos, (shard_i, local) in enumerate(locs):
+            by_shard.setdefault(shard_i, []).append((local, pos))
+        out: Optional[np.ndarray] = None
+        for shard_i, items in by_shard.items():
+            h = self._handle(shard_i)
+            uniq = sorted({local for local, _ in items})
+            try:
+                block = np.asarray(h["data"][uniq], dtype=np.float32)
+            except OSError as exc:
+                raise OSError(
+                    f"{self.shards[shard_i].path}: windows {uniq[:4]}... of "
+                    f"{self.shards[shard_i].n_windows} are unreadable ({exc}). "
+                    f"Check the corpus with scripts/build_eeg_c1_manifest.py "
+                    f"--check-shards.") from exc
+            if out is None:
+                out = np.empty((len(locs),) + block.shape[1:], dtype=np.float32)
+            row = {local: k for k, local in enumerate(uniq)}
+            for local, pos in items:
+                out[pos] = block[row[local]]
+        return torch.from_numpy(out)
+
     def close(self):
         for h in self._handles.values():
             try:
@@ -505,22 +539,48 @@ class RouteBatchLoader:
     sampler's job here.
     """
 
-    def __init__(self, index: CorpusIndex, schedule: RouteSchedule):
+    def __init__(self, index: CorpusIndex, schedule: RouteSchedule,
+                 prefetch: Optional[bool] = None):
         self.index = index
         self.schedule = schedule
         self.datasets = {d: EEGWindowDataset(index, d, routes=schedule.routes)
                          for d in schedule.dataset_ids}
         self.lengths = {d: len(ds) for d, ds in self.datasets.items()}
+        # Read the next step's windows while this one trains. PW_PREFETCH=0
+        # turns it off. A thread, not a worker process: h5py serialises its
+        # own calls, and the main thread spends a step on the GPU, not in
+        # h5py, so one reader overlaps the two without a second copy of every
+        # open shard.
+        self.prefetch = (os.environ.get("PW_PREFETCH", "1") != "0"
+                         if prefetch is None else bool(prefetch))
 
     def __len__(self) -> int:
         return len(self.schedule)
 
+    def _batch(self, route_id, dataset_id, idx):
+        ds = self.datasets[dataset_id]
+        return {"x": ds.read_batch(idx), "route_id": route_id,
+                "dataset_id": dataset_id, "indices": [int(i) for i in idx],
+                "channel_meta": ds.montage()}
+
     def __iter__(self):
-        for route_id, dataset_id, idx in self.schedule.steps(self.lengths):
-            ds = self.datasets[dataset_id]
-            batch = collate_windows([ds[i] for i in idx])
-            batch["channel_meta"] = ds.montage()
-            yield batch
+        steps = self.schedule.steps(self.lengths)
+        if not self.prefetch:
+            for route_id, dataset_id, idx in steps:
+                yield self._batch(route_id, dataset_id, idx)
+            return
+        # The schedule is a deterministic generator, so reading one step ahead
+        # draws exactly the batches the serial loop would, in the same order.
+        import concurrent.futures as cf
+        with cf.ThreadPoolExecutor(max_workers=1) as pool:
+            pending = None
+            for step in steps:
+                nxt = pool.submit(self._batch, *step)
+                if pending is not None:
+                    yield pending.result()
+                pending = nxt
+            if pending is not None:
+                yield pending.result()
 
     def close(self):
         for ds in self.datasets.values():

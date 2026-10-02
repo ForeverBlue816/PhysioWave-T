@@ -584,3 +584,40 @@ def test_trainer_smoke_end_to_end(tmp_path):
     row = json.loads(open(os.path.join(out, "metrics_epoch.jsonl")).readline())
     assert "val/route/L1_250/loss_total" in row
     assert "val/route/L12_500/loss_total" in row
+
+
+# --------------------------------------------------------------------------- #
+# The training loader: batched shard reads and prefetch change nothing read
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.slow
+def test_batched_reads_and_prefetch_match_the_serial_loader(tmp_path):
+    from physiowave.ecg_c1.routes import PRETRAIN_DATASETS as ECG_DATASETS
+    from physiowave.eeg_c1.data import (CorpusIndex, RouteBatchLoader,
+                                        RouteSchedule, collate_windows)
+    out = str(tmp_path / "corpus" / "mimic_iv_ecg")
+    _prep("--dataset", "mimic_iv_ecg", "--smoke-test", "--out-dir", out,
+          "--smoke-records", "40", "--windows-per-shard", "6",
+          "--val-fraction", "0.2")
+    index = CorpusIndex.from_manifest(os.path.join(out, "manifest_train.jsonl"))
+    assert len(index.shards) > 3                    # windows span shards
+
+    def schedule():
+        return RouteSchedule(index, weights="proportional", steps_per_epoch=7,
+                             seed=3, batch_by_route={"L12_500": 5},
+                             routes=ROUTES, datasets=ECG_DATASETS)
+
+    serial = RouteBatchLoader(index, schedule(), prefetch=False)
+    ahead = RouteBatchLoader(index, schedule(), prefetch=True)
+    ds = serial.datasets["mimic_iv_ecg"]
+    n = 0
+    for a, b in zip(serial, ahead):
+        assert a["indices"] == b["indices"]
+        assert torch.equal(a["x"], b["x"])
+        # and both equal the one-window-at-a-time read they replace
+        ref = collate_windows([ds[i] for i in a["indices"]])["x"]
+        assert torch.equal(a["x"], ref)
+        n += 1
+    assert n == 7
+    serial.close()
+    ahead.close()
