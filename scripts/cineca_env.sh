@@ -182,7 +182,15 @@ elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
         echo "      so that is the venv being activated, not ${PW_VENV_DEFAULT}." >&2
         echo "      \`unset PW_VENV\` if you did not mean to pin it." >&2
     fi
-    if [[ "${VIRTUAL_ENV:-}" == "${PW_VENV}" ]]; then
+    # "Already active" means the venv's python is the one on PATH, not merely
+    # that VIRTUAL_ENV names it. `sbatch --export=ALL` from a shell with the
+    # venv active carries VIRTUAL_ENV into the job, and the module load above
+    # then puts cineca-ai's own python ahead of the venv's on PATH: the
+    # variable says pw, the interpreter is cineca-ai's, and trusting the
+    # variable skipped the activation that would have fixed it -- on all
+    # sixteen ranks of an ECG run.
+    if [[ "${VIRTUAL_ENV:-}" == "${PW_VENV}" \
+          && "$(command -v python 2>/dev/null)" == "${PW_VENV}/bin/python" ]]; then
         :                                   # already active; re-sourcing stacks PATH
     elif [[ -f "${PW_VENV}/bin/activate" ]]; then
         # Replacing a *different* virtualenv is silent otherwise, and the only
@@ -192,7 +200,7 @@ elif [[ "${PW_ON_CINECA}" -eq 1 ]]; then
         # `import mne` with no hint about why. This script has to win -- the
         # training launchers source it precisely to get ${PW_VENV} -- so say
         # what happened rather than change who wins.
-        if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+        if [[ -n "${VIRTUAL_ENV:-}" && "${VIRTUAL_ENV}" != "${PW_VENV}" ]]; then
             echo "NOTE: replacing the active virtualenv ${VIRTUAL_ENV} with ${PW_VENV}." >&2
             echo "      If you wanted the other one, source it AFTER this script:" >&2
             echo "        source scripts/cineca_env.sh          # first, for PW_DATA_*" >&2
