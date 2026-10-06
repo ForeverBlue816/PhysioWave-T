@@ -202,14 +202,19 @@ def derive_limb_leads(leads: Dict[str, np.ndarray]) -> List[str]:
 
 
 def map_leads(x: np.ndarray, names: Sequence[str], slots: Sequence[str],
-              derive: bool = True) -> LeadMapping:
-    """``[C_src, T]`` -> ``[n_slots, T]``, placed by lead NAME, never position."""
+              derive: bool = True, normalize=None) -> LeadMapping:
+    """``[C_src, T]`` -> ``[n_slots, T]``, placed by lead NAME, never position.
+
+    ``normalize`` maps a file's spelling onto the slot names -- ECG's lead
+    aliases by default; physiowave.emg_c1 passes its electrode names.
+    """
+    normalize = normalize or normalize_lead
     by_name: Dict[str, np.ndarray] = {}
     used: List[int] = []
     unmatched: List[str] = []
     slot_set = set(slots)
     for row, raw in enumerate(names):
-        name = normalize_lead(raw)
+        name = normalize(raw)
         if name not in slot_set:
             unmatched.append(str(raw))
             continue
@@ -322,7 +327,8 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
                        fs: float, unit: str, route, mains_hz: Optional[float],
                        cfg: ECGPreprocessConfig,
                        record_key: str = "",
-                       slots: Optional[Sequence[str]] = None) -> ProcessedRecord:
+                       slots: Optional[Sequence[str]] = None,
+                       normalize=None, ids_for=None) -> ProcessedRecord:
     """One record, start to finish. Raises ECGPreprocessError to be counted.
 
     ``slots`` are the corpus's leads on the route, in row order -- the route's
@@ -361,7 +367,8 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
     x = highpass(x, fs, cfg.highpass_hz)
     x = resample_to(x, fs, route.sampling_rate)
 
-    mapping = map_leads(x, lead_names, slots, cfg.derive_limb_leads)
+    mapping = map_leads(x, lead_names, slots, cfg.derive_limb_leads,
+                        normalize=normalize)
     if mapping.empty_slots:
         raise ECGPreprocessError(
             f"{route.route_id} needs {list(slots)}; missing "
@@ -395,7 +402,7 @@ def process_ecg_record(data: np.ndarray, lead_names: Sequence[str],
     windows, starts = windows[keep], starts[keep]
     windows = normalise_windows(windows, mapping.valid, cfg)
 
-    ids, _ = lead_ids_for(slots)
+    ids, _ = (ids_for or lead_ids_for)(slots)
     ids = [i if mapping.valid[k] else 0 for k, i in enumerate(ids)]
     return ProcessedRecord(windows, starts / float(route.sampling_rate),
                            mapping.valid, ids, mapping.derived, qc, n_cand)

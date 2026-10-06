@@ -89,6 +89,35 @@ class ECGRecord:
     notes: Dict = field(default_factory=dict)
 
 
+@dataclass
+class Modality:
+    """What the driver below needs to know about one modality's corpus.
+
+    The driver -- units, part files, tasks, resume, assemble, inspect -- is
+    the same for every modality. ECG registers itself at the bottom of this
+    file; EMG/preprocess_emg_corpus.py imports this module, registers its own
+    and calls ``main(modality="emg")``. A worker is handed the modality's
+    NAME and looks it up here, so the registration has to happen at import
+    time of the script that runs -- which a spawned worker re-imports.
+    """
+
+    name: str
+    datasets: Dict
+    routes: Dict
+    downstream_only: Tuple[str, ...]
+    adapters: Dict
+    smoke_records: object          # (dataset_id, n, seed) -> [ECGRecord]
+    process_record: object         # process_ecg_record's signature
+    root_var: str                  # the env var of the download root
+    download_script: str
+    #: ECGPreprocessConfig fields this modality sets differently
+    config_defaults: Dict = field(default_factory=dict)
+    amplitude_hint: str = ""
+
+
+MODALITIES: Dict[str, Modality] = {}
+
+
 # =========================================================================== #
 # Reading: WFDB, from a directory or straight out of a PhysioNet zip
 # =========================================================================== #
@@ -877,7 +906,8 @@ def _keys_sha(keys: Sequence[str]) -> str:
 
 
 def _process_one(rec: ECGRecord, dataset_id, route, spec, mains_hz, cfg,
-                 stats: Dict, failures: List[Dict], buf: Dict) -> None:
+                 stats: Dict, failures: List[Dict], buf: Dict,
+                 mod: "Modality") -> None:
     """One record through the pipeline, into the unit's train or val buffer."""
     stats["records_read"] += 1
     rate_key = f"{rec.fs:g}"
@@ -891,7 +921,7 @@ def _process_one(rec: ECGRecord, dataset_id, route, spec, mains_hz, cfg,
     if lead_key in seen or len(seen) < 8:
         seen[lead_key] = seen.get(lead_key, 0) + 1
     try:
-        out = process_ecg_record(rec.data, rec.lead_names, rec.fs,
+        out = mod.process_record(rec.data, rec.lead_names, rec.fs,
                                  rec.unit, route, mains_hz, cfg,
                                  record_key=f"{dataset_id}:{rec.record_id}",
                                  slots=spec.lead_slots)
@@ -937,10 +967,11 @@ def process_unit(payload) -> Dict:
     says the unit is done.
     """
     (dataset_id, root, uid, keys, cfg, mains_hz, out_dir, smoke,
-     smoke_seed) = payload
-    spec = PRETRAIN_DATASETS[dataset_id]
-    route = ROUTES[spec.route_id]
-    adapter = ADAPTERS[dataset_id]
+     smoke_seed, modality) = payload
+    mod = MODALITIES[modality]
+    spec = mod.datasets[dataset_id]
+    route = mod.routes[spec.route_id]
+    adapter = mod.adapters[dataset_id]
     t0 = time.time()
 
     buf = {"train": [], "val": [], "_ids": None}
@@ -953,7 +984,8 @@ def process_unit(payload) -> Dict:
     failures: List[Dict] = []
     ids_ref = None
 
-    synthetic = smoke_records(dataset_id, len(keys), smoke_seed) if smoke else None
+    synthetic = (mod.smoke_records(dataset_id, len(keys), smoke_seed)
+                 if smoke else None)
 
     for j, k in enumerate(keys):
         # One read per key, not a generator over them: an exception raised
@@ -972,7 +1004,7 @@ def process_unit(payload) -> Dict:
             continue
         for rec in recs:
             _process_one(rec, dataset_id, route, spec, mains_hz, cfg, stats,
-                         failures, buf)
+                         failures, buf, mod)
         if buf["_ids"]:
             ids_ref = buf["_ids"]
 
@@ -1027,7 +1059,7 @@ def process_unit(payload) -> Dict:
 # =========================================================================== #
 
 def inspect(dataset_id: str, root: str, keys: List[str], n: int,
-            cfg: ECGPreprocessConfig, mains_hz) -> int:
+            cfg: ECGPreprocessConfig, mains_hz, modality: str = "ecg") -> int:
     """Read ``n`` records spread over the corpus and say what they are.
 
     Nothing is written. The questions this answers are the ones that decide
@@ -1036,9 +1068,10 @@ def inspect(dataset_id: str, root: str, keys: List[str], n: int,
     amplitude column says -- a QRS is ~1 mV, not 1000), and how many windows
     would QC keep.
     """
-    spec = PRETRAIN_DATASETS[dataset_id]
-    route = ROUTES[spec.route_id]
-    adapter = ADAPTERS[dataset_id]
+    mod = MODALITIES[modality]
+    spec = mod.datasets[dataset_id]
+    route = mod.routes[spec.route_id]
+    adapter = mod.adapters[dataset_id]
     pick = (np.linspace(0, len(keys) - 1, num=min(n, len(keys))).astype(int)
             if keys else [])
     print(f"{dataset_id}: {len(keys):,} record(s) under {root}")
@@ -1065,7 +1098,7 @@ def inspect(dataset_id: str, root: str, keys: List[str], n: int,
                                if "source_lead_name" in rec.notes
                                else rec.lead_names)
             names_seen[spelled] = names_seen.get(spelled, 0) + 1
-            out = process_ecg_record(rec.data, rec.lead_names, rec.fs,
+            out = mod.process_record(rec.data, rec.lead_names, rec.fs,
                                      rec.unit, route, mains_hz, cfg,
                                      record_key=f"{dataset_id}:{rec.record_id}",
                                      slots=spec.lead_slots)
@@ -1087,9 +1120,9 @@ def inspect(dataset_id: str, root: str, keys: List[str], n: int,
     print("  lead names as the files spell them:")
     for names, c in sorted(names_seen.items(), key=lambda kv: -kv[1])[:6]:
         print(f"    {c:4d} x  {names}")
-    print("  A median lead peak-to-peak far from ~0.5-3 mV means the unit is "
-          "wrong, and every QC threshold with it.")
-    if not ADAPTERS[dataset_id].has_subject_ids:
+    if mod.amplitude_hint:
+        print(f"  {mod.amplitude_hint}")
+    if not adapter.has_subject_ids:
         print("  NOTE: this corpus carries no patient id; each record is its "
               "own subject for the split.")
     return 0 if agg["ok"] else 1
@@ -1210,7 +1243,8 @@ def assemble(args, dataset_id: str, unit_ids: List[str], cfg) -> int:
                            f"preprocessing_failures{suffix}.jsonl"), "w") as f:
         for r in failures:
             f.write(json.dumps(r) + "\n")
-    spec = PRETRAIN_DATASETS[dataset_id]
+    mod = MODALITIES[args.modality]
+    spec = mod.datasets[dataset_id]
     stats = {
         "dataset_id": dataset_id, "route_id": spec.route_id, **agg,
         "n_units": len(unit_ids), "n_units_missing": len(missing),
@@ -1218,7 +1252,7 @@ def assemble(args, dataset_id: str, unit_ids: List[str], cfg) -> int:
         "n_subjects_val": len(subjects["val"]),
         "n_windows_train": sum(r["n_windows"] for r in rows["train"]),
         "n_windows_val": sum(r["n_windows"] for r in rows["val"]),
-        "record_is_subject": not ADAPTERS[dataset_id].has_subject_ids,
+        "record_is_subject": not mod.adapters[dataset_id].has_subject_ids,
         "preprocess_config": cfg.provenance({"dataset_id": dataset_id}),
         "synthetic": bool(args.smoke_test),
         "task": list(args.task) if args.task else None,
@@ -1248,7 +1282,8 @@ def assemble(args, dataset_id: str, unit_ids: List[str], cfg) -> int:
     return 0
 
 
-def main(argv=None) -> int:
+def main(argv=None, modality: str = "ecg") -> int:
+    mod = MODALITIES[modality]
     p = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1282,7 +1317,8 @@ def main(argv=None) -> int:
     p.add_argument("--mains-hz", type=float, default=None,
                    help="override the registry's mains frequency")
     p.add_argument("--no-notch", action="store_true")
-    p.add_argument("--highpass-hz", type=float, default=0.5)
+    p.add_argument("--highpass-hz", type=float, default=None,
+                   help="default: the modality's (0.5 Hz ECG, 20 Hz EMG)")
     p.add_argument("--normalization", default="window_shared",
                    choices=["window_shared", "window_per_lead", "none"])
     p.add_argument("--window-seconds", type=float, default=None,
@@ -1302,20 +1338,21 @@ def main(argv=None) -> int:
     p.add_argument("--smoke-records", type=int, default=12)
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args(argv)
+    args.modality = modality
 
     dataset_id = args.dataset
-    if dataset_id in DOWNSTREAM_ONLY:
+    if dataset_id in mod.downstream_only:
         print(f"ERROR: {dataset_id} is a downstream evaluation set and is never "
               f"pretrained on; a pretrained encoder that has seen it makes every "
               f"number reported on it a report on training data.",
               file=sys.stderr)
         return 1
-    if dataset_id not in PRETRAIN_DATASETS:
+    if dataset_id not in mod.datasets:
         print(f"ERROR: unknown dataset {dataset_id!r}; one of "
-              f"{', '.join(PRETRAIN_DATASETS)}", file=sys.stderr)
+              f"{', '.join(mod.datasets)}", file=sys.stderr)
         return 1
-    spec = PRETRAIN_DATASETS[dataset_id]
-    route = ROUTES[spec.route_id]
+    spec = mod.datasets[dataset_id]
+    route = mod.routes[spec.route_id]
     if args.window_seconds is None:
         args.window_seconds = route.window_seconds
     # Both, so it reaches the workers however they start: a forked worker
@@ -1332,18 +1369,22 @@ def main(argv=None) -> int:
 
     cap = (args.max_windows_per_record if args.max_windows_per_record is not None
            else spec.default_max_windows_per_record)
-    cfg = ECGPreprocessConfig(
-        highpass_hz=args.highpass_hz, normalization=args.normalization,
-        window_seconds=args.window_seconds, stride_seconds=args.stride_seconds,
-        val_fraction=args.val_fraction, split_seed=args.split_seed,
-        max_windows_per_record=cap or None)
+    settings = dict(mod.config_defaults)
+    if args.highpass_hz is not None:
+        settings["highpass_hz"] = args.highpass_hz
+    cfg = ECGPreprocessConfig(**{
+        **settings, "normalization": args.normalization,
+        "window_seconds": args.window_seconds,
+        "stride_seconds": args.stride_seconds,
+        "val_fraction": args.val_fraction, "split_seed": args.split_seed,
+        "max_windows_per_record": cap or None})
     mains = None if args.no_notch else (args.mains_hz if args.mains_hz
                                         else spec.mains_hz)
 
     os.makedirs(os.path.join(args.out_dir, "parts"), exist_ok=True)
     os.makedirs(os.path.join(args.out_dir, "shards"), exist_ok=True)
 
-    per_unit = (args.records_per_unit or ADAPTERS[dataset_id].records_per_unit
+    per_unit = (args.records_per_unit or mod.adapters[dataset_id].records_per_unit
                 or (64 if route.n_channels == 1 else 1000))
     # Scratch for archive members inflated while they are read (PulseDB: up
     # to ~3 GB per subject per worker). On the corpus's filesystem, not the
@@ -1358,11 +1399,10 @@ def main(argv=None) -> int:
     else:
         if not args.root or not os.path.exists(args.root):
             print(f"ERROR: --root {args.root!r} does not exist. It is the raw "
-                  f"download; scripts/download_ecg_pretrain_corpora.sh puts "
-                  f"{dataset_id} under $ECG_ROOT/{spec.raw_dir}/raw.",
-                  file=sys.stderr)
+                  f"download; {mod.download_script} puts {dataset_id} under "
+                  f"${mod.root_var}/{spec.raw_dir}/raw.", file=sys.stderr)
             return 1
-        keys = _load_or_list_keys(args, ADAPTERS[dataset_id])
+        keys = _load_or_list_keys(args, mod.adapters[dataset_id])
         if not keys:
             print(f"ERROR: no {dataset_id} records under {args.root}.",
                   file=sys.stderr)
@@ -1375,7 +1415,8 @@ def main(argv=None) -> int:
         if args.smoke_test:
             print("--inspect reads real files; there are none in a smoke run.")
             return 1
-        return inspect(dataset_id, args.root, keys, args.inspect, cfg, mains)
+        return inspect(dataset_id, args.root, keys, args.inspect, cfg, mains,
+                       modality)
 
     units = [keys[i:i + per_unit] for i in range(0, len(keys), per_unit)]
     unit_ids = [_unit_id(i) for i in range(len(units))]
@@ -1402,7 +1443,7 @@ def main(argv=None) -> int:
 
     payloads = [(dataset_id, args.root, unit_ids[i], units[i], cfg, mains,
                  os.path.abspath(args.out_dir), bool(args.smoke_test),
-                 args.seed + i) for i in todo]
+                 args.seed + i, modality) for i in todo]
     started = time.time()
     done = 0
 
@@ -1431,6 +1472,16 @@ def main(argv=None) -> int:
             report(process_unit(pl))
 
     return assemble(args, dataset_id, [unit_ids[i] for i in mine], cfg)
+
+
+MODALITIES["ecg"] = Modality(
+    name="ecg", datasets=PRETRAIN_DATASETS, routes=ROUTES,
+    downstream_only=DOWNSTREAM_ONLY, adapters=ADAPTERS,
+    smoke_records=smoke_records, process_record=process_ecg_record,
+    root_var="ECG_ROOT",
+    download_script="scripts/download_ecg_pretrain_corpora.sh",
+    amplitude_hint="A median lead peak-to-peak far from ~0.5-3 mV means the "
+                   "unit is wrong, and every QC threshold with it.")
 
 
 if __name__ == "__main__":
