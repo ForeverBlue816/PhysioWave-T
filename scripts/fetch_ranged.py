@@ -201,6 +201,10 @@ def main(argv=None) -> int:
     p.add_argument("--jobs", type=int, default=16,
                    help="connections at once, over all files")
     p.add_argument("--chunk-mb", type=int, default=256)
+    p.add_argument("--check-only", action="store_true",
+                   help="fetch nothing: exit 0 if every file is whole, else "
+                        "say what is missing (needs --size / list sizes, so "
+                        "it runs without a network)")
     args = p.parse_args(argv)
     chunk = args.chunk_mb << 20
     rows: List[Tuple[str, str, Optional[int]]] = []
@@ -216,6 +220,26 @@ def main(argv=None) -> int:
         rows.append((args.url, args.dest, args.size))
     else:
         p.error("--url and --dest, or --list")
+    if args.check_only:
+        missing = 0
+        for url, dest, size in rows:
+            if size is None:
+                print(f"ERROR: --check-only needs the size of {dest}",
+                      file=sys.stderr)
+                return 2
+            t = Target(url, dest, size, chunk)
+            if t.complete_on_disk():
+                continue
+            missing += 1
+            done = 0
+            if os.path.exists(t.side):
+                with open(t.side) as f:
+                    done = len({x for x in f.read().split() if x.strip()})
+            print(f"  {os.path.basename(dest)}: incomplete ({done}/{t.n} "
+                  f"pieces)" if os.path.exists(dest) else
+                  f"  {os.path.basename(dest)}: not downloaded")
+        print(f"  {len(rows) - missing}/{len(rows)} file(s) whole")
+        return 1 if missing else 0
     targets: List[Target] = []
     sizes: Dict[str, int] = {}
     for url, dest, size in rows:

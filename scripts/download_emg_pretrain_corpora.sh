@@ -13,13 +13,28 @@
 # partial download continues from where it stopped, and rerunning `all` after
 # an interruption is the way to continue it.
 #
-# RUN IT ON A LOGIN NODE, in the training venv (source $HOME/pw/bin/activate:
-# the helpers need Python >= 3.7, which the system python3 may not be) --
-# compute nodes have no route to the internet -- and
-# expect a login node to kill a long transfer now and then. Nothing here loops
-# to restart after a kill; rerun it. The big single files (emg2pose, emg2qwerty,
-# CEMHSEY's zips) are fetched by scripts/fetch_ranged.py in parallel 256 MB
-# pieces written straight into place, so a rerun fetches only missing pieces.
+# TWO STAGES, because compute nodes have no route to the internet and login
+# nodes kill processes that use a lot of CPU (the first full run here had its
+# downloader SIGKILLed three times):
+#
+#   STAGE=fetch   on a LOGIN NODE: bytes only. No md5, no unpacking, nothing
+#                 marked complete except putEMG and Hyser, which need neither.
+#   STAGE=finish  on a COMPUTE NODE, no network: checks every file is whole,
+#                 md5s CEMHSEY's zips, unpacks GESTURE and emg2qwerty, reads
+#                 emg2pose's tar headers, and marks each corpus complete --
+#                 scripts/slurm/cineca_emg_download_finish.sbatch.
+#   (unset)       both, for a machine that is allowed to do both.
+#
+#   source $HOME/pw/bin/activate      # Python >= 3.7 for the helpers
+#   STAGE=fetch nohup bash scripts/download_emg_pretrain_corpora.sh all > ~/emg_dl.log 2>&1 &
+#   sbatch scripts/slurm/cineca_emg_download_finish.sbatch      # once fetched
+#
+# A login node killing the downloader is a limit being enforced, and nothing
+# here loops to get around it: the run stops and says so. Rerunning it later
+# is your call; if kills keep coming, CINECA's data-transfer service is the
+# route meant for this volume. The big single files are fetched by
+# scripts/fetch_ranged.py in 256 MB pieces written straight into place, so a
+# rerun fetches only the pieces that are missing.
 #
 # LAYOUT -- what EMG/preprocess_emg_corpus.sh expects:
 #
@@ -60,6 +75,7 @@
 #   EMG_ROOT     download root (/leonardo_scratch/large/userexternal/ychen003/bio/emg)
 #   JOBS         connections at once for one big file (16)
 #   CEMHSEY_JOBS connections at once over CEMHSEY's zips (24)
+#   STAGE        fetch | finish | (unset: both) -- see above
 #   KEEP_ZIPS    1: keep emg2qwerty's tar.gz and CEMHSEY's GESTURE zips
 #   SKIP_SPACE_CHECK  1: do not refuse to start when free space looks short
 # ============================================================================
@@ -71,6 +87,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python}"
 JOBS="${JOBS:-16}"
 CEMHSEY_JOBS="${CEMHSEY_JOBS:-24}"
+STAGE="${STAGE:-}"
+case "${STAGE}" in ""|fetch|finish) ;; *) echo "ERROR: STAGE=fetch|finish" >&2; exit 1 ;; esac
+#: get_* return this when the bytes are here and the rest is STAGE=finish's.
+FETCHED=10
 
 OPEN_DATASETS="putemg hyser cemhsey emg2qwerty emg2pose"
 
@@ -153,7 +173,42 @@ md5_of() {
     else md5 -q "$1"; fi
 }
 
-ranged() { "${PYTHON}" "${HERE}/fetch_ranged.py" "$@"; }
+ranged() {
+    local rc
+    if [[ "${STAGE}" == "finish" ]]; then
+        # No network here: whole files pass, anything else is for STAGE=fetch.
+        "${PYTHON}" "${HERE}/fetch_ranged.py" --check-only "$@"
+        rc=$?
+        [[ ${rc} -eq 0 ]] || warn "not all downloaded; finish it on a login node: STAGE=fetch bash $0 all"
+        return ${rc}
+    fi
+    "${PYTHON}" "${HERE}/fetch_ranged.py" "$@"
+    rc=$?
+    if [[ ${rc} -eq 137 ]]; then
+        warn "the downloader was killed (SIGKILL) -- on a login node that is the node's"
+        warn "  process limit. The pieces already written are kept; see the header."
+    fi
+    return ${rc}
+}
+
+#: In STAGE=fetch, stop here: the bytes are in, the rest needs a compute node.
+fetched_only() {
+    if [[ "${STAGE}" == "fetch" ]]; then
+        echo "    downloaded; $1 is left to: sbatch scripts/slurm/cineca_emg_download_finish.sbatch"
+        return 0
+    fi
+    return 1
+}
+
+#: putEMG and Hyser need nothing after the download, and in STAGE=finish
+#: nothing can be downloaded.
+needs_network() {
+    if [[ "${STAGE}" == "finish" ]]; then
+        warn "$1 is not downloaded yet, and this stage has no network: STAGE=fetch on a login node"
+        return 0
+    fi
+    return 1
+}
 
 # --------------------------------------------------------------------------- #
 # One function per corpus. Each returns 0 only when the corpus is complete.
@@ -166,6 +221,7 @@ get_emg2pose() {
     say "${EMG2POSE_URL} (463 GB, ${JOBS} connections)"
     ranged --url "${EMG2POSE_URL}" --dest "${tar}" --size "${EMG2POSE_BYTES}" \
            --jobs "${JOBS}" || return 1
+    fetched_only "reading the tar's headers" && return ${FETCHED}
     # The size is necessary, not sufficient: the tar's headers must read back.
     # An uncompressed tar is walked header to header by seeking, so this is
     # ~25 k small reads, not a pass over 463 GB.
@@ -195,7 +251,8 @@ get_emg2qwerty() {
     say "${EMG2QWERTY_URL} (308 GB, ${JOBS} connections)"
     ranged --url "${EMG2QWERTY_URL}" --dest "${gz}" --size "${EMG2QWERTY_BYTES}" \
            --jobs "${JOBS}" || return 1
-    say "unpacking ${gz##*/} (an hour or more; see the header if it is killed)"
+    fetched_only "unpacking (an hour or more of CPU)" && return ${FETCHED}
+    say "unpacking ${gz##*/} (an hour or more)"
     if command -v pigz >/dev/null 2>&1; then
         tar -I pigz -xf "${gz}" -C "${d}" || return 1
     else
@@ -210,6 +267,7 @@ get_emg2qwerty() {
 
 get_hyser() {
     local d; d="$(raw_dir hyser)"
+    needs_network hyser && return 1
     say "S3 s3://physionet-open/hd-semg/2.0.0/, the *_raw_* records"
     "${PYTHON}" "${HERE}/fetch_s3_open.py" --bucket physionet-open \
         --prefix hd-semg/2.0.0/ --dest "${d}" \
@@ -226,18 +284,38 @@ get_cemhsey() {
     mkdir -p "${d}"
     say "Zenodo records ${CEMHSEY_RECORDS} (19 zips, ${CEMHSEY_JOBS} connections)"
     # name, bytes, md5, url -- from Zenodo's API, so a re-upload with new
-    # sizes or checksums is noticed rather than half-matched.
-    "${PYTHON}" - "${d}" ${CEMHSEY_RECORDS} > "${want}" <<'PYEOF' || return 1
-import json, sys, urllib.request
+    # sizes or checksums is noticed rather than half-matched. Written to a
+    # temporary file and moved into place, so a failed request (Zenodo answers
+    # 503 at times) leaves the last good listing, which is used instead -- and
+    # is all STAGE=finish, without a network, has.
+    if [[ "${STAGE}" != "finish" ]]; then
+        if "${PYTHON}" - "${d}" ${CEMHSEY_RECORDS} > "${want}.tmp" <<'PYEOF'; then
+import json, sys, time, urllib.error, urllib.request
 d = sys.argv[1]
 for rec in sys.argv[2:]:
-    with urllib.request.urlopen(f"https://zenodo.org/api/records/{rec}",
-                                timeout=60) as r:
-        meta = json.load(r)
+    for attempt in range(6):
+        try:
+            with urllib.request.urlopen(f"https://zenodo.org/api/records/{rec}",
+                                        timeout=60) as r:
+                meta = json.load(r)
+            break
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            if attempt == 5:
+                raise
+            print(f"    Zenodo record {rec}: {exc}; retrying", file=sys.stderr)
+            time.sleep(30 * (attempt + 1))
     for f in meta["files"]:
         print(f"{f['key']}\t{f['size']}\t{f['checksum'].split(':', 1)[1]}\t"
               f"{f['links']['self']}")
 PYEOF
+            mv "${want}.tmp" "${want}"
+        else
+            rm -f "${want}.tmp"
+            [[ -s "${want}" ]] || { warn "Zenodo's API did not answer and there is no earlier listing"; return 1; }
+            warn "Zenodo's API did not answer; using the listing from the last run"
+        fi
+    fi
+    [[ -s "${want}" ]] || { warn "no CEMHSEY listing (${want}); run STAGE=fetch on a login node first"; return 1; }
     local name bytes md5 url
     : > "${list}"
     while IFS=$'\t' read -r name bytes md5 url; do
@@ -248,6 +326,7 @@ PYEOF
     if [[ -s "${list}" ]]; then
         ranged --list "${list}" --jobs "${CEMHSEY_JOBS}" || return 1
     fi
+    fetched_only "md5 and unpacking GESTURE" && return ${FETCHED}
     local bad=0
     while IFS=$'\t' read -r name bytes md5 url; do
         local zip="${d}/${name}"
@@ -300,6 +379,7 @@ unpack_deflate64() {   # zip dir
 
 get_putemg() {
     local d; d="$(raw_dir putemg)"
+    needs_network putemg && return 1
     local list="${d}/.files.tsv"
     mkdir -p "${d}/Data-HDF5"
     say "${PUTEMG_DAV}/Data-HDF5/ (712 files)"
@@ -374,6 +454,9 @@ run_one() {
     if [[ ${rc} -eq 0 ]]; then
         mark_done "${ds}"
         say "${ds}: complete"
+    elif [[ ${rc} -eq ${FETCHED} ]]; then
+        say "${ds}: downloaded, not yet verified (STAGE=finish does that)"
+        rc=0
     else
         warn "${ds}: not complete; rerun to continue"
     fi

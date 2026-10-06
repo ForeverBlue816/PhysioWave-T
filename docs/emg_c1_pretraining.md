@@ -11,9 +11,11 @@ inherits.
 ## From download to a running job
 
 ```bash
-# 1. download (login node; resumable, rerun to continue)
+# 1. download: bytes on a login node, then verify + unpack on a compute node
+source $HOME/pw/bin/activate
 bash scripts/download_emg_pretrain_corpora.sh status
-nohup bash scripts/download_emg_pretrain_corpora.sh all > ~/emg_download.log 2>&1 &   # ~1.25 TB
+STAGE=fetch nohup bash scripts/download_emg_pretrain_corpora.sh all > ~/emg_dl.log 2>&1 &   # ~1.25 TB
+sbatch scripts/slurm/cineca_emg_download_finish.sbatch     # once every corpus says "downloaded"
 
 # 2. look at each corpus before processing it -- the amplitude column is the unit check
 DATASET=hyser INSPECT=20 bash EMG/preprocess_emg_corpus.sh
@@ -41,6 +43,19 @@ written straight into place. A login node that kills the transfer costs only
 the unfinished pieces, and a rerun fetches the rest. Zenodo serves CEMHSEY at
 about 0.6 MB/s per connection, so its 19 zips share 24 connections by default
 (`CEMHSEY_JOBS`).
+
+The download runs in two stages. Login nodes kill processes that use a lot
+of CPU; the first full run had its downloader SIGKILLed three times. Compute
+nodes have no internet.
+
+- `STAGE=fetch`, on a login node, only moves bytes.
+- `STAGE=finish`, a compute-node job with no network, does the rest: it checks
+  each file is whole, verifies CEMHSEY's md5s, unpacks GESTURE and emg2qwerty,
+  reads emg2pose's tar headers, and marks each corpus complete.
+
+Nothing loops to restart after a kill. Rerunning is a person's decision, and
+if kills keep coming, CINECA's data-transfer service is the route meant for
+this volume.
 
 Progress and figures use the EEG scripts, which recognise an sEMG run by its
 checkpoint:
