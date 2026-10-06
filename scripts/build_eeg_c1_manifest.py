@@ -47,6 +47,10 @@ def _registry(modality: str):
         from physiowave.ecg_c1.routes import DOWNSTREAM_ONLY
         from physiowave.ecg_c1.routes import PRETRAIN_DATASETS as ECG
         return ECG, DOWNSTREAM_ONLY
+    if modality == "emg":
+        from physiowave.emg_c1.routes import DOWNSTREAM_ONLY
+        from physiowave.emg_c1.routes import PRETRAIN_DATASETS as EMG
+        return EMG, DOWNSTREAM_ONLY
     from physiowave.eeg_c1.routes import DOWNSTREAM_ONLY
     return PRETRAIN_DATASETS, DOWNSTREAM_ONLY
 
@@ -138,7 +142,7 @@ def main(argv=None) -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--corpus-root", required=True)
-    p.add_argument("--modality", choices=["eeg", "ecg"], default="eeg",
+    p.add_argument("--modality", choices=["eeg", "ecg", "emg"], default="eeg",
                    help="which registry the datasets belong to (default eeg)")
     p.add_argument("--out-dir", default=None,
                    help="default: <corpus-root>/merged")

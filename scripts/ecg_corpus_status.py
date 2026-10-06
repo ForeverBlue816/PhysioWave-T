@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Is each ECG corpus fully preprocessed? One table, read from the part files.
+Is each ECG (or sEMG: --modality emg) corpus fully preprocessed? One table, read from the part files.
 
     python scripts/ecg_corpus_status.py
     python scripts/ecg_corpus_status.py --corpus-root /path/to/ecg_c1_corpus
@@ -34,6 +34,20 @@ sys.path.insert(0, os.path.join(ROOT, "ECG"))
 from physiowave.ecg_c1.routes import PRETRAIN_DATASETS, ROUTES  # noqa: E402
 
 DEFAULT_ROOT = "/leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus"
+DEFAULT_ROOTS = {
+    "ecg": DEFAULT_ROOT,
+    "emg": "/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus",
+}
+
+
+def use_modality(modality: str) -> None:
+    """Point the table at another modality's registry and readers."""
+    global PRETRAIN_DATASETS, ROUTES
+    if modality == "emg":
+        sys.path.insert(0, os.path.join(ROOT, "EMG"))
+        from physiowave.emg_c1.routes import PRETRAIN_DATASETS as D
+        from physiowave.emg_c1.routes import ROUTES as R
+        PRETRAIN_DATASETS, ROUTES = D, R
 
 
 def records_per_unit(dataset_id: str) -> int:
@@ -42,7 +56,11 @@ def records_per_unit(dataset_id: str) -> int:
     if override:
         return int(override)
     try:
-        from preprocess_ecg_corpus import ADAPTERS
+        if dataset_id in getattr(sys.modules.get("preprocess_emg_corpus"),
+                                 "ADAPTERS", {}):
+            from preprocess_emg_corpus import ADAPTERS
+        else:
+            from preprocess_ecg_corpus import ADAPTERS
         n = ADAPTERS[dataset_id].records_per_unit
         if n:
             return int(n)
@@ -94,8 +112,15 @@ def status(root: str, dataset_id: str) -> dict:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--corpus-root", default=os.environ.get("ECG_CORPUS", DEFAULT_ROOT))
+    p.add_argument("--modality", choices=["ecg", "emg"], default="ecg")
+    p.add_argument("--corpus-root", default=None)
     args = p.parse_args(argv)
+    if args.modality == "emg":
+        use_modality("emg")
+        import preprocess_emg_corpus  # noqa: F401  (registers its readers)
+    args.corpus_root = (args.corpus_root
+                        or os.environ.get(f"{args.modality.upper()}_CORPUS")
+                        or DEFAULT_ROOTS[args.modality])
 
     rows = [status(args.corpus_root, d) for d in PRETRAIN_DATASETS]
     head = (f"{'dataset':14s} {'route':8s} {'state':8s} {'units':>11s} "
@@ -127,10 +152,13 @@ def main(argv=None) -> int:
           f"{'':>8s} {'':>8s} {tot['train']:>10,} {tot['val']:>8,}")
     print()
     print("  units   part files written / units in the record listing")
-    print("  short   records holding no whole 10 s window (CODE-15%'s 7.3 s "
-          "exams, Georgia's 5 s ones)")
-    print("  qc drop windows dropped for non-finite samples, a flat lead or "
-          "> 25 mV")
+    if args.modality == "ecg":
+        print("  short   records holding no whole 10 s window (CODE-15%'s "
+              "7.3 s exams, Georgia's 5 s ones)")
+    else:
+        print("  short   records holding no whole 1 s window")
+    print("  qc drop windows dropped for non-finite samples, a flat channel "
+          "or > 25 mV")
     if problems:
         print("\nNOT READY:")
         for x in problems:
@@ -139,7 +167,7 @@ def main(argv=None) -> int:
               "same --array;\n  finished units are skipped.")
         return 1
     print("\nall corpora DONE -- merge with:\n"
-          f"  python scripts/build_eeg_c1_manifest.py --modality ecg "
+          f"  python scripts/build_eeg_c1_manifest.py --modality {args.modality} "
           f"--corpus-root {args.corpus_root} --check-shards --check-level ends "
           f"--jobs 16")
     return 0

@@ -1101,11 +1101,11 @@ def _sig(text: str) -> str:
     if SIGNAL == "EEG":
         return text
     for old, new in (("z-scored preprocessed EEG", "window-normalised "
-                      "preprocessed ECG"),
-                     ("z-scored EEG", "window-normalised ECG"),
+                      f"preprocessed {SIGNAL}"),
+                     ("z-scored EEG", f"window-normalised {SIGNAL}"),
                      ("raw EDF values", "raw mV values"),
                      ("z-scored", "window-normalised"),
-                     ("EEG", "ECG")):
+                     ("EEG", SIGNAL)):
         text = text.replace(old, new)
     return text
 
@@ -1129,6 +1129,26 @@ def use_ecg_registry():
     CHANNEL_VOCAB = ECG_LEAD_VOCAB
     LOBE_RULES = LOBE_RULES_ECG
     SIGNAL = "ECG"
+
+
+LOBE_RULES_EMG = (("wristband", ("BAND",)), ("forearm rings", ("PUTEMG",)),
+                  ("HD grid", ("HYSER", "CEMHSEY")))
+
+
+def use_emg_registry():
+    """The sEMG routes, corpora and electrode names; see use_ecg_registry."""
+    global ROUTES, PRETRAIN_DATASETS, ROUTE_COLOR, DATASET_COLOR, \
+        CHANNEL_VOCAB, LOBE_RULES, SIGNAL
+    from physiowave.emg_c1.electrodes import EMG_ELECTRODE_VOCAB
+    from physiowave.emg_c1.routes import PRETRAIN_DATASETS as _D
+    from physiowave.emg_c1.routes import ROUTES as _R
+    ROUTES, PRETRAIN_DATASETS = _R, _D
+    ROUTE_COLOR = {rid: OKABE_ITO[i] for i, rid in enumerate(_R)}
+    DATASET_COLOR = {d: OKABE_ITO[i % len(OKABE_ITO)]
+                     for i, d in enumerate(_D)}
+    CHANNEL_VOCAB = EMG_ELECTRODE_VOCAB
+    LOBE_RULES = LOBE_RULES_EMG
+    SIGNAL = "EMG"
 
 
 def _lobe(name: str) -> str:
@@ -1157,8 +1177,11 @@ def fig_channel_embedding(w: FigureWriter, model, datasets):
     norms = np.linalg.norm(E, axis=1)
     axes[0].bar(range(len(names)), norms,
                 color=[palette[l] for l in lobes])
-    axes[0].set_xticks(range(len(names)))
-    axes[0].set_xticklabels(names, rotation=90, fontsize=4)
+    # Every name while they can be read; past ~80 (the sEMG grids put 232
+    # bars here) every k-th, or the labels merge into a black band.
+    step = max(1, -(-len(names) // 80))
+    axes[0].set_xticks(range(0, len(names), step))
+    axes[0].set_xticklabels(names[::step], rotation=90, fontsize=4)
     axes[0].set_ylabel("embedding L2 norm")
     axes[0].set_title("C1 channel-name embedding norm")
 
@@ -1671,8 +1694,10 @@ def main(argv=None) -> int:
                         "figure_metadata/reconstruction_survey.json")
     p.add_argument("--only", nargs="*", default=None,
                    help="figure names to regenerate")
-    p.add_argument("--modality", default="auto", choices=["auto", "eeg", "ecg"],
-                   help="auto reads the checkpoint's trainer (ecg_c1_moe -> ecg)")
+    p.add_argument("--modality", default="auto",
+                   choices=["auto", "eeg", "ecg", "emg"],
+                   help="auto reads the checkpoint's trainer (ecg_c1_moe -> "
+                        "ecg, emg_c1_moe -> emg)")
     args = p.parse_args(argv)
 
     # Rank 0 only. Under torchrun every rank would otherwise write the same
@@ -1696,13 +1721,18 @@ def main(argv=None) -> int:
 
     modality = args.modality
     if modality == "auto":
-        modality = "ecg" if cfg.get("trainer") == "ecg_c1_moe" else "eeg"
+        modality = {"ecg_c1_moe": "ecg", "emg_c1_moe": "emg"}.get(
+            cfg.get("trainer"), "eeg")
     model_cls, extra = MultiRouteEEGPretrainer, {}
     if modality == "ecg":
         use_ecg_registry()
         from physiowave.ecg_c1.model import MultiRouteECGPretrainer
         model_cls = MultiRouteECGPretrainer
         extra = {"lead_group_masking": bool(mcfg.get("lead_group_masking", True))}
+    elif modality == "emg":
+        use_emg_registry()
+        from physiowave.emg_c1.model import MultiRouteEMGPretrainer
+        model_cls = MultiRouteEMGPretrainer
     print(f"  modality: {modality}")
 
     model = model_cls(**extra,

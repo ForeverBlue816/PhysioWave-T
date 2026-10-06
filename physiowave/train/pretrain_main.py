@@ -207,6 +207,9 @@ def main(argv=None) -> int:
     if cfg.get("trainer") == "ecg_c1_moe":
         from ..ecg_c1.entry import run as run_ecg_c1
         return run_ecg_c1(cfg, out_dir, args)
+    if cfg.get("trainer") == "emg_c1_moe":
+        from ..emg_c1.entry import run as run_emg_c1
+        return run_emg_c1(cfg, out_dir, args)
 
     if args.dry_run:
         return run_dry_run(cfg, out_dir)
