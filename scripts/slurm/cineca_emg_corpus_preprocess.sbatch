@@ -73,6 +73,13 @@ fi
 
 # One worker per core leaves nothing for h5py's gzip and the zip reads; the
 # units are independent, so this is the whole parallelism of a task.
+# Hyser: six, not fifteen. A unit is 64 files of 256 channels, split into four
+# 64-channel grids; for the 25 s recordings that is ~3.3 GB of kept windows
+# per worker, doubled while its shards are written, and fifteen of them ran
+# the 120 GB node out of memory (both tasks, after 7 minutes). Six fit.
+if [[ "${DATASET}" == "hyser" ]]; then
+    export JOBS="${JOBS:-6}"
+fi
 export JOBS="${JOBS:-$(( ${SLURM_CPUS_PER_TASK:-16} - 1 ))}"
 export OMP_NUM_THREADS=1
 export EMG_ROOT="${EMG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/emg}"
