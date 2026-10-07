@@ -26,15 +26,13 @@ data:
   modality: emg
   manifest_train: null
   manifest_val: null
-  # full_pass: an epoch reads EVERY window of every corpus exactly once (each
-  # corpus permuted per epoch and read through; physiowave/eeg_c1/data.py).
-  # The mixture is therefore proportional to corpus size -- the wristband
-  # corpora get most of the steps, putEMG a few dozen an epoch -- and 40
-  # epochs are 40 reads of all of it. temperature:0.5 (EEG's and ECG's
-  # setting) is the alternative that oversamples the small corpora instead;
-  # it needs train.steps_per_epoch set, and then leaves ~37% of windows unseen
-  # in any one epoch.
-  weights: full_pass
+  # temperature:0.5, as on EEG and ECG: emg2pose and emg2qwerty are most of the
+  # windows, and the HD corpora and putEMG are there for acquisition diversity
+  # -- at 0.5 they get a share of steps well above their share of windows
+  # without the two wristband corpora being crowded out. The banner prints
+  # passes/epoch per corpus. (full_pass -- every window once per epoch -- is
+  # the other option; it makes each epoch a whole read of the corpus.)
+  weights: temperature:0.5
 
 objective:
   spec_weight: 0.5
@@ -83,11 +81,11 @@ model:
   channel_token_gate_init: 0.0
 
 train:
-  # 40 full passes over the corpus. The epoch length follows from the data
-  # (steps_per_epoch: null below): ceil(windows / global batch) per corpus,
-  # summed -- the banner prints it, and passes/epoch should read 1.00x for
-  # every corpus. latest.pth is written at epoch ends, so an epoch must fit
-  # the 24 h walltime; RESUME=auto continues across jobs.
+  # 40 epochs that between them read the corpus about once
+  # (corpus_passes_per_run below). As on EEG, an epoch is a fixed number of
+  # steps drawn from the mixture, not a pass: EEG's 60 x 768 steps read about
+  # half its corpus. latest.pth is written at epoch ends; RESUME=auto
+  # continues across jobs.
   epochs: 40
   warmup_epochs: 2
   lr: 3.0e-4
@@ -96,9 +94,17 @@ train:
   clip_grad_norm: 1.0
   precision: bf16
   grad_accumulation_steps: 1
-  steps_per_epoch: null           # full_pass sets it: one read of every window
+  # null: sized from the data so that epochs x steps x windows-per-step comes
+  # to corpus_passes_per_run x the corpus. The banner prints the resolved
+  # steps, total updates and "windows read over the run"; an explicit number
+  # here (or STEPS_PER_EPOCH=) overrides it.
+  steps_per_epoch: null
+  corpus_passes_per_run: 1.0
   val_mask_seed: 1234
-  val_max_batches_per_dataset: 100
+  # Per dataset, per rank. An epoch here is short (on the order of a hundred
+  # steps), so a 100-batch validation sweep over six corpora would take longer
+  # than the training it measures.
+  val_max_batches_per_dataset: 20
   # Per rank: ~24 k tokens a step on every route.
   batch_size_by_route:
     W16_2000: 192

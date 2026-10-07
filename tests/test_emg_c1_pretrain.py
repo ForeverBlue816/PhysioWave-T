@@ -332,3 +332,17 @@ def test_full_pass_resume_and_epochs():
                            batch_by_route={"W16_2000": 8, "G64_2000": 2,
                                            "A24_2000": 4})
     assert capped.steps_per_epoch == 10 and len(list(capped.steps(counts))) == 10
+
+
+def test_size_for_run_reads_the_corpus_once_over_the_run():
+    from physiowave.eeg_c1.data import RouteSchedule
+    counts = {"emg2qwerty": 20000, "hyser": 3000, "putemg": 500}
+    s = RouteSchedule(_Index(counts), weights="temperature:0.5",
+                      batch_by_route={"W16_2000": 8, "A24_2000": 4,
+                                      "G64_2000": 2},
+                      num_replicas=4, routes=ROUTES,
+                      datasets=PRETRAIN_DATASETS)
+    steps = s.size_for_run(1.0, 40)
+    read = steps * 40 * s.windows_per_step()
+    assert sum(counts.values()) <= read < sum(counts.values()) + 40 * 32
+    assert s.size_for_run(2.0, 40) >= 2 * steps - 1

@@ -466,6 +466,14 @@ class EEGC1Trainer:
             num_replicas=getattr(info, "world_size", 1),
             rank=getattr(info, "rank", 0),
             routes=self.routes_table, datasets=self.datasets_table)
+        # train.corpus_passes_per_run: size the epoch so the whole run reads
+        # the corpus that many times over, instead of fixing steps by hand.
+        # Only when steps_per_epoch is not given; an explicit one wins.
+        self.corpus_passes_per_run = tcfg.get("corpus_passes_per_run")
+        if (self.corpus_passes_per_run is not None
+                and tcfg.get("steps_per_epoch") is None):
+            self.schedule.size_for_run(float(self.corpus_passes_per_run),
+                                       self.epochs)
         self.loader = RouteBatchLoader(self.train_index, self.schedule)
 
         # -- model --------------------------------------------------------- #
@@ -661,8 +669,17 @@ class EEGC1Trainer:
         updates_per_epoch = max(1, steps_per_epoch // self.grad_accum)
         world = int(getattr(self.info, "world_size", 1) or 1)
         print("  budget:")
-        print(f"    resolved steps per epoch   {steps_per_epoch}"
-              f"{'  (explicit override)' if explicit_steps else '  (derived from the mixture)'}")
+        if explicit_steps:
+            how = "  (explicit override)"
+        elif self.corpus_passes_per_run is not None:
+            how = (f"  (sized so {self.epochs} epochs read "
+                   f"{float(self.corpus_passes_per_run):g}x the corpus)")
+        else:
+            how = "  (derived from the mixture)"
+        print(f"    resolved steps per epoch   {steps_per_epoch}{how}")
+        read = steps_per_epoch * self.epochs * self.schedule.windows_per_step()
+        print(f"    windows read over the run  {read:,.0f} of a {total_w:,}-window "
+              f"corpus ({read / total_w:.2f}x)")
         print(f"    total optimizer updates    {updates_per_epoch * self.epochs}"
               f"   ({updates_per_epoch}/epoch x {self.epochs} epochs,"
               f" grad_accum {self.grad_accum})")

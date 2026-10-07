@@ -458,6 +458,27 @@ class RouteSchedule:
             steps_per_epoch = int(max(1, np.min(need[np.isfinite(need)])))
         self.steps_per_epoch = int(steps_per_epoch)
 
+    def windows_per_step(self) -> float:
+        """Expected windows a global step reads under this mixture."""
+        return float(sum(
+            p * self.batch_by_route[self.datasets[d].route_id] * self.num_replicas
+            for d, p in zip(self.dataset_ids, self.probs)))
+
+    def size_for_run(self, passes: float, epochs: int) -> int:
+        """Set the epoch so ``epochs`` of them read ``passes`` x the corpus.
+
+        A budget for the WHOLE RUN, in windows: with the corpus at N windows,
+        ``epochs * steps * windows_per_step`` comes to ``passes * N``. The
+        mixture still decides which corpus those windows come from -- under
+        temperature:0.5 the small ones are read more than once and the large
+        ones less -- so this sizes the total, not each corpus's share.
+        """
+        total = sum(self.index.window_counts().get(d, 0) for d in self.dataset_ids)
+        steps = int(np.ceil(passes * total
+                            / (max(1, int(epochs)) * self.windows_per_step())))
+        self.steps_per_epoch = max(1, steps)
+        return self.steps_per_epoch
+
     # -- state ------------------------------------------------------------- #
     def set_epoch(self, epoch: int):
         self.epoch = int(epoch)
