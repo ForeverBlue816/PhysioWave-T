@@ -359,15 +359,21 @@ unpack_deflate64() {   # zip dir
     [[ -f "${dir}/.unpacked" ]] && return 0
     say "unpacking ${zip##*/} (deflate64)"
     mkdir -p "${dir}"
-    if unzip -qo "${zip}" -d "${dir}" 2>/dev/null; then
+    # inflate64 first: it checks every member's CRC, and it does not depend on
+    # how the node's unzip was built (a Leonardo compute node's could not do
+    # deflate64, and it had no 7z). pip install inflate64 in the venv.
+    if "${PYTHON}" -c "import inflate64" 2>/dev/null; then
+        "${PYTHON}" "${HERE}/unzip_deflate64.py" "${zip}" --dest "${dir}" >/dev/null || return 1
+    elif unzip -qo "${zip}" -d "${dir}"; then
         :
     elif command -v 7z >/dev/null 2>&1 && 7z x -y -o"${dir}" "${zip}" >/dev/null; then
         :
     else
-        warn "${zip##*/}: neither unzip nor 7z could unpack it (deflate64 needs Info-ZIP unzip 6 or p7zip)"
+        warn "${zip##*/}: could not unpack deflate64. In the venv:"
+        warn "  pip install inflate64     (then resubmit this job)"
         return 1
     fi
-    n_zip=$(unzip -Z1 "${zip}" 2>/dev/null | grep -c '\.mat$')
+    n_zip=$("${PYTHON}" -c "import sys, zipfile; print(sum(n.endswith('.mat') for n in zipfile.ZipFile(sys.argv[1]).namelist()))" "${zip}")
     n_dir=$(find "${dir}" -name '*.mat' | wc -l)
     if [[ ${n_zip} -eq 0 || ${n_dir} -ne ${n_zip} ]]; then
         warn "${zip##*/}: ${n_dir} .mat unpacked, the zip lists ${n_zip}"
