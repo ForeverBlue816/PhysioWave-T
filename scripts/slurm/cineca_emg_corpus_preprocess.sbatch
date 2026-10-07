@@ -15,7 +15,7 @@
 #
 # WHERE THOSE SIZES COME FROM. The work is reading: emg2pose's tar is 463 GB,
 # emg2qwerty ~340 GB and CEMHSEY 332 GB of zipped MATLAB files, each of which
-# both CEMHSEY corpora read in full. Units are ~130 (emg2pose), ~140
+# both CEMHSEY corpora read in full. Units are ~130 (emg2pose), ~280
 # (emg2qwerty), ~210 (Hyser), ~400 (each CEMHSEY corpus) and ~90 (putEMG); on
 # real records a CEMHSEY trial takes ~2 s to inflate, read and filter on one
 # core and an emg2pose file well under one. Four tasks of 15 workers leave the

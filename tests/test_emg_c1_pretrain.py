@@ -263,3 +263,72 @@ def test_reader_putemg_frame_table(tmp_path):
     assert np.isclose(r.data.std(), 8 * 5 / 4096 * 1000 / 200, rtol=0.6)
     assert r.data[r.lead_names.index("putemg_r2e2")].std() > 2 * r.data[0].std()
     _check("putemg", recs)
+
+
+# --------------------------------------------------------------------------- #
+# full_pass: every window, every epoch
+# --------------------------------------------------------------------------- #
+
+class _Index:
+    def __init__(self, counts):
+        self.counts = counts
+
+    def by_dataset(self):
+        return {d: None for d in self.counts}
+
+    def window_counts(self):
+        return dict(self.counts)
+
+
+def _schedule(counts, rank=0, world=2):
+    from physiowave.eeg_c1.data import RouteSchedule
+    return RouteSchedule(_Index(counts), weights="full_pass", seed=3,
+                         batch_by_route={"W16_2000": 8, "A24_2000": 4,
+                                         "G64_2000": 2},
+                         num_replicas=world, rank=rank, routes=ROUTES,
+                         datasets=PRETRAIN_DATASETS)
+
+
+def test_full_pass_reads_every_window_once_per_epoch():
+    counts = {"emg2pose": 1000, "hyser": 101, "putemg": 5}
+    seen = {d: [] for d in counts}
+    plans = []
+    for rank in (0, 1):
+        s = _schedule(counts, rank)
+        s.set_epoch(4)
+        plans.append(s.plan())
+        steps = list(s.steps(counts))
+        for (_, d, idx) in steps:
+            seen[d].append(idx)
+    assert plans[0] == plans[1]                          # rank-independent
+    # ceil(n / global batch) steps each: 1000/16, 101/4, 5/8
+    assert len(plans[0]) == 63 + 26 + 1
+    for d, n in counts.items():
+        flat = [i for b in seen[d] for i in b]
+        assert set(flat) == set(range(n)), d             # nothing left unseen
+        # only the topped-up last batch repeats anything
+        assert len(flat) - n < 2 * 8 * 2
+    # the two ranks never share a window within a step
+    s0, s1 = _schedule(counts, 0), _schedule(counts, 1)
+    for a, b in zip(s0.steps(counts), s1.steps(counts)):
+        if a[1] != "putemg":                             # 5 < one global batch
+            assert not set(a[2]) & set(b[2])
+
+
+def test_full_pass_resume_and_epochs():
+    counts = {"emg2qwerty": 640, "cemhsey_8x8": 90}
+    s = _schedule(counts)
+    s.set_epoch(1)
+    full = list(s.steps(counts))
+    s.start_step = 17
+    assert list(s.steps(counts)) == full[17:]
+    s.set_epoch(2)
+    assert [x[2] for x in s.steps(counts)] != [x[2] for x in full]
+    # an explicit epoch length caps the plan (smoke tests, --max-steps)
+    from physiowave.eeg_c1.data import RouteSchedule
+    capped = RouteSchedule(_Index(counts), weights="full_pass",
+                           steps_per_epoch=10, routes=ROUTES,
+                           datasets=PRETRAIN_DATASETS,
+                           batch_by_route={"W16_2000": 8, "G64_2000": 2,
+                                           "A24_2000": 4})
+    assert capped.steps_per_epoch == 10 and len(list(capped.steps(counts))) == 10

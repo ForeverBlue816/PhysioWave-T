@@ -351,10 +351,39 @@ class RouteSchedule:
         available = set(index.by_dataset())
         counts = index.window_counts()
 
-        # `weights` may be an explicit {dataset: weight} map, or one of two
+        # `weights` may be an explicit {dataset: weight} map, or one of the
         # named policies. The default is proportional: an epoch is one pass over
         # the corpus and nothing is revisited to fill a quota.
-        if weights is None or (isinstance(weights, str) and
+        self.full_pass_steps: Optional[Dict[str, int]] = None
+        if isinstance(weights, str) and weights.lower().replace("-", "_") in (
+                "full_pass", "epoch_pass"):
+            # EVERY WINDOW, EVERY EPOCH. The other policies draw each step's
+            # batch independently, so an epoch of "one pass in expectation"
+            # leaves ~37% of windows unseen and shows others twice. Here each
+            # dataset is permuted once per epoch and read through in order: it
+            # gets exactly ceil(n / global batch) steps, the last one topped
+            # up from the start of the permutation, and the steps of all the
+            # datasets are shuffled together. The mixture is therefore the
+            # proportional one, exactly rather than in expectation.
+            self.weight_policy = "full_pass"
+            self.full_pass_steps = {}
+            for d, n in counts.items():
+                if n <= 0 or d not in self.datasets:
+                    continue
+                g = self.batch_by_route[self.datasets[d].route_id] * self.num_replicas
+                self.full_pass_steps[d] = int(-(-int(n) // g))
+            w = {d: float(k) for d, k in self.full_pass_steps.items()}
+            full = int(sum(self.full_pass_steps.values()))
+            if steps_per_epoch is not None and int(steps_per_epoch) < full:
+                # A cap (--smoke-test, --max-steps, STEPS_PER_EPOCH=): the
+                # epoch is the first N steps of the shuffled full-pass plan,
+                # and is then NOT a read of every window.
+                print(f"  full_pass: epoch capped at {int(steps_per_epoch)} of "
+                      f"the {full} steps one read of every window takes",
+                      flush=True)
+            else:
+                steps_per_epoch = full
+        elif weights is None or (isinstance(weights, str) and
                                weights.lower() in ("balanced", "uniform")):
             self.weight_policy = "balanced"
             w = balanced_sampling_weights(self.routes, self.datasets)
@@ -381,8 +410,9 @@ class RouteSchedule:
                                              self.datasets)
         elif isinstance(weights, str):
             raise SystemExit(
-                f"unknown sampling policy {weights!r}. Use 'balanced' "
-                f"(P(route)=1/4), 'proportional' (one pass over the corpus), "
+                f"unknown sampling policy {weights!r}. Use 'full_pass' (every "
+                f"window once an epoch), 'balanced' (P(route)=1/4), "
+                f"'proportional' (one pass over the corpus in expectation), "
                 f"'temperature:0.5' (between the two), or an explicit "
                 f"{{dataset: weight}} mapping.")
         else:
@@ -454,6 +484,11 @@ class RouteSchedule:
     def plan(self) -> List[str]:
         """The dataset each step of this epoch draws from. Rank-independent."""
         rng = self._rng()
+        if self.full_pass_steps is not None:
+            plan = [d for d in self.dataset_ids
+                    for _ in range(self.full_pass_steps.get(d, 0))]
+            return [plan[i] for i in rng.permutation(len(plan))
+                    ][:self.steps_per_epoch]
         return [self.dataset_ids[i] for i in
                 rng.choice(len(self.dataset_ids), size=self.steps_per_epoch,
                            p=self.probs)]
@@ -510,6 +545,9 @@ class RouteSchedule:
         silently shrinking the batch on one rank and deadlocking the all-reduce.
         """
         plan = self.plan()
+        if self.full_pass_steps is not None:
+            yield from self._full_pass_steps(plan, lengths)
+            return
         rng = self._rng()
         # Advance the index stream past the draws the plan itself consumed, so
         # index draws are not correlated with the dataset choice.
@@ -524,6 +562,35 @@ class RouteSchedule:
                 picks = rng.choice(n_avail, size=n_total, replace=False)
             else:
                 picks = rng.integers(0, n_avail, size=n_total)
+            if step < self.start_step:
+                continue        # resume: the draw is consumed, the step is not
+            lo = self.rank * per_rank
+            yield route_id, dataset_id, [int(v) for v in picks[lo:lo + per_rank]]
+
+    def _full_pass_steps(self, plan: List[str], lengths: Dict[str, int]
+                         ) -> Iterator[Tuple[str, str, List[int]]]:
+        """``full_pass``: each dataset read through one permutation per epoch.
+
+        Seeded by (seed, epoch) only, like everything else here, so every rank
+        holds the same permutations and takes its own slice of each step.
+        """
+        rng = np.random.default_rng([self.seed, self.epoch, 1])
+        perms = {d: rng.permutation(max(1, int(lengths.get(d, 0))))
+                 for d in self.dataset_ids}
+        pos = {d: 0 for d in self.dataset_ids}
+        for step, dataset_id in enumerate(plan):
+            route_id = self.datasets[dataset_id].route_id
+            per_rank = self.batch_by_route[route_id]
+            n_total = per_rank * self.num_replicas
+            perm, p = perms[dataset_id], pos[dataset_id]
+            if p + n_total <= perm.size:
+                picks = perm[p:p + n_total]
+            else:
+                # The last batch: the remainder, topped up from the start --
+                # repeated windows only when the dataset is smaller than one
+                # global batch.
+                picks = np.resize(np.concatenate([perm[p:], perm[:p]]), n_total)
+            pos[dataset_id] = p + n_total
             if step < self.start_step:
                 continue        # resume: the draw is consumed, the step is not
             lo = self.rank * per_rank

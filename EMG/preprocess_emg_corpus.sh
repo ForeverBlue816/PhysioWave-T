@@ -33,7 +33,7 @@
 #   LIST_ONLY      1: write the record listing and exit
 #   MAX_RECORDS    use this many records, spread over the corpus
 #   MAX_WINDOWS_PER_RECORD   (none: every 1 s window is kept; 0 = no cap)
-#   RECORDS_PER_UNIT         (the reader's: 200 emg2pose files, 8 emg2qwerty
+#   RECORDS_PER_UNIT         (the reader's: 200 emg2pose files, 4 emg2qwerty
 #                             sessions, 64 Hyser files, 16 CEMHSEY trials,
 #                             8 putEMG records)
 #   MAINS_HZ       override the registry's mains frequency

@@ -207,7 +207,10 @@ class EMG2Qwerty(Adapter):
     is its own record on W16_2000 -- the same band, the same electrode names.
     """
 
-    records_per_unit = 8             # sessions; two records each
+    # Sessions; two records each. Four, not eight: a session runs 10-25 min,
+    # so a unit holds up to ~200 MB of windows per wrist on top of the raw
+    # float64 signal being filtered, and fifteen workers share one node's RAM.
+    records_per_unit = 4
 
     def list_keys(self, root):
         return _walk(root, ".hdf5")
