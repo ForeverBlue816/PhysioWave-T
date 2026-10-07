@@ -44,7 +44,7 @@ checkpoint:
 python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_ecg_c1_moe            # per route
 python scripts/eeg_c1_progress.py $PW_CKPT_ROOT/pretrain_ecg_c1_moe --by dataset
 python scripts/visualize_eeg_pretraining.py --run-dir $PW_CKPT_ROOT/pretrain_ecg_c1_moe \
-    --checkpoint best.pth --format png
+    --checkpoint best.pth --format svg,pdf
 ```
 
 A smoke run needs no data at all:

@@ -6,11 +6,12 @@
 #   bash scripts/collect_pretrain_run.sh $PW_CKPT_ROOT/pretrain_ecg_c1_moe ecg_c1_moe
 #
 # The figures are drawn first, into the run directory, by
-#   python scripts/visualize_eeg_pretraining.py --run-dir <run-dir> --format png
+#   python scripts/visualize_eeg_pretraining.py --run-dir <run-dir> --format svg,pdf
 # (scripts/slurm/cineca_visualize_run.sbatch does both steps on a compute
 # node). This copies what a reader of the result needs into docs/runs/<name>/:
 #
-#   figures/*.png             every figure the visualiser drew
+#   figures/*.svg, *.pdf      every figure the visualiser drew, vector, with
+#                             the text left editable
 #   figure_metadata/*.json    which checkpoint, step, windows and seeds each used
 #   metrics_epoch.jsonl       one line per epoch, train and val, per route/dataset
 #   history.json, config_resolved.yaml, environment.json, train_command.txt,
@@ -44,13 +45,16 @@ PYTHON="${PYTHON:-python}"
 DEST="docs/runs/${NAME}"
 mkdir -p "${DEST}"
 
-if compgen -G "${RUN_DIR}/figures/*.png" >/dev/null; then
+if compgen -G "${RUN_DIR}/figures/*.svg" >/dev/null || \
+   compgen -G "${RUN_DIR}/figures/*.pdf" >/dev/null; then
     rm -rf "${DEST}/figures"
     mkdir -p "${DEST}/figures"
-    cp "${RUN_DIR}"/figures/*.png "${DEST}/figures/"
+    # Vector only. A PNG left in the run directory by an earlier draw is not
+    # what this collects.
+    cp "${RUN_DIR}"/figures/*.svg "${RUN_DIR}"/figures/*.pdf "${DEST}/figures/" 2>/dev/null || true
 else
-    echo "WARNING: no PNG figures in ${RUN_DIR}/figures. Draw them first:" >&2
-    echo "  ${PYTHON} scripts/visualize_eeg_pretraining.py --run-dir ${RUN_DIR} --checkpoint best.pth --format png" >&2
+    echo "WARNING: no SVG/PDF figures in ${RUN_DIR}/figures. Draw them first:" >&2
+    echo "  ${PYTHON} scripts/visualize_eeg_pretraining.py --run-dir ${RUN_DIR} --checkpoint best.pth --format svg,pdf" >&2
 fi
 if [[ -d "${RUN_DIR}/figure_metadata" ]]; then
     rm -rf "${DEST}/figure_metadata"
@@ -96,9 +100,12 @@ if rows:
 out += ["Per route and per dataset: `progress_by_route.txt`, "
         "`progress_by_dataset.txt`. What each figure was drawn from: "
         "`figure_metadata/`.", ""]
-for png in sorted(glob.glob(os.path.join(dest, "figures", "*.png"))):
-    base = os.path.basename(png)
-    out += [f"## {os.path.splitext(base)[0]}", "", f"![{base}](figures/{base})", ""]
+for svg in sorted(glob.glob(os.path.join(dest, "figures", "*.svg"))):
+    base = os.path.basename(svg)
+    stem = os.path.splitext(base)[0]
+    pdf = f" ([PDF](figures/{stem}.pdf))" if os.path.isfile(
+        os.path.join(dest, "figures", stem + ".pdf")) else ""
+    out += [f"## {stem}{pdf}", "", f"![{base}](figures/{base})", ""]
 open(os.path.join(dest, "README.md"), "w").write("\n".join(out))
 PYEOF
 

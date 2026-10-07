@@ -84,8 +84,12 @@ from physiowave.eeg_c1.train import _mask_generator            # noqa: E402
 #
 # Okabe-Ito: eight hues distinguishable under the common forms of colour vision
 # deficiency, and still distinguishable printed in greyscale by lightness.
+# Paper style: Times New Roman, bold, every piece of text.
 # svg.fonttype="none" leaves text as text in the SVG, so the figure can be
-# restyled by the journal's template instead of arriving as outlines.
+# restyled by the journal's template instead of arriving as outlines;
+# pdf.fonttype=42 embeds TrueType fonts in the PDF (editable in Illustrator,
+# and what journals that reject Type 3 fonts ask for). savefig.dpi applies only
+# to the raster parts of a vector figure -- the heatmaps.
 # --------------------------------------------------------------------------- #
 OKABE_ITO = ["#0072B2", "#D55E00", "#009E73", "#CC79A7",
              "#E69F00", "#56B4E9", "#F0E442", "#000000"]
@@ -95,11 +99,50 @@ DATASET_COLOR = {d: OKABE_ITO[i % len(OKABE_ITO)]
                  for i, d in enumerate(PRETRAIN_DATASETS)}
 
 
+#: Times New Roman first; the rest are Times-metric or Times-styled faces, in
+#: the order a Linux node is likeliest to have them. STIXGeneral ships with
+#: matplotlib itself, so the figures are never drawn in a sans-serif fallback.
+SERIF_FONTS = ["Times New Roman", "Times", "Liberation Serif",
+               "Nimbus Roman", "Nimbus Roman No9 L", "STIXGeneral"]
+
+
+def _load_user_fonts() -> None:
+    """Register any .ttf/.otf under $PW_FONT_DIR (default ~/.fonts).
+
+    Times New Roman is not free to redistribute, so it is not in the
+    repository; a cluster node rarely has it installed. Copying the four
+    files (regular, bold, italic, bold italic) from your own machine into
+    ~/.fonts is enough for every figure to use it.
+    """
+    from matplotlib import font_manager
+    d = os.path.expanduser(os.environ.get("PW_FONT_DIR", "~/.fonts"))
+    if not os.path.isdir(d):
+        return
+    for root, _dirs, files in os.walk(d):
+        for fn in files:
+            if fn.lower().endswith((".ttf", ".otf")):
+                try:
+                    font_manager.fontManager.addfont(os.path.join(root, fn))
+                except Exception:                              # noqa: BLE001
+                    pass
+
+
 def apply_style():
+    """Paper style: Times New Roman (or the closest face present), bold."""
+    _load_user_fonts()
     plt.rcParams.update({
         "svg.fonttype": "none",
-        "font.family": "sans-serif",
-        "font.sans-serif": ["DejaVu Sans", "Helvetica", "Arial"],
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+        "savefig.dpi": 300,
+        "font.family": "serif",
+        "font.serif": SERIF_FONTS,
+        "mathtext.fontset": "stix",
+        "mathtext.default": "bf",          # tick labels like 10^-1, bold too
+        "font.weight": "bold",
+        "axes.labelweight": "bold",
+        "axes.titleweight": "bold",
+        "figure.titleweight": "bold",
         "font.size": 8,
         "axes.titlesize": 9,
         "axes.labelsize": 8,
@@ -113,6 +156,14 @@ def apply_style():
         "figure.dpi": 150,
         "savefig.bbox": "tight",
     })
+    from matplotlib import font_manager
+    used = font_manager.FontProperties(family="serif", weight="bold")
+    name = font_manager.FontProperties(
+        fname=font_manager.findfont(used)).get_name()
+    print(f"  font: {name} (bold)"
+          + ("" if name == "Times New Roman" else
+             "  -- Times New Roman is not installed here; copy its .ttf "
+             "files into ~/.fonts to use it"))
 
 
 # --------------------------------------------------------------------------- #
@@ -122,14 +173,21 @@ def apply_style():
 class FigureWriter:
     """Writes the figure, the arrays behind it, and what produced both."""
 
-    def __init__(self, out_dir: str, fmt: str, base_meta: Dict):
+    def __init__(self, out_dir: str, fmt, base_meta: Dict, stamp: bool = True,
+                 paper: bool = False):
         self.fig_dir = os.path.join(out_dir, "figures")
         self.data_dir = os.path.join(out_dir, "figure_data")
         self.meta_dir = os.path.join(out_dir, "figure_metadata")
         for d in (self.fig_dir, self.data_dir, self.meta_dir):
             os.makedirs(d, exist_ok=True)
-        self.fmt = fmt
+        #: One or more of svg / pdf / png; every figure is written in each.
+        self.formats = [fmt] if isinstance(fmt, str) else list(fmt)
         self.base_meta = base_meta
+        self.stamp = stamp and not paper
+        #: Paper mode: the figure-level title and notes -- sentences that
+        #: belong in a caption -- are taken off the figure and kept in its
+        #: metadata as ``figure_text``, from which the caption can be written.
+        self.paper = paper
         self.written: List[str] = []
 
     #: Stamped onto every figure, not only into its metadata.
@@ -155,22 +213,36 @@ class FigureWriter:
 
     def save(self, fig, name: str, data: Optional[Dict] = None,
              meta: Optional[Dict] = None):
-        path = os.path.join(self.fig_dir, f"{name}.{self.fmt}")
-        self._stamp(fig)
-        fig.savefig(path, format=self.fmt)
+        figure_text = []
+        sup = getattr(fig, "_suptitle", None)
+        if sup is not None and sup.get_text():
+            figure_text.append(sup.get_text())
+        figure_text += [t.get_text() for t in fig.texts if t.get_text()]
+        if self.paper:
+            if sup is not None:
+                sup.set_visible(False)
+            for t in fig.texts:
+                t.set_visible(False)
+        if self.stamp:
+            self._stamp(fig)
+        paths = [os.path.join(self.fig_dir, f"{name}.{f}") for f in self.formats]
+        for path, f in zip(paths, self.formats):
+            fig.savefig(path, format=f)
         plt.close(fig)
         if data:
             np.savez_compressed(os.path.join(self.data_dir, f"{name}.npz"),
                                 **{k: np.asarray(v) for k, v in data.items()})
         payload = dict(self.base_meta)
         payload.update({"figure": name,
-                        "generated_utc": datetime.now(timezone.utc).isoformat()})
+                        "generated_utc": datetime.now(timezone.utc).isoformat(),
+                        "figure_text": figure_text,
+                        "paper_mode": self.paper})
         if meta:
             payload.update(meta)
         with open(os.path.join(self.meta_dir, f"{name}.json"), "w") as f:
             json.dump(payload, f, indent=2, default=str)
-        self.written.append(path)
-        print(f"  wrote {path}")
+        self.written.append(name)
+        print(f"  wrote {', '.join(paths)}")
 
 
 def sha256_file(path: str, limit: int = 64 << 20) -> str:
@@ -1676,7 +1748,18 @@ def main(argv=None) -> int:
     p.add_argument("--run-dir", required=True)
     p.add_argument("--checkpoint", default="best.pth")
     p.add_argument("--split", default="val", choices=["val", "train"])
-    p.add_argument("--format", default="svg", choices=["svg", "pdf", "png"])
+    p.add_argument("--paper", action="store_true",
+                   help="for a manuscript: no figure-level title or notes "
+                        "(kept in figure_metadata/<name>.json as figure_text, "
+                        "for the caption) and no corner stamp; panel titles, "
+                        "axes and legends stay")
+    p.add_argument("--no-stamp", action="store_true",
+                   help="leave out the grey checkpoint/epoch line in each "
+                        "figure's corner (for a paper); figure_metadata/ "
+                        "still records it")
+    p.add_argument("--format", default="svg,pdf",
+                   help="svg, pdf, png, or several comma-separated "
+                        "(default svg,pdf: vector, fonts editable)")
     p.add_argument("--manifest", default=None,
                    help="override the manifest the run recorded")
     p.add_argument("--mask-seed", type=int, default=None)
@@ -1803,7 +1886,12 @@ def main(argv=None) -> int:
 
     mask_seed = (args.mask_seed if args.mask_seed is not None
                  else int(cfg.get("train", {}).get("val_mask_seed", 1234)))
-    writer = FigureWriter(run_dir, args.format, {
+    formats = [f.strip().lower() for f in args.format.split(",") if f.strip()]
+    bad = [f for f in formats if f not in ("svg", "pdf", "png")]
+    if bad or not formats:
+        raise SystemExit(f"--format: {args.format!r}; use svg, pdf, png or a "
+                         f"comma-separated list of them")
+    writer = FigureWriter(run_dir, formats, {
         "checkpoint": ckpt_path,
         "checkpoint_sha256": sha256_file(ckpt_path),
         "epoch": ck.get("epoch"), "global_step": ck.get("global_step"),
@@ -1820,7 +1908,7 @@ def main(argv=None) -> int:
         # trained under, and nothing in the pipeline would have disagreed.
         "objective": objective,
         "objective_equation": objective_equation(objective),
-    })
+    }, stamp=not args.no_stamp, paper=args.paper)
 
     epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
     step_rows = read_jsonl(os.path.join(run_dir, "metrics_step.jsonl"))

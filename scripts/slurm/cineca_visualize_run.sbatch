@@ -18,6 +18,16 @@
 #   NAME        docs/runs/<NAME>                     (<m>_c1_moe)
 #   CHECKPOINT  best.pth (lowest val total loss); latest.pth for the last epoch
 #   RECON_WINDOWS  windows per route the reconstruction figures choose from (4)
+#   FORMAT      svg,pdf (vector, text editable); png also accepted
+#   PAPER       1 (default): manuscript figures -- no figure-level title or
+#               notes and no corner stamp; that text is kept in
+#               figure_metadata/<name>.json ("figure_text") for the caption.
+#               0: the working figures, with both.
+#
+# Fonts: Times New Roman, bold. A cluster node rarely has it, so the figures
+# fall back to a Times-styled face (STIX ships with matplotlib) and the job
+# log says so. To draw in Times New Roman itself, copy its four .ttf files
+# from your own computer into ~/.fonts on Leonardo once.
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
@@ -47,6 +57,7 @@ echo "visualising ${RUN_DIR} (${CHECKPOINT}) -> docs/runs/${NAME}"
 [[ -f "${RUN_DIR}/${CHECKPOINT}" ]] || { echo "ERROR: no ${RUN_DIR}/${CHECKPOINT}" >&2; exit 1; }
 
 python scripts/visualize_eeg_pretraining.py --run-dir "${RUN_DIR}" \
-    --checkpoint "${CHECKPOINT}" --format png \
-    --recon-windows "${RECON_WINDOWS:-4}" --threads "${OMP_NUM_THREADS}" || exit 1
+    --checkpoint "${CHECKPOINT}" --format "${FORMAT:-svg,pdf}" \
+    --recon-windows "${RECON_WINDOWS:-4}" --threads "${OMP_NUM_THREADS}" \
+    $([[ "${PAPER:-1}" == "1" ]] && echo --paper) || exit 1
 bash scripts/collect_pretrain_run.sh "${RUN_DIR}" "${NAME}"

@@ -23,7 +23,7 @@ C1 pretraining runs (EEG, ECG, sEMG) are collected with their figures:
     git add docs/runs/ecg_c1_moe && git commit -m "ecg_c1_moe: figures" && git push
 
 The job draws the figures from `best.pth` into the run directory, then
-`scripts/collect_pretrain_run.sh` copies the PNGs, each figure's metadata, the
+`scripts/collect_pretrain_run.sh` copies the figures (SVG and PDF, text left editable), each figure's metadata, the
 per-epoch metrics, the resolved config and the progress tables into
 `docs/runs/<name>/`, with a README that shows the best epochs and every figure
 inline. Checkpoints, the per-step metrics and the arrays behind each figure
