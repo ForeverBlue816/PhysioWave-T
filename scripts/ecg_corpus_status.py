@@ -74,7 +74,8 @@ def status(root: str, dataset_id: str) -> dict:
     d = os.path.join(root, dataset_id)
     out = {"dataset": dataset_id, "state": "-", "keys": 0, "units": 0,
            "parts": 0, "read": 0, "failed": 0, "short": 0, "kept": 0,
-           "train": 0, "val": 0, "qc": 0, "subj_train": 0, "subj_val": 0}
+           "train": 0, "val": 0, "qc": 0, "subj_train": 0, "subj_val": 0,
+           "keys_done": 0, "cand": 0, "qc_by": {}}
     listing = os.path.join(d, "record_list.txt")
     if os.path.isfile(listing):
         with open(listing) as f:
@@ -90,6 +91,10 @@ def status(root: str, dataset_id: str) -> dict:
         except Exception:                                      # noqa: BLE001
             continue
         s = part["stats"]
+        out["keys_done"] += int(part.get("n_keys", 0))
+        out["cand"] += s.get("windows_candidate", 0)
+        for r, c in s.get("qc_dropped", {}).items():
+            out["qc_by"][r] = out["qc_by"].get(r, 0) + int(c)
         out["read"] += s.get("records_read", 0)
         out["failed"] += s.get("records_failed", 0)
         out["short"] += s.get("records_shorter_than_window", 0)
@@ -100,7 +105,14 @@ def status(root: str, dataset_id: str) -> dict:
             subj[side].update(part["subjects"][side])
     out["subj_train"], out["subj_val"] = len(subj["train"]), len(subj["val"])
     out["leak"] = len(subj["train"] & subj["val"])
-    if out["units"] and out["parts"] >= out["units"]:
+    # Done is every LISTED RECORD covered by a part file, not a unit count:
+    # the count depends on the unit size, and a corpus processed before the
+    # default changed has fewer, larger parts that still cover everything.
+    if out["parts"] and out["keys"]:
+        per = out["keys_done"] / out["parts"] if out["keys_done"] else 0
+        left = max(0, out["keys"] - out["keys_done"])
+        out["units"] = out["parts"] + (math.ceil(left / per) if per else 0)
+    if out["keys"] and out["keys_done"] >= out["keys"]:
         out["state"] = "DONE"
     elif out["parts"]:
         out["state"] = "PARTIAL"
@@ -130,6 +142,7 @@ def main(argv=None) -> int:
     print("-" * len(head))
     tot = {"train": 0, "val": 0}
     problems = []
+    notes = []
     for r in rows:
         route = PRETRAIN_DATASETS[r["dataset"]].route_id
         units = f"{r['parts']}/{r['units']}" if r["units"] else "-"
@@ -144,6 +157,11 @@ def main(argv=None) -> int:
         if r.get("leak"):
             problems.append(f"{r['dataset']}: {r['leak']} subject(s) on BOTH "
                             f"sides of the split")
+        if r["cand"] and r["qc"] > 0.05 * r["cand"]:
+            notes.append(f"{r['dataset']}: QC dropped {r['qc'] / r['cand']:.1%} "
+                         f"of candidate windows -- " + ", ".join(
+                             f"{k} {v:,}" for k, v in sorted(
+                                 r["qc_by"].items(), key=lambda kv: -kv[1]) if v))
         if r["read"] and r["failed"] > 0.01 * (r["read"] + r["failed"]):
             problems.append(f"{r['dataset']}: {r['failed']:,} failed records "
                             f"(>1%) -- see preprocessing_failures*.jsonl")
@@ -159,6 +177,10 @@ def main(argv=None) -> int:
         print("  short   records holding no whole 1 s window")
     print("  qc drop windows dropped for non-finite samples, a flat channel "
           "or > 25 mV")
+    if notes:
+        print("\nNOTE (not blocking):")
+        for x in notes:
+            print(f"  {x}")
     if problems:
         print("\nNOT READY:")
         for x in problems:
