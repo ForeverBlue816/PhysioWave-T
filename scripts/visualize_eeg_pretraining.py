@@ -1741,6 +1741,69 @@ def _cap_threads() -> int:
     return n
 
 
+def load_trained_model(ckpt_path: str, modality_arg: str = "auto"):
+    """The checkpoint's model, built from its own config and weights.
+
+    Also switches this module's registry (routes, datasets, channel names) to
+    the run's modality. Returns ``(ck, cfg, mcfg, objective, modality,
+    model_cls, model)``; scripts/draw_architecture_panels.py uses it too.
+    """
+    ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    cfg = ck.get("config", {})
+    mcfg = cfg.get("model", {})
+    device = torch.device("cpu")
+    objective = resolve_eeg_c1_objective(cfg)
+
+    modality = modality_arg
+    if modality == "auto":
+        modality = {"ecg_c1_moe": "ecg", "emg_c1_moe": "emg"}.get(
+            cfg.get("trainer"), "eeg")
+    model_cls, extra = MultiRouteEEGPretrainer, {}
+    if modality == "ecg":
+        use_ecg_registry()
+        from physiowave.ecg_c1.model import MultiRouteECGPretrainer
+        model_cls = MultiRouteECGPretrainer
+        extra = {"lead_group_masking": bool(mcfg.get("lead_group_masking", True))}
+    elif modality == "emg":
+        use_emg_registry()
+        from physiowave.emg_c1.model import MultiRouteEMGPretrainer
+        model_cls = MultiRouteEMGPretrainer
+    print(f"  modality: {modality}")
+
+    model = model_cls(**extra,
+        embed_dim=int(mcfg.get("embed_dim", 384)),
+        depth=int(mcfg.get("depth", 6)), num_heads=int(mcfg.get("num_heads", 6)),
+        dropout=float(mcfg.get("dropout", 0.1)),
+        norm=mcfg.get("norm", "rmsnorm"), ffn=mcfg.get("ffn", "swiglu"),
+        qk_norm=bool(mcfg.get("qk_norm", True)),
+        max_level=int(mcfg.get("max_level", 3)),
+        wave_kernel_size=int(mcfg.get("wave_kernel_size", 16)),
+        wavelet_names=mcfg.get("wavelet_names"),
+        wave_init_mode=mcfg.get("wave_init_mode", "pad"),
+        fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
+        fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
+        mask_ratio=float(mcfg.get("mask_ratio", 0.5)),
+        # Not cosmetic. normalize_spec_target decides what target_spec IS, and
+        # mask_before_frontend decides whether the online view was corrupted at
+        # all; defaulting both would render an ablation run as though it had
+        # been trained the standard way.
+        mask_before_frontend=bool(objective["mask_before_frontend"]),
+        normalize_spec_target=bool(objective["normalize_spec_target"]),
+        mlp_ratio=float(mcfg.get("mlp_ratio", 4.0)),
+        use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
+        masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
+        importance_ratio=float(mcfg.get("importance_ratio", 0.6)),
+        channel_encoding=mcfg.get("channel_encoding", "id"),
+        channel_injection=mcfg.get("channel_injection", "token"),
+        channel_embed_dim=int(mcfg.get("channel_embed_dim", 64)),
+        channel_vocab_size=ck.get("channel_vocab_size"),
+    ).to(device)
+    model.load_state_dict(ck["model"])
+    model.eval()
+
+    return ck, cfg, mcfg, objective, modality, model_cls, model
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         description=__doc__,
@@ -1796,58 +1859,9 @@ def main(argv=None) -> int:
         print(f"ERROR: no checkpoint at {ckpt_path}", file=sys.stderr)
         return 1
 
-    ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    cfg = ck.get("config", {})
-    mcfg = cfg.get("model", {})
+    ck, cfg, mcfg, objective, modality, model_cls, model = load_trained_model(
+        ckpt_path, args.modality)
     device = torch.device("cpu")
-    objective = resolve_eeg_c1_objective(cfg)
-
-    modality = args.modality
-    if modality == "auto":
-        modality = {"ecg_c1_moe": "ecg", "emg_c1_moe": "emg"}.get(
-            cfg.get("trainer"), "eeg")
-    model_cls, extra = MultiRouteEEGPretrainer, {}
-    if modality == "ecg":
-        use_ecg_registry()
-        from physiowave.ecg_c1.model import MultiRouteECGPretrainer
-        model_cls = MultiRouteECGPretrainer
-        extra = {"lead_group_masking": bool(mcfg.get("lead_group_masking", True))}
-    elif modality == "emg":
-        use_emg_registry()
-        from physiowave.emg_c1.model import MultiRouteEMGPretrainer
-        model_cls = MultiRouteEMGPretrainer
-    print(f"  modality: {modality}")
-
-    model = model_cls(**extra,
-        embed_dim=int(mcfg.get("embed_dim", 384)),
-        depth=int(mcfg.get("depth", 6)), num_heads=int(mcfg.get("num_heads", 6)),
-        dropout=float(mcfg.get("dropout", 0.1)),
-        norm=mcfg.get("norm", "rmsnorm"), ffn=mcfg.get("ffn", "swiglu"),
-        qk_norm=bool(mcfg.get("qk_norm", True)),
-        max_level=int(mcfg.get("max_level", 3)),
-        wave_kernel_size=int(mcfg.get("wave_kernel_size", 16)),
-        wavelet_names=mcfg.get("wavelet_names"),
-        wave_init_mode=mcfg.get("wave_init_mode", "pad"),
-        fold_synthesis=int(mcfg.get("fold_synthesis", 3)),
-        fold_gamma=float(mcfg.get("fold_gamma", 0.1)),
-        mask_ratio=float(mcfg.get("mask_ratio", 0.5)),
-        # Not cosmetic. normalize_spec_target decides what target_spec IS, and
-        # mask_before_frontend decides whether the online view was corrupted at
-        # all; defaulting both would render an ablation run as though it had
-        # been trained the standard way.
-        mask_before_frontend=bool(objective["mask_before_frontend"]),
-        normalize_spec_target=bool(objective["normalize_spec_target"]),
-        mlp_ratio=float(mcfg.get("mlp_ratio", 4.0)),
-        use_separate_channel=bool(mcfg.get("use_separate_channel", True)),
-        masking_strategy=mcfg.get("masking_strategy", "frequency_guided"),
-        importance_ratio=float(mcfg.get("importance_ratio", 0.6)),
-        channel_encoding=mcfg.get("channel_encoding", "id"),
-        channel_injection=mcfg.get("channel_injection", "token"),
-        channel_embed_dim=int(mcfg.get("channel_embed_dim", 64)),
-        channel_vocab_size=ck.get("channel_vocab_size"),
-    ).to(device)
-    model.load_state_dict(ck["model"])
-    model.eval()
 
     # A second model at initialisation, for the "before training" trace. Built
     # rather than stored: it is a deterministic function of the seed and the
