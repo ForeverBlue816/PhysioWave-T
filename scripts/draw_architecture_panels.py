@@ -16,27 +16,36 @@ default the window is the best-ranked one of the run's reconstruction survey
 visualize_eeg_pretraining.py --recon-windows N) for that route.
 
 Written to <run-dir>/architecture_panels/<route>/ (or --out-dir), one SVG
-each, transparent background, no axes or text unless --axes:
+each, transparent background. The only text is the axes' tick labels (Times
+New Roman, the paper figures' style); --bare drops the axes too.
 
-    01_raw_input              the preprocessed window, a few channels stacked
-    02_mask_grid              which patches are masked (channel x patch)
-    03_masked_input           the window with the masked patches zeroed -- what
-                              the wavelet frontend of the online view receives
-    04_wavelet_band_<b>       each scale of the learned decomposition
+  traces, a few channels stacked (the three closest to half masked):
+    01_raw_input              the preprocessed window
+    02_mask_grid              which patches are masked (those channels x patch)
+    03_masked_input           masked patches zeroed: what the online view's
+                              wavelet frontend receives; masked spans shaded
+    04_wavelet_band_<k>_<b>   each scale of the learned decomposition
                               (d1..dJ detail bands, then the approximation)
-    04_wavelet_bands_stacked  all scales of the first drawn channel, stacked
+    04_wavelet_bands_stacked  every scale of one channel, stacked
     05_folded_spec            the ScaleFold output: the scales folded back to
-                              one row per channel (the spec target, before the
-                              per-patch normalisation)
-    06_spec_target_heatmap    the normalised spec target, channel x time
-    07_spec_reconstruction    target on visible patches, prediction on masked
-    08_raw_reconstruction     the same for the raw-waveform head, as traces
-    09_raw_overlay            target vs prediction on the masked spans only,
-                              masked spans shaded
-    10_spec_overlay           the spec head's target vs prediction, likewise
+                              one row per channel
+    08_raw_reconstruction     visible = target, masked = raw-head prediction
+    09_raw_overlay            target vs raw-head prediction on masked spans
+    10_spec_overlay           target vs spec-head prediction on masked spans
 
-Text, when there is any, is Times New Roman bold, as in the paper figures.
-The window, mask seed and checkpoint are written to panels.json beside them.
+  heatmaps, every channel of the route (channel x time):
+    H0_mask_grid_all          the whole mask, channel x patch
+    H1_raw_target  H2_raw_masked  H3_raw_composite  H4_raw_error
+    H5_spec_target H6_spec_masked H7_spec_composite H8_spec_error
+                              target; target with masked patches blank;
+                              target visible + prediction masked; |error| on
+                              masked patches only (visible ones are not
+                              supervised). A target and its composite share
+                              one colour limit, taken from the target.
+
+Colours: blue signal, orange prediction, purple mask; signal heatmaps on a
+blue-white-red diverging map and errors on magma, as in the paper figures.
+The window, mask seed and checkpoint are written to panels.json.
 """
 
 from __future__ import annotations
@@ -57,13 +66,6 @@ for p in (ROOT, HERE, os.path.join(ROOT, "ECG"), os.path.join(ROOT, "EMG")):
 
 import visualize_eeg_pretraining as viz                      # noqa: E402
 from visualize_eeg_pretraining import plt                    # noqa: E402
-
-# Okabe-Ito, as in the paper figures.
-C_SIGNAL = "#0072B2"
-C_PRED = "#D55E00"
-C_MASK = "#E69F00"
-C_GREY = "0.55"
-
 
 # --------------------------------------------------------------------------- #
 # The window through the model
@@ -128,12 +130,42 @@ def pick_window(run_dir, route_id, datasets, dataset=None, window=None):
 
 
 # --------------------------------------------------------------------------- #
-# Drawing
+# Style: purple / orange / blue, TPAMI-sized
 # --------------------------------------------------------------------------- #
 
+C_SIGNAL = "#2166AC"        # blue: the signal
+C_PRED = "#E66101"          # orange: the model's prediction
+C_MASK = "#5E3C99"          # purple: the mask
+C_MASK_FILL = "#B2ABD2"     # light purple: masked spans behind traces
+C_VISIBLE = "#EDEDED"       # a visible patch in the mask grid; blank cells
+CMAP_SIGNAL = "RdBu_r"
+CMAP_ERROR = "magma"
+BAND_COLORS = ["#5E3C99", "#E66101", "#2166AC", "#1B7837", "#8C510A"]
+
+
+def tpami_style():
+    viz.apply_style()                       # Times New Roman, bold, vector
+    plt.rcParams.update({
+        "axes.linewidth": 0.6,
+        "xtick.major.width": 0.6, "ytick.major.width": 0.6,
+        "xtick.major.size": 2.5, "ytick.major.size": 2.5,
+        "xtick.direction": "out", "ytick.direction": "out",
+        "xtick.labelsize": 7, "ytick.labelsize": 7,
+        "axes.spines.top": False, "axes.spines.right": False,
+        "axes.grid": False,
+    })
+
+
+def _cmap(name):
+    import copy
+    cm = copy.copy(plt.get_cmap(name))
+    cm.set_bad(C_VISIBLE)
+    return cm
+
+
 class Panels:
-    def __init__(self, out_dir, size, axes: bool, lw: float):
-        self.out_dir, self.size, self.axes, self.lw = out_dir, size, axes, lw
+    def __init__(self, out_dir, size, bare: bool, lw: float):
+        self.out_dir, self.size, self.bare, self.lw = out_dir, size, bare, lw
         os.makedirs(out_dir, exist_ok=True)
         self.written = []
 
@@ -143,17 +175,23 @@ class Panels:
         ax.patch.set_alpha(0.0)
         return fig, ax
 
-    def finish(self, fig, ax, name, xlabel=None, ylabel=None, title=None):
-        if self.axes:
-            if xlabel:
-                ax.set_xlabel(xlabel)
-            if ylabel:
-                ax.set_ylabel(ylabel)
-            if title:
-                ax.set_title(title)
-        else:
+    def finish(self, fig, ax, name, yticks=True):
+        from matplotlib.ticker import MaxNLocator
+        if self.bare:
             ax.set_axis_off()
-            ax.margins(x=0)
+        else:
+            ax.xaxis.set_major_locator(MaxNLocator(4))
+            if yticks:
+                ax.yaxis.set_major_locator(MaxNLocator(3, integer=True))
+            else:
+                ax.set_yticks([])
+                ax.spines["left"].set_visible(False)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("")
+        if ax.get_legend() is not None:
+            ax.get_legend().remove()
+        ax.margins(x=0)
         path = os.path.join(self.out_dir, f"{name}.svg")
         fig.savefig(path, format="svg", transparent=True,
                     bbox_inches="tight", pad_inches=0.02)
@@ -171,31 +209,16 @@ def _scale(r):
 def _stack(rows, ref=None, gap=1.2):
     """Rows scaled one by one (by ``ref``'s rows when given) and stacked.
 
-    Per row, because the panels are diagram parts, not measurements: the
-    wavelet scales differ by an order of magnitude and on one shared scale
-    the high-frequency bands draw as flat lines. A pair that is compared --
-    target and prediction -- shares its row's scale through ``ref``.
+    Per row, because these are diagram parts: the wavelet scales differ by an
+    order of magnitude, and on one shared scale the fine bands draw flat. A
+    compared pair -- target and prediction -- shares its row's scale via ref.
     """
     ref = rows if ref is None else ref
     out = [np.asarray(r, float) / _scale(q) for r, q in zip(rows, ref)]
     return out, [-i * 2 * gap for i in range(len(out))]
 
 
-def traces(pn, name, rows, t, color=C_SIGNAL, shade=None, xlabel="time (s)",
-           ylabel=None, title=None, ref=None):
-    fig, ax = pn.new()
-    rows, offs = _stack(rows, ref)
-    for r, o in zip(rows, offs):
-        ax.plot(t, r + o, color=color, lw=pn.lw)
-    if shade is not None:
-        _shade(ax, shade, t, offs)
-    if pn.axes:
-        ax.set_yticks([])
-    pn.finish(fig, ax, name, xlabel, ylabel, title)
-
-
 def _spans(mrow):
-    """[start, end) sample spans where a mask row is True."""
     d = np.diff(np.concatenate([[0], mrow.astype(int), [0]]))
     return list(zip(np.where(d == 1)[0], np.where(d == -1)[0]))
 
@@ -205,46 +228,60 @@ def _shade(ax, mrows, t, offs, gap=1.2):
     for mrow, o in zip(mrows, offs):
         for a, b in _spans(mrow):
             ax.fill_between([t[a], t[b - 1] + dt], o - gap, o + gap,
-                            color=C_MASK, alpha=0.18, lw=0)
+                            color=C_MASK_FILL, alpha=0.35, lw=0)
 
 
-def overlay(pn, name, target, pred, mrows, t, title=None):
+def traces(pn, name, rows, t, color=C_SIGNAL, shade=None, ref=None,
+           colors=None):
+    fig, ax = pn.new()
+    rows, offs = _stack(rows, ref)
+    if shade is not None:
+        _shade(ax, shade, t, offs)
+    for i, (r, o) in enumerate(zip(rows, offs)):
+        ax.plot(t, r + o, color=(colors[i % len(colors)] if colors else color),
+                lw=pn.lw)
+    pn.finish(fig, ax, name, yticks=False)
+
+
+def overlay(pn, name, target, pred, mrows, t):
     """Target throughout, prediction only where it was masked."""
     fig, ax = pn.new()
     tg, offs = _stack(target)
     pr, _ = _stack(pred, ref=target)
     _shade(ax, mrows, t, offs)
-    for r, p, o, mrow in zip(tg, pr, offs, mrows):
+    for r, q, o, mrow in zip(tg, pr, offs, mrows):
         ax.plot(t, r + o, color=C_SIGNAL, lw=pn.lw)
-        ax.plot(t, np.where(mrow, p, np.nan) + o, color=C_PRED, lw=pn.lw)
-    if pn.axes:
-        ax.set_yticks([])
-    pn.finish(fig, ax, name, "time (s)", None, title)
+        ax.plot(t, np.where(mrow, q, np.nan) + o, color=C_PRED, lw=pn.lw)
+    pn.finish(fig, ax, name, yticks=False)
 
 
-def heatmap(pn, name, arr, lim=None, cmap="RdBu_r", title=None, h_scale=1.0):
+def heatmap(pn, name, arr, seconds, lim=None, cmap=CMAP_SIGNAL, vmin=None,
+            h_scale=1.0):
     fig, ax = pn.new(h_scale)
-    lim = lim or max(float(np.nanpercentile(np.abs(arr), 99.5)), 1e-9)
-    ax.imshow(arr, aspect="auto", cmap=cmap, vmin=-lim, vmax=lim,
-              interpolation="nearest")
-    if pn.axes:
-        ax.set_yticks([])
-    pn.finish(fig, ax, name, "time (samples)", "channel", title)
+    C = arr.shape[0]
+    if vmin is None:
+        lim = lim or max(_scale(arr), 1e-9)
+        lo, hi = -lim, lim
+    else:
+        lo, hi = vmin, (lim or max(_scale(arr), 1e-9))
+    ax.imshow(arr, aspect="auto", cmap=_cmap(cmap), vmin=lo, vmax=hi,
+              interpolation="nearest", extent=[0, seconds, C - 0.5, -0.5])
+    pn.finish(fig, ax, name)
 
 
-def mask_grid(pn, name, mask_cp, title=None):
-    fig, ax = pn.new(h_scale=max(0.25, min(1.0, mask_cp.shape[0] / 12)))
+def mask_grid(pn, name, mask_cp, h_scale=None):
     from matplotlib.colors import ListedColormap
-    ax.imshow(mask_cp.astype(float), aspect="auto",
-              cmap=ListedColormap(["#F2F2F2", C_MASK]), vmin=0, vmax=1,
-              interpolation="nearest")
-    # patch borders, so the grid reads as tokens
     C, P = mask_cp.shape
-    for i in range(1, P):
-        ax.axvline(i - 0.5, color="white", lw=0.6)
-    for j in range(1, C):
-        ax.axhline(j - 0.5, color="white", lw=0.6)
-    pn.finish(fig, ax, name, "patch", "channel", title)
+    fig, ax = pn.new(h_scale or max(0.25, min(1.0, C / 12)))
+    ax.imshow(mask_cp.astype(float), aspect="auto", vmin=0, vmax=1,
+              cmap=ListedColormap([C_VISIBLE, C_MASK]),
+              interpolation="nearest")
+    if C <= 32:                             # cell borders read as tokens
+        for i in range(1, P):
+            ax.axvline(i - 0.5, color="white", lw=0.5)
+        for j in range(1, C):
+            ax.axhline(j - 0.5, color="white", lw=0.5)
+    pn.finish(fig, ax, name)
 
 
 def main(argv=None) -> int:
@@ -257,23 +294,24 @@ def main(argv=None) -> int:
     p.add_argument("--dataset", default=None)
     p.add_argument("--window-index", type=int, default=None)
     p.add_argument("--channels", default=None,
-                   help="comma-separated channel rows to draw (default: the "
-                        "three closest to half masked, or the only one)")
+                   help="comma-separated channel rows for the trace panels "
+                        "(default: the three closest to half masked)")
     p.add_argument("--mask-seed", type=int, default=None)
     p.add_argument("--split", default="val", choices=["val", "train"])
     p.add_argument("--out-dir", default=None)
-    p.add_argument("--size", default="3.2,1.6", help="panel size in inches, W,H")
-    p.add_argument("--linewidth", type=float, default=1.0)
-    p.add_argument("--axes", action="store_true",
-                   help="draw axes, labels and titles (default: bare panels)")
+    p.add_argument("--size", default="2.4,1.5", help="panel size in inches, W,H")
+    p.add_argument("--linewidth", type=float, default=0.8)
+    p.add_argument("--bare", action="store_true",
+                   help="no axes at all (default: axes with tick labels only)")
     args = p.parse_args(argv)
 
-    viz.apply_style()
+    tpami_style()
     run_dir = args.run_dir
     ckpt = (args.checkpoint if os.path.isabs(args.checkpoint)
             else os.path.join(run_dir, args.checkpoint))
     ck, cfg, mcfg, objective, modality, _cls, model = viz.load_trained_model(
         ckpt, args.modality)
+    tpami_style()                            # the loader may reset rcParams
     mask_seed = (args.mask_seed if args.mask_seed is not None
                  else int(cfg.get("train", {}).get("val_mask_seed", 1234)))
     manifest = cfg.get("data", {}).get(f"manifest_{args.split}")
@@ -289,8 +327,8 @@ def main(argv=None) -> int:
 
     size = tuple(float(v) for v in args.size.split(","))
     routes = [args.route] if args.route else list(viz.ROUTES)
-    record = {"checkpoint": ckpt, "epoch": ck.get("epoch"),
-              "mask_seed": mask_seed, "modality": modality, "routes": {}}
+    common = {"checkpoint": ckpt, "epoch": ck.get("epoch"),
+              "mask_seed": mask_seed, "modality": modality}
     for rid in routes:
         route = viz.ROUTES[rid]
         if not any(ds.route_id == rid for ds in datasets.values()):
@@ -303,55 +341,65 @@ def main(argv=None) -> int:
         if args.channels:
             chans = [int(c) for c in args.channels.split(",")]
         else:
-            # The three rows closest to half masked: each then shows visible
-            # and masked patches side by side, which is the point of the
-            # masked-input and reconstruction panels. Ties go to lower rows.
             frac = ex["mask_cp"].mean(1)
             chans = sorted(sorted(range(C), key=lambda c: (abs(frac[c] - 0.5), c))
                            [:min(3, C)])
         out_dir = os.path.join(args.out_dir or os.path.join(run_dir,
                                                             "architecture_panels"), rid)
-        pn = Panels(out_dir, size, args.axes, args.linewidth)
+        pn = Panels(out_dir, size, args.bare, args.linewidth)
         T = ex["raw"].shape[-1]
+        secs = T / float(ex["fs"])
         t = np.arange(T) / float(ex["fs"])
         m = ex["mask"][chans]
         print(f"{rid}: {did} window {widx} ({ex['recording_id']}), channels {chans}")
 
-        traces(pn, "01_raw_input", ex["raw"][chans], t, title="input")
-        mask_grid(pn, "02_mask_grid", ex["mask_cp"][chans], title="patch mask")
+        # -- traces ---------------------------------------------------------- #
+        traces(pn, "01_raw_input", ex["raw"][chans], t)
+        mask_grid(pn, "02_mask_grid", ex["mask_cp"][chans])
         traces(pn, "03_masked_input", ex["masked_raw"][chans], t, shade=m,
-               title="masked input", ref=ex["raw"][chans])
+               ref=ex["raw"][chans])
         J1 = ex["bands"].shape[0]
         names = [f"d{j + 1}" for j in range(J1 - 1)] + ["approx"]
         for j, bname in enumerate(names):
-            traces(pn, f"04_wavelet_band_{j + 1}_{bname}",
-                   ex["bands"][j][chans], t, title=f"wavelet {bname}")
+            traces(pn, f"04_wavelet_band_{j + 1}_{bname}", ex["bands"][j][chans],
+                   t, color=BAND_COLORS[j % len(BAND_COLORS)])
         traces(pn, "04_wavelet_bands_stacked", ex["bands"][:, chans[0]], t,
-               title=f"wavelet scales, channel {chans[0]}")
-        traces(pn, "05_folded_spec", ex["folded"][chans], t,
-               title="ScaleFold output")
-        lim = max(float(np.nanpercentile(np.abs(ex["target_spec"][chans]), 99.5)), 1e-9)
-        heatmap(pn, "06_spec_target_heatmap", ex["target_spec"][chans], lim,
-                title="spec target", h_scale=max(0.35, min(1, len(chans) / 6)))
-        comp = np.where(m, ex["pred_spec"][chans], ex["target_spec"][chans])
-        heatmap(pn, "07_spec_reconstruction", comp, lim,
-                title="spec reconstruction", h_scale=max(0.35, min(1, len(chans) / 6)))
+               colors=BAND_COLORS)
+        traces(pn, "05_folded_spec", ex["folded"][chans], t, color=C_MASK)
         traces(pn, "08_raw_reconstruction",
                np.where(m, ex["pred_raw"][chans], ex["target_raw"][chans]), t,
-               shade=m, title="raw reconstruction", ref=ex["target_raw"][chans])
+               shade=m, ref=ex["target_raw"][chans])
         overlay(pn, "09_raw_overlay", ex["target_raw"][chans],
-                ex["pred_raw"][chans], m, t, title="raw: target vs prediction")
+                ex["pred_raw"][chans], m, t)
         overlay(pn, "10_spec_overlay", ex["target_spec"][chans],
-                ex["pred_spec"][chans], m, t, title="spec: target vs prediction")
-        record["routes"][rid] = {"dataset": did, "window_index": widx,
-                                 "recording_id": ex["recording_id"],
-                                 "subject_id": ex["subject_id"],
-                                 "channels": chans, "out_dir": out_dir,
-                                 "panels": [os.path.basename(x) for x in pn.written]}
+                ex["pred_spec"][chans], m, t)
+
+        # -- heatmaps, every channel ------------------------------------------ #
+        M = ex["mask"]
+        hs = max(0.6, min(1.6, C / 24))
+        mask_grid(pn, "H0_mask_grid_all", ex["mask_cp"], h_scale=hs)
+        for tag, tk, pk in (("raw", "target_raw", "pred_raw"),
+                            ("spec", "target_spec", "pred_spec")):
+            tgt, prd = ex[tk], ex[pk]
+            lim = max(_scale(tgt), 1e-9)
+            n0 = 1 if tag == "raw" else 5
+            heatmap(pn, f"H{n0}_{tag}_target", tgt, secs, lim, h_scale=hs)
+            heatmap(pn, f"H{n0 + 1}_{tag}_masked", np.where(M, np.nan, tgt),
+                    secs, lim, h_scale=hs)
+            heatmap(pn, f"H{n0 + 2}_{tag}_composite", np.where(M, prd, tgt),
+                    secs, lim, h_scale=hs)
+            err = np.where(M, np.abs(prd - tgt), np.nan)
+            heatmap(pn, f"H{n0 + 3}_{tag}_error", err, secs,
+                    lim=max(_scale(err[np.isfinite(err)]) if np.isfinite(err).any()
+                            else 1.0, 1e-9),
+                    cmap=CMAP_ERROR, vmin=0.0, h_scale=hs)
+
+        info = {"dataset": did, "window_index": widx,
+                "recording_id": ex["recording_id"], "subject_id": ex["subject_id"],
+                "channels": chans, "panels": [os.path.basename(x) for x in pn.written],
+                **common}
         with open(os.path.join(out_dir, "panels.json"), "w") as f:
-            json.dump(record["routes"][rid] | {k: v for k, v in record.items()
-                                                if k != "routes"}, f, indent=2,
-                      default=str)
+            json.dump(info, f, indent=2, default=str)
     for ds in datasets.values():
         ds.close()
     return 0
