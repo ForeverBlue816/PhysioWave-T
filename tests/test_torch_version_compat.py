@@ -62,3 +62,29 @@ def test_nn_rmsnorm_is_not_required():
     enc = ChannelEncoder(mode="id", embed_dim=32, norm="rmsnorm")
     expected = nn.RMSNorm if has_new else nn.LayerNorm
     assert isinstance(enc.norm, expected)
+
+
+def test_channel_encoder_loads_either_norm():
+    """A checkpoint trained with LayerNorm (torch < 2.4) loads where RMSNorm
+    exists, and one trained with RMSNorm loads where it does not."""
+    import torch
+    import torch.nn as nn
+    from channel_embedding import ChannelEncoder
+    enc = ChannelEncoder(mode="id", embed_dim=16, norm="rmsnorm")
+    ln_state = {k: v for k, v in enc.state_dict().items()
+                if not k.startswith("norm.")}
+    ln_state["norm.weight"] = torch.full((16,), 2.0)
+    ln_state["norm.bias"] = torch.full((16,), 0.5)
+    a = ChannelEncoder(mode="id", embed_dim=16, norm="rmsnorm")
+    a.load_state_dict(ln_state)
+    assert isinstance(a.norm, nn.LayerNorm)
+    assert torch.allclose(a.norm.bias, torch.full((16,), 0.5))
+
+    rms_state = {k: v for k, v in ln_state.items() if k != "norm.bias"}
+    b = ChannelEncoder(mode="id", embed_dim=16, norm="layernorm")
+    b.load_state_dict(rms_state)
+    assert not isinstance(b.norm, nn.LayerNorm)
+    x = torch.randn(3, 16)
+    ref = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True)
+                          + torch.finfo(x.dtype).eps) * 2.0
+    assert torch.allclose(b.norm(x), ref, atol=1e-5)

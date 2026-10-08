@@ -151,6 +151,18 @@ def spherical_basis(xyz: torch.Tensor) -> torch.Tensor:
     )
 
 
+class _RMSNorm(nn.Module):
+    """``nn.RMSNorm`` for torch < 2.4, with its default eps (the dtype's)."""
+
+    def __init__(self, dim: int):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        eps = torch.finfo(x.dtype).eps
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + eps) * self.weight
+
+
 class ChannelEncoder(nn.Module):
     """``channel metadata -> [C, Dc]`` or ``[B, C, Dc]``.
 
@@ -201,6 +213,32 @@ class ChannelEncoder(nn.Module):
         if mode != "none":
             self.norm = (nn.RMSNorm(self.embed_dim) if norm == "rmsnorm"
                          and hasattr(nn, "RMSNorm") else nn.LayerNorm(self.embed_dim))
+
+    # -- loading across torch versions ------------------------------------- #
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        """Load whichever norm the checkpoint was trained with.
+
+        ``norm="rmsnorm"`` builds ``nn.RMSNorm`` where torch has it (2.4+) and
+        ``nn.LayerNorm`` where it does not, so the same config gives different
+        modules on different clusters -- and a checkpoint trained under torch
+        2.2 (LayerNorm: weight AND bias) refused to load under 2.4+ with
+        "Unexpected key channel_encoder.norm.bias", and the reverse with a
+        missing bias. The checkpoint says which it was: a bias means
+        LayerNorm, a weight alone means RMSNorm. This swaps the module before
+        the children load, so the weights land in the norm they were trained
+        in, whatever torch is running now.
+        """
+        norm = getattr(self, "norm", None)
+        if norm is not None and (prefix + "norm.weight") in state_dict:
+            has_bias = (prefix + "norm.bias") in state_dict
+            is_ln = isinstance(norm, nn.LayerNorm)
+            w = norm.weight
+            if has_bias and not is_ln:
+                self.norm = nn.LayerNorm(self.embed_dim).to(w.device, w.dtype)
+            elif not has_bias and is_ln:
+                self.norm = (nn.RMSNorm(self.embed_dim) if hasattr(nn, "RMSNorm")
+                             else _RMSNorm(self.embed_dim)).to(w.device, w.dtype)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     # -- initialisation ---------------------------------------------------- #
     def reset_channel_parameters(self):
