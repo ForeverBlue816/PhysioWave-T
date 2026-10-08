@@ -3,15 +3,39 @@
 You are making the main architecture figure for a paper submitted to IEEE
 TPAMI.
 
-Attached:
-1. `model.png`: the OLD figure. It shows an earlier version of the model.
-   Use it only for the general idea; it is wrong in the ways listed in
-   section 6.
-2. `panels/`: SVG panels drawn from the trained model on a real EEG window
-   (route E64_256, 64 channels at 256 Hz). Section 4 says where each one goes.
+The code is public. Work from branch **`fix/channel-identity-and-block-variants`**
+of https://github.com/ForeverBlue816/PhysioWave-T, NOT `main`.
+
+**Inputs in the repository:**
+
+- **Old figure**: [`fig/model.png`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/fig/model.png). It shows an earlier
+  version of the model. Use it only for the general idea; it is wrong in the
+  ways listed in section 6.
+- **Data panels**: SVGs drawn from the trained checkpoint on one real EEG
+  window (route E64_256, 64 channels at 256 Hz), without axes.
+  - Use [`docs/runs/eeg_c1_moe/architecture_panels_bare/E64_256/`](https://github.com/ForeverBlue816/PhysioWave-T/tree/fix/channel-identity-and-block-variants/docs/runs/eeg_c1_moe/architecture_panels_bare/E64_256).
+  - If that folder is not there yet, use
+    [`architecture_panels/E64_256/`](https://github.com/ForeverBlue816/PhysioWave-T/tree/fix/channel-identity-and-block-variants/docs/runs/eeg_c1_moe/architecture_panels/E64_256)
+    and drop the tick labels.
+  - `panels.json` in the folder says which window and channels they show.
+  - The checkpoint is not public, so you cannot redraw them: use these.
+- **Reference figures for style**: [`docs/runs/ecg_c1_moe/figures/`](https://github.com/ForeverBlue816/PhysioWave-T/tree/fix/channel-identity-and-block-variants/docs/runs/ecg_c1_moe/figures).
+  Match their palette and typography.
+
+**Code to check the description below against.** If this prompt and the code
+disagree, the code wins; list any discrepancy you find in your reply.
+
+| what | file |
+|---|---|
+| model forward: two views, masking, heads, loss terms | [`physiowave/eeg_c1/model.py`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/physiowave/eeg_c1/model.py) (`MultiRouteEEGPretrainer.forward`, `WaveletFrontend`, `_mask_scores`) |
+| wavelet selector, decomposition, ScaleFold | [`wavelet_modules.py`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/wavelet_modules.py) (`AdaptiveWaveletSelector`, `SoftGateWaveletDecomp`, `ScaleFold`) |
+| C1 channel embedding | [`channel_embedding.py`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/channel_embedding.py) (`ChannelEncoder`) |
+| routes and datasets | [`physiowave/eeg_c1/routes.py`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/physiowave/eeg_c1/routes.py) |
+| hyper-parameters actually used | [`configs/pretrain/eeg_c1_moe.yaml`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/configs/pretrain/eeg_c1_moe.yaml) |
+| reconstruction heads | [`head_modules.py`](https://github.com/ForeverBlue816/PhysioWave-T/blob/fix/channel-identity-and-block-variants/head_modules.py) (`ReconstructionHead`) |
 
 Produce a clean, uncluttered and accurate figure. Use only what this prompt
-describes; do not invent components.
+and the code contain; do not invent components.
 
 ## 1. Deliverables
 
@@ -71,7 +95,7 @@ describes; do not invent components.
   **(c) Two views & frequency-guided masking**,
   **(d) Shared encoder & dual reconstruction**.
 
-## 4. Where the attached panels go (all from `panels/`)
+## 4. Where the data panels go (from the panel folder above)
 
 | file | meaning | place |
 |---|---|---|
@@ -203,7 +227,7 @@ The same frontend runs twice on the same window.
 - It has no routes, no C1 channel embedding and no [MASK] token.
 - It repeats the decomposition three times. Draw it once, with ×J.
 - Its legend typo "Rotraty" should be "Rotary position embedding (RoPE)".
-- Its raster screenshots are replaced by the attached panels.
+- Its raster screenshots are replaced by the repository's panels.
 
 ## 7. Legend
 
@@ -222,3 +246,4 @@ training-only loss.
 - [ ] Every box and label in the PPTX is editable; the panels sit at 600 dpi.
 - [ ] The PNG is 600 dpi (≈ 4300 × 2360 px) with a white background.
 - [ ] The generating script is included.
+- [ ] Any place where this prompt and the code disagree is listed.
