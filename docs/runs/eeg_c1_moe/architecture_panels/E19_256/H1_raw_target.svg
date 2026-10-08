@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="151.55pt" height="81.604326pt" viewBox="0 0 151.55 81.604326" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-10-08T07:39:18.708550</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.1, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 81.604326 
+L 151.55 81.604326 
+L 151.55 0 
+L 0 0 
+L 0 81.604326 
+z
+" style="fill: none; opacity: 0"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 14.44 67.912861 
+L 148.36 67.912861 
+L 148.36 2.077861 
+L 14.44 2.077861 
+L 14.44 67.912861 
+z
+" style="fill: none; opacity: 0"/>
+   </g>
+   <g clip-path="url(#pc5e9785dac)">
+    <image xlink:href="data:image/png;base64,
+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" id="image4f6cdc4e8c" transform="scale(1 -1) translate(0 -65.76)" x="14.4" y="-2.164326" width="133.92" height="65.76"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1">
+      <defs>
+       <path id="m91227480ce" d="M 0 0 
+L 0 2.5 
+" style="stroke: #000000; stroke-width: 0.6"/>
+      </defs>
+      <g>
+       <use xlink:href="#m91227480ce" x="14.44" y="67.912861" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_1">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: middle" x="14.44" y="78.653584" transform="rotate(-0 14.44 78.653584)">0</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2">
+      <g>
+       <use xlink:href="#m91227480ce" x="47.92" y="67.912861" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_2">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: middle" x="47.92" y="78.653584" transform="rotate(-0 47.92 78.653584)">1</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3">
+      <g>
+       <use xlink:href="#m91227480ce" x="81.4" y="67.912861" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_3">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: middle" x="81.4" y="78.653584" transform="rotate(-0 81.4 78.653584)">2</text>
+     </g>
+    </g>
+    <g id="xtick_4">
+     <g id="line2d_4">
+      <g>
+       <use xlink:href="#m91227480ce" x="114.88" y="67.912861" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_4">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: middle" x="114.88" y="78.653584" transform="rotate(-0 114.88 78.653584)">3</text>
+     </g>
+    </g>
+    <g id="xtick_5">
+     <g id="line2d_5">
+      <g>
+       <use xlink:href="#m91227480ce" x="148.36" y="67.912861" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_5">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: middle" x="148.36" y="78.653584" transform="rotate(-0 148.36 78.653584)">4</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_6">
+      <defs>
+       <path id="mc36d19595f" d="M 0 0 
+L -2.5 0 
+" style="stroke: #000000; stroke-width: 0.6"/>
+      </defs>
+      <g>
+       <use xlink:href="#mc36d19595f" x="14.44" y="3.810361" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_6">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: end" x="8.44" y="6.180723" transform="rotate(-0 8.44 6.180723)">0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_7">
+      <g>
+       <use xlink:href="#mc36d19595f" x="14.44" y="31.530361" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_7">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: end" x="8.44" y="33.900723" transform="rotate(-0 8.44 33.900723)">8</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_8">
+      <g>
+       <use xlink:href="#mc36d19595f" x="14.44" y="59.250361" style="stroke: #000000; stroke-width: 0.6"/>
+      </g>
+     </g>
+     <g id="text_8">
+      <text style="font-weight: 700; font-size: 7px; font-family: 'Times New Roman', 'Times', 'Liberation Serif', 'Nimbus Roman', 'Nimbus Roman No9 L', 'STIXGeneral', serif; text-anchor: end" x="8.44" y="61.620723" transform="rotate(-0 8.44 61.620723)">16</text>
+     </g>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 14.44 67.912861 
+L 14.44 2.077861 
+" style="fill: none; stroke: #000000; stroke-width: 0.6; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 14.44 67.912861 
+L 148.36 67.912861 
+" style="fill: none; stroke: #000000; stroke-width: 0.6; stroke-linejoin: miter; stroke-linecap: square"/>
+   </g>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="pc5e9785dac">
+   <rect x="14.44" y="2.077861" width="133.92" height="65.835"/>
+  </clipPath>
+ </defs>
+</svg>
