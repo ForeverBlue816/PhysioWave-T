@@ -1,12 +1,12 @@
 {
   "dataset": "tueg",
-  "window_index": 0,
-  "recording_id": "edf/000/aaaaaaaf/s001_2002/02_tcp_le/aaaaaaaf_s001_t000.edf",
-  "subject_id": "aaaaaaaf",
+  "window_index": 838817,
+  "recording_id": "edf/005/aaaaaawg/s001_2003/02_tcp_le/aaaaaawg_s001_t000.edf",
+  "subject_id": "aaaaaawg",
   "channels": [
     8,
     9,
-    14
+    10
   ],
   "panels": [
     "01_raw_input.svg",

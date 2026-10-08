@@ -1,12 +1,12 @@
 {
   "dataset": "hbn",
-  "window_index": 161416,
-  "recording_id": "R7/sub-NDARAF535XK6/eeg/sub-NDARAF535XK6_task-symbolSearch_eeg.set",
-  "subject_id": "sub-NDARAF535XK6",
+  "window_index": 92238,
+  "recording_id": "R9/sub-NDARJR437DJH/eeg/sub-NDARJR437DJH_task-surroundSupp_run-2_eeg.set",
+  "subject_id": "sub-NDARJR437DJH",
   "channels": [
-    62,
-    78,
-    87
+    46,
+    47,
+    72
   ],
   "panels": [
     "01_raw_input.svg",
