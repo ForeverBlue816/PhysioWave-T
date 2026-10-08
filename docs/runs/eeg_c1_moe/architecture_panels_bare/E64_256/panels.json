@@ -1,12 +1,12 @@
 {
-  "dataset": "hbn",
-  "window_index": 92238,
-  "recording_id": "R9/sub-NDARJR437DJH/eeg/sub-NDARJR437DJH_task-surroundSupp_run-2_eeg.set",
-  "subject_id": "sub-NDARJR437DJH",
+  "dataset": "m3cv",
+  "window_index": 6096,
+  "recording_id": "sub-057/ses-02/eeg/sub-057_ses-02_task-motorFoot_eeg.vhdr",
+  "subject_id": "sub-057",
   "channels": [
-    46,
-    72,
-    75
+    11,
+    40,
+    56
   ],
   "panels": [
     "01_raw_input.svg",
