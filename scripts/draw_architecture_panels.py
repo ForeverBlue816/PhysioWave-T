@@ -295,7 +295,8 @@ def main(argv=None) -> int:
     p.add_argument("--window-index", type=int, default=None)
     p.add_argument("--channels", default=None,
                    help="comma-separated channel rows for the trace panels "
-                        "(default: the three closest to half masked)")
+                        "(default: of the channels with typical amplitude, "
+                        "the three closest to half masked)")
     p.add_argument("--mask-seed", type=int, default=None)
     p.add_argument("--split", default="val", choices=["val", "train"])
     p.add_argument("--out-dir", default=None)
@@ -341,9 +342,17 @@ def main(argv=None) -> int:
         if args.channels:
             chans = [int(c) for c in args.channels.split(",")]
         else:
+            # Typical channels only: a row whose amplitude is far from the
+            # route's median is a dead or drifting electrode (HBN window 92238
+            # has one), and on a per-row scale the model's plausible EEG for
+            # it is blown up to fill the panel. Among the rest, the three rows
+            # closest to half masked, so each shows visible and masked patches.
+            amp = np.array([_scale(ex["raw"][c]) for c in range(C)])
+            med = float(np.median(amp[amp > 1e-6])) if (amp > 1e-6).any() else 1.0
+            ok = [c for c in range(C) if med / 3 <= amp[c] <= med * 3] or list(range(C))
             frac = ex["mask_cp"].mean(1)
-            chans = sorted(sorted(range(C), key=lambda c: (abs(frac[c] - 0.5), c))
-                           [:min(3, C)])
+            chans = sorted(sorted(ok, key=lambda c: (abs(frac[c] - 0.5), c))
+                           [:min(3, len(ok))])
         out_dir = os.path.join(args.out_dir or os.path.join(run_dir,
                                                             "architecture_panels"), rid)
         pn = Panels(out_dir, size, args.bare, args.linewidth)
