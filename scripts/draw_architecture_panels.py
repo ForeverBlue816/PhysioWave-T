@@ -140,7 +140,7 @@ C_MASK_FILL = "#B2ABD2"     # light purple: masked spans behind traces
 C_VISIBLE = "#EDEDED"       # a visible patch in the mask grid; blank cells
 CMAP_SIGNAL = "RdBu_r"
 CMAP_ERROR = "magma"
-BAND_COLORS = ["#5E3C99", "#E66101", "#2166AC", "#1B7837", "#8C510A"]
+BAND_COLORS = ["#5E3C99", "#E66101", "#2166AC", "#4D4D4D"]   # d1 d2 d3 approx: the palette only
 
 
 def tpami_style():
