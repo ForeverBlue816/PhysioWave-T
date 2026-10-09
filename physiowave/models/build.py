@@ -76,15 +76,20 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
     model_cfg = dict(cfg.get("model", {}) or {})
     name = model_cfg.get("name", "wast_tare")
 
-    if name == "eeg_c1":
+    if name in ("eeg_c1", "ecg_c1"):
         # The C1 pretrained encoder with a classification head. Its parameters
         # live under model.eeg_c1 rather than at the top of model, because the
         # keys a downstream montage needs -- window_samples, sampling_rate,
         # patch_samples -- are facts about the DATA and share no names with the
         # other backbones' architecture blocks.
-        from physiowave.eeg_c1.downstream import EEGC1Downstream
+        if name == "ecg_c1":
+            # The same model with the ECG routes, lead vocabulary and
+            # wavelets (physiowave/ecg_c1/downstream.py).
+            from physiowave.ecg_c1.downstream import ECGC1Downstream as EEGC1Downstream
+        else:
+            from physiowave.eeg_c1.downstream import EEGC1Downstream
 
-        params = dict(model_cfg.get("eeg_c1", {}) or {})
+        params = dict(model_cfg.get(name, {}) or {})
         if model_cfg.get("num_classes") is not None:
             params["num_classes"] = model_cfg["num_classes"]
         for k in ("embed_dim", "depth", "num_heads", "mlp_ratio", "dropout",
@@ -97,7 +102,8 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
         pretrained = params.pop("pretrained", None)
         allow_missing_gate = bool(params.pop("allow_missing_gate", False))
         report_to = params.pop("_report", None)
-        logger.info("Building the EEG C1 downstream model with %s", params)
+        logger.info("Building the %s C1 downstream model with %s",
+                    name[:3].upper(), params)
         model = EEGC1Downstream(**params)
         sf = getattr(model, "spatial_filter", None)
         if sf is not None:
@@ -116,8 +122,8 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
             # The control, and it has to be sayable out loud: a downstream
             # number with nothing to compare it against says only that the
             # architecture works.
-            logger.info("EEG C1 downstream: NO pretrained weights "
-                        "(the from-scratch control)")
+            logger.info("%s C1 downstream: NO pretrained weights "
+                        "(the from-scratch control)", name[:3].upper())
         return model
 
     if name in ("legacy", "legacy_channel_id"):

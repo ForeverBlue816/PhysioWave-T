@@ -83,7 +83,10 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc")
+SELECTION_METRICS = ("loss", "acc", "balanced_acc", "kappa", "weighted_f1", "auroc",
+                     # multi-label (CPSC 2018, Chapman-Shaoxing): `auroc` is then
+                     # the macro AUROC over labels, and these are defined too
+                     "macro_f1", "micro_f1", "micro_auroc", "macro_auprc")
 
 #: Command line, then the config's ``train:`` block, then these.
 #:
@@ -163,7 +166,22 @@ class LabelledWindows(Dataset):
 
         with h5py.File(path, "r") as f:
             self.data = np.asarray(f["data"][:], dtype=np.float32)
-            self.labels = np.asarray(f["label"][:], dtype=np.int64)
+            raw_labels = np.asarray(f["label"][:])
+            # (N,) int is one class per window; (N, K) is MULTI-LABEL, a 0/1
+            # column per class (CPSC 2018, Chapman-Shaoxing), trained with a
+            # sigmoid per class rather than one softmax.
+            self.multilabel = raw_labels.ndim == 2
+            self.labels = (raw_labels.astype(np.float32) if self.multilabel
+                           else raw_labels.astype(np.int64))
+            # Which recording each window came from, when a recording is cut
+            # into several windows (CPSC's 6-60 s records). Evaluation then
+            # averages a recording's window probabilities and scores records,
+            # which is how the challenge scored them; without it every window
+            # is its own sample.
+            self.records = ([r.decode() if isinstance(r, bytes) else str(r)
+                             for r in f["record"][:]] if "record" in f else None)
+            self.class_names = (json.loads(f.attrs["class_names"])
+                                if "class_names" in f.attrs else None)
             # The montage is a property of the FILE. Every converter writes it,
             # and a copy typed into a config is a copy that can be wrong -- the
             # first hand-transcribed one had two electrodes the montage does
@@ -179,7 +197,11 @@ class LabelledWindows(Dataset):
         return len(self.data)
 
     def __getitem__(self, i: int):
-        return torch.from_numpy(self.data[i]), int(self.labels[i])
+        y = (torch.from_numpy(self.labels[i]) if self.multilabel
+             else int(self.labels[i]))
+        # The index rides along so evaluation can undo DistributedSampler's
+        # interleaving and padding, and find each window's recording.
+        return torch.from_numpy(self.data[i]), y, i
 
     @property
     def num_channels(self) -> int:
@@ -190,6 +212,8 @@ class LabelledWindows(Dataset):
         return self.data.shape[2]
 
     def class_counts(self, num_classes: int) -> np.ndarray:
+        if self.multilabel:
+            return self.labels.sum(axis=0).astype(np.int64)
         return np.bincount(self.labels, minlength=num_classes)
 
 
@@ -218,63 +242,49 @@ def forward_logits(model: nn.Module, x: torch.Tensor, meta: ChannelMeta) -> torc
     return out["logits"]
 
 
-@torch.no_grad()
-def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: torch.device,
-             amp_dtype: torch.dtype, criterion: nn.Module, num_classes: int,
-             desc: str = "eval", progress_mode: str = "none",
-             is_main: bool = False) -> Dict[str, float]:
-    """Metrics over the whole split, gathered across ranks."""
+def _gather(t: torch.Tensor, device) -> torch.Tensor:
+    """Concatenate a per-rank tensor over ranks (sizes may differ)."""
+    if not (dist.is_available() and dist.is_initialized()):
+        return t
+    sizes = [torch.zeros(1, dtype=torch.long, device=device)
+             for _ in range(dist.get_world_size())]
+    dist.all_gather(sizes, torch.tensor([len(t)], dtype=torch.long, device=device))
+    sizes = [int(x.item()) for x in sizes]
+    pad = torch.zeros((max(sizes),) + tuple(t.shape[1:]), dtype=t.dtype, device=device)
+    pad[:len(t)] = t.to(device)
+    out = [torch.zeros_like(pad) for _ in sizes]
+    dist.all_gather(out, pad)
+    return torch.cat([o[:n] for o, n in zip(out, sizes)]).cpu()
+
+
+def by_record(y_prob: np.ndarray, y_true: np.ndarray, records) -> Tuple[np.ndarray, np.ndarray]:
+    """One row per recording: the mean of its windows' probabilities."""
+    keys = {}
+    order = []
+    for i, r in enumerate(records):
+        if r not in keys:
+            keys[r] = []
+            order.append(r)
+        keys[r].append(i)
+    P = np.stack([y_prob[keys[r]].mean(0) for r in order])
+    Y = np.stack([y_true[keys[r][0]] for r in order])
+    return P, Y
+
+
+def multiclass_metrics(y_prob: np.ndarray, y_true: np.ndarray,
+                       num_classes: int) -> Dict[str, float]:
     from sklearn.metrics import (balanced_accuracy_score, cohen_kappa_score, f1_score,
                                  roc_auc_score)
-
-    model.eval()
-    loss_meter = AverageMeter()
-    probs_all, target_all = [], []
-    for x, y in progress(loader, desc, progress_mode, is_main):
-        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-        with autocast_ctx(device, amp_dtype):
-            logits = forward_logits(model, x, meta)
-            loss = criterion(logits.float(), y)
-        loss_meter.update(loss.item(), y.numel())
-        probs_all.append(F.softmax(logits.float(), dim=-1).cpu())
-        target_all.append(y.cpu())
-
-    probs = torch.cat(probs_all) if probs_all else torch.zeros(0, num_classes)
-    target = torch.cat(target_all) if target_all else torch.zeros(0, dtype=torch.long)
-
-    if dist.is_available() and dist.is_initialized():
-        # Every rank sees a disjoint shard; the metrics below are not averages
-        # of per-shard metrics, so the predictions have to be gathered before
-        # anything is computed. Balanced accuracy in particular cannot be
-        # recovered from per-rank values.
-        sizes = [torch.zeros(1, dtype=torch.long, device=device)
-                 for _ in range(dist.get_world_size())]
-        dist.all_gather(sizes, torch.tensor([len(target)], dtype=torch.long, device=device))
-        sizes = [int(s.item()) for s in sizes]
-        biggest = max(sizes)
-        p_pad = torch.zeros(biggest, num_classes, device=device)
-        t_pad = torch.zeros(biggest, dtype=torch.long, device=device)
-        p_pad[:len(probs)] = probs.to(device)
-        t_pad[:len(target)] = target.to(device)
-        p_gather = [torch.zeros_like(p_pad) for _ in sizes]
-        t_gather = [torch.zeros_like(t_pad) for _ in sizes]
-        dist.all_gather(p_gather, p_pad)
-        dist.all_gather(t_gather, t_pad)
-        probs = torch.cat([p[:n] for p, n in zip(p_gather, sizes)]).cpu()
-        target = torch.cat([t[:n] for t, n in zip(t_gather, sizes)]).cpu()
-
-    y_true = target.numpy()
-    y_prob = probs.numpy()
     y_pred = y_prob.argmax(1)
     present = np.unique(y_true)
-
     metrics = {
-        "loss": loss_meter.avg,
         "acc": float((y_pred == y_true).mean()) if len(y_true) else 0.0,
         "balanced_acc": float(balanced_accuracy_score(y_true, y_pred)) if len(y_true) else 0.0,
         "kappa": float(cohen_kappa_score(y_true, y_pred)) if len(y_true) else 0.0,
         "weighted_f1": float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
                        if len(y_true) else 0.0,
+        "macro_f1": float(f1_score(y_true, y_pred, average="macro", zero_division=0))
+                    if len(y_true) else 0.0,
     }
     # AUROC is one-vs-rest over the classes that actually occur. Dropping the
     # absent columns leaves rows that no longer sum to one, which sklearn
@@ -302,6 +312,118 @@ def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: to
     return metrics
 
 
+def multilabel_metrics(y_prob: np.ndarray, y_true: np.ndarray,
+                       thresholds: Optional[np.ndarray] = None) -> Dict[str, float]:
+    """Per-class sigmoid scores against 0/1 columns.
+
+    ``auroc`` is the MACRO AUROC over the classes with both outcomes present,
+    so the selection metric means the same thing on every task. F1 needs a
+    threshold: 0.5 always, and ``thresholds`` (one per class, chosen on the
+    validation split) when given, reported as ``*_tuned``.
+    """
+    from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+    y_true = (y_true > 0.5).astype(np.int64)
+    ok = [k for k in range(y_true.shape[1]) if 0 < y_true[:, k].sum() < len(y_true)]
+    m: Dict[str, float] = {}
+    if ok:
+        m["auroc"] = float(np.mean([roc_auc_score(y_true[:, k], y_prob[:, k]) for k in ok]))
+        m["micro_auroc"] = float(roc_auc_score(y_true[:, ok].ravel(), y_prob[:, ok].ravel()))
+        m["macro_auprc"] = float(np.mean([average_precision_score(y_true[:, k], y_prob[:, k])
+                                          for k in ok]))
+    else:
+        m["auroc"] = m["micro_auroc"] = m["macro_auprc"] = float("nan")
+    if len(ok) < y_true.shape[1]:
+        logger.warning("%d of %d labels have only one outcome in this split; macro "
+                       "AUROC is over the %d that have both",
+                       y_true.shape[1] - len(ok), y_true.shape[1], len(ok))
+
+    def thresholded(th, suffix):
+        pred = (y_prob >= th).astype(np.int64)
+        m[f"macro_f1{suffix}"] = float(f1_score(y_true, pred, average="macro", zero_division=0))
+        m[f"micro_f1{suffix}"] = float(f1_score(y_true, pred, average="micro", zero_division=0))
+        m[f"weighted_f1{suffix}"] = float(f1_score(y_true, pred, average="weighted",
+                                                   zero_division=0))
+        m[f"acc{suffix}"] = float((pred == y_true).all(axis=1).mean())    # exact match
+        m[f"hamming{suffix}"] = float((pred != y_true).mean())
+
+    thresholded(0.5, "")
+    if thresholds is not None:
+        thresholded(np.asarray(thresholds)[None, :], "_tuned")
+    # Not defined for multi-label; present so a line that prints them does not fail.
+    m["balanced_acc"] = m["kappa"] = float("nan")
+    return m
+
+
+def tune_thresholds(y_prob: np.ndarray, y_true: np.ndarray) -> np.ndarray:
+    """Per class, the threshold maximising F1 on THIS split (use: validation)."""
+    from sklearn.metrics import f1_score
+    y_true = (y_true > 0.5).astype(np.int64)
+    grid = np.linspace(0.05, 0.95, 19)
+    out = np.full(y_true.shape[1], 0.5)
+    for k in range(y_true.shape[1]):
+        if y_true[:, k].sum() == 0:
+            continue
+        f1s = [f1_score(y_true[:, k], (y_prob[:, k] >= t).astype(int), zero_division=0)
+               for t in grid]
+        out[k] = float(grid[int(np.argmax(f1s))])
+    return out
+
+
+@torch.no_grad()
+def evaluate(model: nn.Module, loader: DataLoader, meta: ChannelMeta, device: torch.device,
+             amp_dtype: torch.dtype, criterion: nn.Module, num_classes: int,
+             desc: str = "eval", progress_mode: str = "none",
+             is_main: bool = False, thresholds: Optional[np.ndarray] = None,
+             return_outputs: bool = False):
+    """Metrics over the whole split, gathered across ranks.
+
+    When the split records which recording each window came from, the
+    headline metrics are per RECORDING (window probabilities averaged) and the
+    per-window ones are kept under ``window_*``.
+    """
+    model.eval()
+    ds = loader.dataset
+    multilabel = bool(getattr(ds, "multilabel", False))
+    loss_meter = AverageMeter()
+    probs_all, target_all, idx_all = [], [], []
+    for x, y, idx in progress(loader, desc, progress_mode, is_main):
+        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
+        with autocast_ctx(device, amp_dtype):
+            logits = forward_logits(model, x, meta)
+            loss = criterion(logits.float(), y)
+        loss_meter.update(loss.item(), len(y))
+        probs_all.append((torch.sigmoid(logits.float()) if multilabel
+                          else F.softmax(logits.float(), dim=-1)).cpu())
+        target_all.append(y.cpu())
+        idx_all.append(torch.as_tensor(idx).cpu())
+
+    probs = torch.cat(probs_all) if probs_all else torch.zeros(0, num_classes)
+    target = torch.cat(target_all) if target_all else torch.zeros(0, dtype=torch.long)
+    index = torch.cat(idx_all) if idx_all else torch.zeros(0, dtype=torch.long)
+    # Every rank sees a disjoint shard; the metrics below are not averages of
+    # per-shard metrics, so the predictions have to be gathered before
+    # anything is computed. DistributedSampler pads the last shard with
+    # repeats; the window index removes them.
+    probs, target, index = (_gather(probs, device), _gather(target, device),
+                            _gather(index.long(), device))
+    _, first = np.unique(index.numpy(), return_index=True)
+    y_prob, y_true, index = probs.numpy()[first], target.numpy()[first], index.numpy()[first]
+
+    score = (lambda P, Y: multilabel_metrics(P, Y, thresholds)) if multilabel else \
+            (lambda P, Y: multiclass_metrics(P, Y, num_classes))
+    metrics: Dict[str, float] = {"loss": loss_meter.avg}
+    records = getattr(ds, "records", None)
+    if records is not None:
+        win = score(y_prob, y_true)
+        metrics.update({f"window_{k}": v for k, v in win.items()})
+        y_prob, y_true = by_record(y_prob, y_true, [records[i] for i in index])
+        metrics["n_records"] = int(len(y_true))
+    metrics.update(score(y_prob, y_true))
+    if return_outputs:
+        return metrics, y_prob, y_true
+    return metrics
+
+
 def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer, scheduler,
                     scaler, grad_clip: float, epoch: int, log_every: int,
                     is_main: bool, progress_mode: str = "auto") -> Dict[str, float]:
@@ -310,7 +432,7 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
     bar = progress(loader, f"train {epoch}", progress_mode, is_main)
     total = len(loader)
     started = time.monotonic()
-    for step, (x, y) in enumerate(bar):
+    for step, (x, y, _idx) in enumerate(bar):
         x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         with autocast_ctx(device, amp_dtype):
             logits = forward_logits(model, x, meta)
@@ -329,8 +451,12 @@ def train_one_epoch(model, loader, meta, device, amp_dtype, criterion, optimizer
         if scheduler is not None:
             scheduler.step()
 
-        loss_meter.update(loss.item(), y.numel())
-        acc_meter.update(float((logits.argmax(-1) == y).float().mean().item()), y.numel())
+        loss_meter.update(loss.item(), len(y))
+        if y.dim() == 2:      # multi-label: exact match at 0.5
+            hit = ((logits.detach() > 0).float() == y).all(dim=1).float().mean()
+        else:
+            hit = (logits.argmax(-1) == y).float().mean()
+        acc_meter.update(float(hit.item()), len(y))
         set_postfix(bar, loss=f"{loss_meter.avg:.4f}", acc=f"{acc_meter.avg:.4f}",
                     lr=f"{optimizer.param_groups[0]['lr']:.2e}")
         if is_main and progress_mode == "log" and log_every and step % log_every == 0:
@@ -361,6 +487,10 @@ def render_test_block(metrics: Dict[str, float], args, run_name: str) -> str:
     task = task_of(args.config) or task_of(run_name)
     shown = TASK_METRICS.get(task, (("balanced_acc", "BalAcc"), ("kappa", "Kappa"),
                                     ("auroc", "AUROC"), ("weighted_f1", "W-F1")))
+    if getattr(args, "_multilabel", False):
+        shown = (("micro_f1_tuned", "F1 mic"), ("macro_f1_tuned", "F1 mac"),
+                 ("auroc", "AUROC"), ("micro_auroc", "AUROCu"),
+                 ("micro_f1", "F1u@.5"), ("macro_f1", "F1m@.5"))
     ref = PUBLISHED.get(task, {}).get(EEGPT, {})
 
     mode = "linear probe" if args.freeze_encoder else "full fine-tune"
@@ -372,6 +502,8 @@ def render_test_block(metrics: Dict[str, float], args, run_name: str) -> str:
     out = [RULE, header, RULE]
     for key, label in shown:
         value = metrics.get(key, float("nan"))
+        if value != value:                       # nan: not defined here
+            continue
         floor = CHANCE.get(key)
         lo = floor if floor is not None else 0.0
         line = f"  {label:<7} {value:>7.4f}  {sparkbar(value, 22, lo=lo)}"
@@ -516,6 +648,11 @@ def main(argv=None) -> int:
 
     train_set = LabelledWindows(train_path)
     C, T = train_set.num_channels, train_set.window
+    multilabel = train_set.multilabel
+    args._multilabel = multilabel
+    if multilabel and train_set.labels.shape[1] != args.num_classes:
+        raise SystemExit(f"{train_path} has {train_set.labels.shape[1]} label columns "
+                         f"and --num-classes is {args.num_classes}")
     if info.is_main:
         counts = train_set.class_counts(args.num_classes)
         logger.info("train %d windows, %d channels, %d samples/window", len(train_set), C, T)
@@ -524,11 +661,12 @@ def main(argv=None) -> int:
             logger.warning("classes %s have no training windows",
                            np.flatnonzero(counts == 0).tolist())
 
-    if model_cfg.get("name") == "eeg_c1":
+    c1_name = model_cfg.get("name") if model_cfg.get("name") in ("eeg_c1", "ecg_c1") else None
+    if c1_name:
         # The montage, the window and the rate come from the FILE unless the
         # config names them. They are facts about the data, and a second copy
         # in a config is one that can disagree with it silently.
-        c1 = dict(model_cfg.get("eeg_c1", {}) or {})
+        c1 = dict(model_cfg.get(c1_name, {}) or {})
         # Through the model, not only through requires_grad. EEGC1Downstream
         # overrides train() on this flag and holds the encoder in eval mode, so
         # the probe reads the representation the encoder actually produces
@@ -548,14 +686,14 @@ def main(argv=None) -> int:
             # config claims while nothing anywhere fails.
             if abs(float(c1["sampling_rate"]) - train_set.sampling_rate) > 1e-6:
                 raise SystemExit(
-                    f"the config says model.eeg_c1.sampling_rate="
+                    f"the config says model.{c1_name}.sampling_rate="
                     f"{c1['sampling_rate']} and {train_path} says "
                     f"{train_set.sampling_rate}. One of them is wrong and "
                     f"guessing which would change the duration of every patch.")
         missing = [k for k in ("sampling_rate", "patch_samples") if k not in c1]
         if missing:
             raise SystemExit(
-                f"model.eeg_c1 needs {missing} and neither the config nor "
+                f"model.{c1_name} needs {missing} and neither the config nor "
                 f"{train_path} supplies them.\n"
                 f"  A patch length is a modelling choice and belongs in the "
                 f"config. A sampling rate should be an attribute of the file, "
@@ -563,12 +701,12 @@ def main(argv=None) -> int:
                 f"that made it unconditional, so a file built before that has "
                 f"none.\n"
                 f"  Either re-run the converter's --stage split, or state it: "
-                f"--set model.eeg_c1.sampling_rate=<Hz>")
-        model_cfg["eeg_c1"] = c1
+                f"--set model.{c1_name}.sampling_rate=<Hz>")
+        model_cfg[c1_name] = c1
         cfg["model"] = model_cfg
         if info.is_main:
-            logger.info("EEG C1 downstream: %d channels at %s Hz, %d-sample "
-                        "windows, %d-sample patches, route %s",
+            logger.info("%s C1 downstream: %d channels at %s Hz, %d-sample "
+                        "windows, %d-sample patches, route %s", c1_name[:3].upper(),
                         c1["in_channels"], c1["sampling_rate"],
                         c1["window_samples"], c1["patch_samples"],
                         c1.get("route_id") or "<its own frontend>")
@@ -636,11 +774,17 @@ def main(argv=None) -> int:
 
     precision, amp_dtype = resolve_precision(args.precision, device)
     scaler = make_grad_scaler(device.type, precision == "fp16")
-    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+    if multilabel:
+        criterion = nn.BCEWithLogitsLoss()
+        if info.is_main:
+            logger.info("multi-label: %d sigmoid outputs, BCE; label smoothing "
+                        "does not apply", args.num_classes)
+    else:
+        criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
     lr_scale = None
     if args.encoder_lr_scale != 1.0:
-        if model_cfg.get("name") != "eeg_c1":
-            raise SystemExit("--encoder-lr-scale is defined for model.name=eeg_c1 "
+        if not c1_name:
+            raise SystemExit("--encoder-lr-scale is defined for model.name=eeg_c1/ecg_c1 "
                              "only: it scales what that model loads from "
                              "pretraining")
         from physiowave.eeg_c1.downstream import TRANSFERABLE
@@ -713,11 +857,14 @@ def main(argv=None) -> int:
             if info.is_main:
                 done = epoch + 1
                 eta = (time.monotonic() - run_started) / done * (args.epochs - done)
-                say(f"epoch {epoch:>3}/{args.epochs - 1}  "
-                    f"train_loss {tr['loss']:.4f}  val_loss {va['loss']:.4f}  "
-                    f"acc {va['acc']:.4f}  bal {va['balanced_acc']:.4f}  "
-                    f"kappa {va['kappa']:.4f}  auroc {va['auroc']:.4f}  "
-                    f"eta {fmt_eta(eta)}" + ("  *best" if improved else ""),
+                head = (f"epoch {epoch:>3}/{args.epochs - 1}  "
+                        f"train_loss {tr['loss']:.4f}  val_loss {va['loss']:.4f}  ")
+                body = (f"auroc {va['auroc']:.4f}  microF1 {va['micro_f1']:.4f}  "
+                        f"macroF1 {va['macro_f1']:.4f}  auprc {va['macro_auprc']:.4f}  "
+                        if multilabel else
+                        f"acc {va['acc']:.4f}  bal {va['balanced_acc']:.4f}  "
+                        f"kappa {va['kappa']:.4f}  auroc {va['auroc']:.4f}  ")
+                say(head + body + f"eta {fmt_eta(eta)}" + ("  *best" if improved else ""),
                     args.progress)
                 set_postfix_str(outer, f"best {args.select_by} {best_score:.4f} "
                                        f"@ep{best_epoch}")
@@ -748,9 +895,11 @@ def main(argv=None) -> int:
                                "frozen_encoder": bool(args.freeze_encoder),
                                "total_params": n_total,
                                "trainable_params": n_trainable,
+                               "multilabel": multilabel,
+                               "class_names": train_set.class_names,
                                "pretrained": bool(
                                    args.pretrained
-                                   or (model_cfg.get("eeg_c1") or {}).get("pretrained"))}
+                                   or (model_cfg.get(c1_name or "eeg_c1") or {}).get("pretrained"))}
     if test_loader is not None:
         best = os.path.join(args.output_dir, "best.pth")
         if os.path.exists(best):
@@ -758,16 +907,34 @@ def main(argv=None) -> int:
             if info.distributed:
                 for p in core.parameters():
                     dist.broadcast(p.data, src=0)
+        thresholds = None
+        if multilabel and val_loader is not None:
+            # F1 needs a threshold per class. Chosen on VALIDATION with the
+            # selected checkpoint and applied unchanged to test; the 0.5 row is
+            # reported beside it.
+            _, vp, vy = evaluate(model, val_loader, meta, device, amp_dtype, criterion,
+                                 args.num_classes, "val (thresholds)", args.progress,
+                                 info.is_main, return_outputs=True)
+            thresholds = tune_thresholds(vp, vy)
+            results["thresholds"] = thresholds.tolist()
         te = evaluate(model, test_loader, meta, device, amp_dtype, criterion,
-                      args.num_classes, "test", args.progress, info.is_main)
+                      args.num_classes, "test", args.progress, info.is_main,
+                      thresholds=thresholds)
         results["test"] = te
         if info.is_main:
             # The grep target stays exactly as it was -- scripts and habits
             # depend on a line starting with TEST -- and the block under it is
             # for the human reading the tail of a log.
-            logger.info("TEST acc %.4f bal %.4f kappa %.4f wf1 %.4f auroc %.4f",
-                        te["acc"], te["balanced_acc"], te["kappa"], te["weighted_f1"],
-                        te["auroc"])
+            if multilabel:
+                logger.info("TEST macroAUROC %.4f microAUROC %.4f microF1 %.4f "
+                            "macroF1 %.4f (tuned thresholds: micro %.4f macro %.4f)",
+                            te["auroc"], te["micro_auroc"], te["micro_f1"],
+                            te["macro_f1"], te.get("micro_f1_tuned", float("nan")),
+                            te.get("macro_f1_tuned", float("nan")))
+            else:
+                logger.info("TEST acc %.4f bal %.4f kappa %.4f wf1 %.4f auroc %.4f",
+                            te["acc"], te["balanced_acc"], te["kappa"], te["weighted_f1"],
+                            te["auroc"])
             args._pretrained = results["pretrained"]
             args._trainable_params = n_trainable
             print(render_test_block(te, args, os.path.basename(

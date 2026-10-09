@@ -97,7 +97,8 @@ FREEZE_SCOPES = ("encoder", "pretrained")
 
 
 def _slots_for(route: Route, channel_names: Sequence[str],
-               aliases: Optional[Dict[str, str]] = None) -> torch.Tensor:
+               aliases: Optional[Dict[str, str]] = None,
+               normalize=None) -> torch.Tensor:
     """``[route.n_channels]`` index into the incoming montage, -1 where absent.
 
     Matched by NAME through the same normalisation the vocabulary uses, so
@@ -114,7 +115,9 @@ def _slots_for(route: Route, channel_names: Sequence[str],
     would put a P9 signal through a filter bank trained on TP9 with nothing
     anywhere recording that it happened.
     """
-    from channel_embedding import normalize_channel_name
+    if normalize is None:
+        from channel_embedding import normalize_channel_name as normalize
+    normalize_channel_name = normalize
 
     want = {normalize_channel_name(s): i for i, s in enumerate(route.slots)}
     alias = {normalize_channel_name(k): normalize_channel_name(v)
@@ -166,7 +169,31 @@ def downstream_route(in_channels: int, sampling_rate: float,
 
 
 class EEGC1Downstream(nn.Module):
-    """``[B, C, T] -> {"logits": [B, K]}`` on a pretrained shared transformer."""
+    """``[B, C, T] -> {"logits": [B, K]}`` on a pretrained shared transformer.
+
+    The modality lives in five class attributes -- routes, channel-name
+    resolution, the vocabulary and its hash, the default wavelets -- so the ECG
+    model (physiowave.ecg_c1.downstream) is this class with those swapped and
+    nothing else, and an EEG checkpoint cannot be loaded into it or vice versa.
+    """
+
+    MODALITY = "eeg"
+    DEFAULT_WAVELETS = DEFAULT_WAVELETS
+    ROUTES_TABLE = ROUTES
+    VOCAB_SIZE = len(CHANNEL_VOCAB)
+
+    @staticmethod
+    def ids_for(names):
+        return channel_ids_for(names)
+
+    @staticmethod
+    def normalize_name(name):
+        from channel_embedding import normalize_channel_name
+        return normalize_channel_name(name)
+
+    @staticmethod
+    def vocab_payload():
+        return vocab_payload()
 
     def __init__(self, in_channels: int, window_samples: int,
                  sampling_rate: float, patch_samples: int, num_classes: int,
@@ -177,7 +204,7 @@ class EEGC1Downstream(nn.Module):
                  norm: str = "rmsnorm", ffn: str = "swiglu",
                  qk_norm: bool = True, rope_dim: int = 2,
                  max_level: int = 3, wave_kernel_size: int = 16,
-                 wavelet_names=DEFAULT_WAVELETS, wave_init_mode: str = "pad",
+                 wavelet_names=None, wave_init_mode: str = "pad",
                  use_separate_channel: bool = True, fold_synthesis: int = 3,
                  fold_gamma: float = 0.1,
                  channel_encoding: str = "id", channel_embed_dim: int = 64,
@@ -194,6 +221,8 @@ class EEGC1Downstream(nn.Module):
                  freeze_encoder: bool = False,
                  freeze_scope: str = "encoder"):
         super().__init__()
+        if wavelet_names is None:
+            wavelet_names = self.DEFAULT_WAVELETS
         # THE SPATIAL FILTER COMES FIRST, because with `mix` it decides what
         # montage the rest of the model is built for: the frontend's electrode
         # count, the route slots, and -- the part that matters -- which channel
@@ -217,7 +246,7 @@ class EEGC1Downstream(nn.Module):
         # valid_channel_mask exists for -- pretraining itself runs with padded
         # slots on every corpus that does not fill its route.
         if route_id is not None:
-            self.route = ROUTES[route_id]
+            self.route = self.ROUTES_TABLE[route_id]
             if self.route.patch_t != patch_samples:
                 raise ValueError(
                     f"{route_id} patches {self.route.patch_t} samples and this "
@@ -232,7 +261,8 @@ class EEGC1Downstream(nn.Module):
             self.slot_aliases = dict(slot_aliases or {})
             self.register_buffer("slot_index",
                                  _slots_for(self.route, channel_names,
-                                            self.slot_aliases),
+                                            self.slot_aliases,
+                                            normalize=self.normalize_name),
                                  persistent=False)
             self.in_channels = int(in_channels)
         else:
@@ -279,7 +309,7 @@ class EEGC1Downstream(nn.Module):
         if channel_encoding != "none":
             self.channel_encoder = ChannelEncoder(
                 channel_encoding, channel_embed_dim,
-                vocab_size=channel_vocab_size or len(CHANNEL_VOCAB))
+                vocab_size=channel_vocab_size or self.VOCAB_SIZE)
             self.channel_to_token = nn.Linear(channel_embed_dim, embed_dim)
             self.channel_token_gate = nn.Parameter(
                 torch.tensor(float(channel_token_gate_init)))
@@ -385,7 +415,7 @@ class EEGC1Downstream(nn.Module):
             names = list(getattr(meta, "channel_names", []) or [])
             if not names:
                 raise ValueError("channel metadata carries no channel_names")
-            ids_list, _ = channel_ids_for(names)
+            ids_list, _ = self.ids_for(names)
             ids = torch.as_tensor(ids_list, dtype=torch.long)
             valid = getattr(meta, "channel_mask", None)
         if valid is None:
@@ -411,7 +441,7 @@ class EEGC1Downstream(nn.Module):
             return None
         if not self.model_channel_names:
             raise ValueError("a mix spatial filter needs output electrode names")
-        ids_list, _ = channel_ids_for(self.model_channel_names)
+        ids_list, _ = self.ids_for(self.model_channel_names)
         ids = torch.as_tensor(ids_list, dtype=torch.long, device=device)
         return {"channel_ids": ids,
                 "valid_channel_mask": torch.ones_like(ids, dtype=torch.bool)}
@@ -435,8 +465,7 @@ class EEGC1Downstream(nn.Module):
         """The channel ids and mask AS THE ROUTE SEES THEM, after placement."""
         if self.slot_index is None or cm is None:
             return cm
-        from channel_embedding import PAD_ID, channel_ids_for
-        ids, _ = channel_ids_for(self.route.slots)
+        ids, _ = self.ids_for(self.route.slots)
         ids = torch.as_tensor(ids, dtype=torch.long, device=cm["channel_ids"].device)
         have = self.slot_index >= 0
         valid = have.to(cm["valid_channel_mask"].device).clone()
@@ -520,7 +549,7 @@ class EEGC1Downstream(nn.Module):
         ck = torch.load(path, map_location="cpu", weights_only=False)
         sd = ck.get("model", ck)
         recorded = ck.get("channel_vocab_sha256")
-        current = vocab_payload()["channel_vocab_sha256"]
+        current = self.vocab_payload()["channel_vocab_sha256"]
         if recorded and recorded != current:
             raise SystemExit(
                 f"{path} was trained under channel vocabulary {recorded[:16]} "
@@ -533,8 +562,8 @@ class EEGC1Downstream(nn.Module):
         # route: same electrode count, same patch length. Otherwise they are a
         # different shape and a different meaning.
         same_route = False
-        if ck_route in ROUTES:
-            r = ROUTES[ck_route]
+        if ck_route in self.ROUTES_TABLE:
+            r = self.ROUTES_TABLE[ck_route]
             same_route = (r.n_channels == self.route.n_channels
                           and r.patch_t == self.route.patch_t)
 

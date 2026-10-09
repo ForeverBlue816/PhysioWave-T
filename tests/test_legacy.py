@@ -184,7 +184,7 @@ def test_the_two_dataset_classes_read_identical_tensors(tmp_path):
     new, old = LabelledWindows(str(path)), ft.TimeSeriesDataset(str(path))
     assert len(new) == len(old)
     for i in range(len(new)):
-        xn, yn = new[i]
+        xn, yn = new[i][:2]           # the third element is the window index
         xo, yo = old[i]
         assert torch.equal(xn, xo) and int(yn) == int(yo), i
 
