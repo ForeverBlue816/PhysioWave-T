@@ -18,12 +18,13 @@ cd ~/PhysioWave-T && git pull && source $HOME/pw/bin/activate
 bash scripts/download_ecg_downstream.sh all
 bash scripts/download_ecg_downstream.sh status
 
-# 2. one job per task: builds the split if needed, then ft / probe / scratch on 3 GPUs
-for t in ptbxl cpsc2018 chapman ptbxl_super; do
-  sbatch --export=ALL,TASK=$t scripts/slurm/cineca_ecg_downstream.sbatch
-done
+# 2. ONE job, one node, 4 GPUs, 6 h: GPU i builds task i's split if needed,
+#    then runs ft, probe and scratch on it one after the other
+#    (ptbxl, cpsc2018, chapman, ptbxl_super). Resubmitting skips finished runs.
+sbatch scripts/slurm/cineca_ecg_downstream.sbatch
 
-# 3. the table (each job prints it too, into $PW_CKPT_ROOT/ecg_downstream/summary.txt)
+# 3. the table -- the job writes it to $PW_CKPT_ROOT/ecg_downstream/summary.{txt,md,json};
+#    to put it in the repository:
 python scripts/collect_ecg_downstream.py --root $PW_CKPT_ROOT/ecg_downstream \
     --markdown docs/runs/ecg_c1_moe/downstream.md
 ```
@@ -136,6 +137,6 @@ The C1 rows score each record once, on a split nothing was selected on.
 | `ECG/ecg_downstream_prep.py` | raw → `{train,val,test}.h5` + `split.json` |
 | `configs/finetune/ecg_c1_*.yaml` | per-task model and training settings |
 | `ECG/finetune_ecg_c1.sh` | one run (TASK, MODE); exports the L12_500 encoder from a pretraining checkpoint |
-| `scripts/slurm/cineca_ecg_downstream.sbatch` | one task, three modes in parallel |
+| `scripts/slurm/cineca_ecg_downstream.sbatch` | everything in one job: 1 node, 4 GPUs (one task each), 6 h |
 | `scripts/collect_ecg_downstream.py` | the results table (text, JSON, Markdown) |
 | `physiowave/ecg_c1/downstream.py` | the ECG downstream model (EEG's with the ECG routes, lead vocabulary and wavelets) |
