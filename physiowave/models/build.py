@@ -76,7 +76,7 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
     model_cfg = dict(cfg.get("model", {}) or {})
     name = model_cfg.get("name", "wast_tare")
 
-    if name in ("eeg_c1", "ecg_c1"):
+    if name in ("eeg_c1", "ecg_c1", "emg_c1"):
         # The C1 pretrained encoder with a classification head. Its parameters
         # live under model.eeg_c1 rather than at the top of model, because the
         # keys a downstream montage needs -- window_samples, sampling_rate,
@@ -86,6 +86,8 @@ def build_model(cfg: Dict[str, Any]) -> nn.Module:
             # The same model with the ECG routes, lead vocabulary and
             # wavelets (physiowave/ecg_c1/downstream.py).
             from physiowave.ecg_c1.downstream import ECGC1Downstream as EEGC1Downstream
+        elif name == "emg_c1":
+            from physiowave.emg_c1.downstream import EMGC1Downstream as EEGC1Downstream
         else:
             from physiowave.eeg_c1.downstream import EEGC1Downstream
 

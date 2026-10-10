@@ -61,18 +61,29 @@ TITLE = {"ptbxl": "PTB-XL, 5 superclasses, single label (paper: accuracy)",
          "cpsc2018": "CPSC 2018, 9 classes, multi-label, per record (paper: F1-micro)",
          "chapman": "Chapman-Shaoxing, 4 rhythm classes, multi-label (paper: F1-micro)"}
 
-DIR_RE = re.compile(rf"^({'|'.join(TASKS)})_({'|'.join(MODES)})(?:_([\w.\-]+))?$")
+def dir_re(tasks):
+    return re.compile(rf"^({'|'.join(tasks)})_({'|'.join(MODES)})(?:_([\w.\-]+))?$")
+
+
+#: What a modality's table is made of. scripts/collect_emg_downstream.py
+#: passes its own.
+SPEC = {"heading": "ECG C1 downstream", "tasks": TASKS, "columns": COLUMNS,
+        "titles": TITLE, "paper": PAPER_V1,
+        "paper_note": ["v1 scored 4.1 s windows with a fixed threshold and its own",
+                       "splits; this table scores records once, at the checkpoint",
+                       "validation chose, with F1 thresholds chosen on validation.",
+                       "Indicative, not like-for-like."]}
 
 
 def fmt(v):
     return "   -  " if v is None or (isinstance(v, float) and math.isnan(v)) else f"{v:.4f}"
 
 
-def collect(root):
+def collect(root, tasks=TASKS):
     runs = {}
     for path in sorted(glob.glob(os.path.join(root, "*", "results.json"))):
         name = os.path.basename(os.path.dirname(path))
-        m = DIR_RE.match(name)
+        m = dir_re(tasks).match(name)
         if not m:
             continue
         task, mode, tag = m.group(1), m.group(2), m.group(3) or ""
@@ -98,18 +109,21 @@ def selected(rows):
     return {m: r for m, (_, r) in best.items()}
 
 
-def main(argv=None) -> int:
+def main(argv=None, spec=None) -> int:
+    spec = spec or SPEC
+    TASKS, COLUMNS, TITLE, PAPER_V1 = (spec["tasks"], spec["columns"],
+                                       spec["titles"], spec["paper"])
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--root", required=True)
     p.add_argument("--json", default=None)
     p.add_argument("--markdown", default=None)
     args = p.parse_args(argv)
-    runs = collect(args.root)
+    runs = collect(args.root, TASKS)
     if not runs:
         print(f"no finished runs under {args.root}")
         return 1
-    md = ["# ECG C1 downstream", ""]
+    md = [f"# {spec['heading']}", ""]
     for task in TASKS:
         if task not in runs:
             continue
@@ -151,12 +165,9 @@ def main(argv=None) -> int:
         md.append("")
     print("=" * 90)
     print("  \u2713 the run of each mode with the best validation score; only it is compared.")
-    print("=" * 78)
-    print("  * v1 scored 4.1 s windows with a fixed threshold and its own splits; this")
-    print("    table scores records once, at the checkpoint validation chose, with F1")
-    print("    thresholds chosen on validation. Indicative, not like-for-like.")
-    md += ["\\* PhysioWave v1 scored 4.1 s windows with a fixed threshold and its own "
-           "splits; indicative, not like-for-like."]
+    if spec.get("paper_note") and any(t in runs for t in PAPER_V1):
+        print("  * " + "\n    ".join(spec["paper_note"]))
+        md += ["\\* " + " ".join(spec["paper_note"])]
     if args.json:
         with open(args.json, "w") as f:
             json.dump(runs, f, indent=2, default=str)

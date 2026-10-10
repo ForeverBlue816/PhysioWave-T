@@ -661,7 +661,7 @@ def main(argv=None) -> int:
             logger.warning("classes %s have no training windows",
                            np.flatnonzero(counts == 0).tolist())
 
-    c1_name = model_cfg.get("name") if model_cfg.get("name") in ("eeg_c1", "ecg_c1") else None
+    c1_name = model_cfg.get("name") if model_cfg.get("name") in ("eeg_c1", "ecg_c1", "emg_c1") else None
     if c1_name:
         # The montage, the window and the rate come from the FILE unless the
         # config names them. They are facts about the data, and a second copy
