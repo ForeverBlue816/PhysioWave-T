@@ -1,0 +1,5 @@
+  NOTE: no true_labels.csv, so the 10 Kaggle test subjects cannot be scored.
+        Building train/val/test from the 16 LABELLED subjects instead (--test-split labelled).
+        The test set is therefore not EEGPT's: their Table 4 row is a different set of subjects.
+channel(s) not in the vocabulary: ['P08']
+ERROR: building the split failed

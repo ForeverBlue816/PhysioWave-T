@@ -1,0 +1,25 @@
+sEMG download, finishing stage, job 59570230 on lrdn0009.leonardo.local
+==> cemhsey -> /leonardo_scratch/large/userexternal/ychen003/bio/emg/CEMHSEY/raw
+==> Zenodo records 15077957 15070187 (19 zips, 24 connections)
+  20/20 file(s) whole
+==> unpacking GESTURE_S1.zip (deflate64)
+    md5 GESTURE_S3.zip ...
+==> unpacking GESTURE_S3.zip (deflate64)
+    md5 GESTURE_S4.zip ...
+==> unpacking GESTURE_S4.zip (deflate64)
+    md5 GESTURE_S5.zip ...
+==> unpacking GESTURE_S5.zip (deflate64)
+    md5 GESTURE_S2.zip ...
+==> unpacking GESTURE_S2.zip (deflate64)
+    md5 GESTURE_S6.zip ...
+==> unpacking GESTURE_S6.zip (deflate64)
+    13 GRASP zips read in place; 328 GESTURE trial file(s) unpacked
+==> cemhsey: complete
+
+dataset      state         on-disk  path
+putemg       complete          29G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/putEMG/raw
+hyser        complete          72G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/Hyser/raw
+cemhsey      complete         309G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/CEMHSEY/raw
+emg2qwerty   complete         317G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2qwerty/raw
+emg2pose     complete         432G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2pose/raw
+free under /leonardo_scratch/large/userexternal/ychen003/bio/emg: 7858508 GB

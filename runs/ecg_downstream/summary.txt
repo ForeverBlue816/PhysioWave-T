@@ -1,0 +1,21 @@
+==============================================================================
+PTB-XL, 5 superclasses, single label (paper: accuracy)
+------------------------------------------------------------------------------
+                                Acc     BalAcc     F1-mac      AUROC
+  C1 fine-tuned              0.7386     0.6468     0.6503     0.9104   (best epoch 3, by val acc)
+  C1 linear probe            0.6478     0.4395     0.4518     0.8364   (best epoch 25, by val acc)
+  C1 from scratch            0.7045     0.5665     0.5778     0.8853   (best epoch 6, by val acc)
+  PhysioWave v1 (paper)      0.7310        -          -          -     (window-level, see header)
+  pretrained - scratch  Acc +0.0341
+==============================================================================
+PTB-XL superdiagnostic, multi-label (literature: macro AUROC)
+------------------------------------------------------------------------------
+                          AUROC-mac  AUROC-mic      AUPRC     F1-mac
+  C1 fine-tuned              0.9032     0.9194     0.7695     0.7089   (best epoch 2, by val auroc)
+  C1 linear probe            0.8287     0.8574     0.6362     0.6063   (best epoch 29, by val auroc)
+  C1 from scratch            0.8771     0.8970     0.7253     0.6686   (best epoch 4, by val auroc)
+  pretrained - scratch  AUROC-mac +0.0261
+==============================================================================
+  * v1 scored 4.1 s windows with a fixed threshold and its own splits; this
+    table scores records once, at the checkpoint validation chose, with F1
+    thresholds chosen on validation. Indicative, not like-for-like.

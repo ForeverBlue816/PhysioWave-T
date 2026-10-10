@@ -1,0 +1,9 @@
+cpsc2018: 7,585 labelled record(s) under /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/raw/cpsc2018 (693s to list)
+  2,000/7,585 records, 0 failed
+  4,000/7,585 records, 0 failed
+  6,000/7,585 records, 0 failed
+  train   5,309 records    10,361 windows    5,309 subjects  {'SNR': 657, 'AF': 976, 'IAVB': 583, 'LBBB': 168, 'RBBB': 1389, 'PAC': 467, 'PVC': 627, 'STD': 643, 'STE': 202}
+  val     1,517 records     2,987 windows    1,517 subjects  {'SNR': 176, 'AF': 258, 'IAVB': 158, 'LBBB': 65, 'RBBB': 376, 'PAC': 163, 'PVC': 181, 'STD': 191, 'STE': 63}
+  test      759 records     1,443 windows      759 subjects  {'SNR': 89, 'AF': 140, 'IAVB': 87, 'LBBB': 41, 'RBBB': 206, 'PAC': 59, 'PVC': 86, 'STD': 92, 'STE': 21}
+  0 record(s) failed; subject overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/c1/cpsc2018/{train,val,test}.h5 and split.json in 779s

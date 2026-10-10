@@ -1,0 +1,27 @@
+2026-09-06 13:58:54,171 INFO hyper-parameters (cli > config train: > builtin):
+2026-09-06 13:58:54,171 INFO     epochs           15          [cli]
+2026-09-06 13:58:54,171 INFO     batch_size       32          [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     lr               0.0004      [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     weight_decay     0.01        [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     warmup_epochs    5           [builtin]
+2026-09-06 13:58:54,171 INFO     warmup_ratio     0.2         [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     grad_clip        1.0         [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     label_smoothing  0.0         [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     min_lr_ratio     0.01        [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,171 INFO     precision        bf16        [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,172 INFO     select_by        kappa       [config:finetune/eeg_c1_sleep]
+2026-09-06 13:58:54,172 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/eeg/sleep_edf into memory on each of 1 rank(s): train.h5 2.18 GiB val.h5 0.62 GiB test.h5 0.85 GiB
+2026-09-06 13:58:55,710 INFO train 97410 windows, 2 channels, 3000 samples/window
+2026-09-06 13:58:55,711 INFO class counts: [32760, 11497, 33047, 6571, 13535]
+2026-09-06 13:58:55,711 INFO EEG C1 downstream: 2 channels at 100 Hz, 3000-sample windows, 50-sample patches, route <its own frontend>
+2026-09-06 13:58:55,737 INFO Building the EEG C1 downstream model with {'patch_samples': 50, 'pool': 'mean', 'head_dropout': 0.1, 'sampling_rate': 100, 'in_channels': 2, 'window_samples': 3000, 'channel_names': ['Fpz-Cz', 'Pz-Oz'], 'num_classes': 5, 'embed_dim': 512, 'depth': 8, 'num_heads': 8, 'mlp_ratio': 4.0, 'dropout': 0.1, 'norm': 'rmsnorm', 'ffn': 'swiglu', 'qk_norm': True, 'channel_encoding': 'id', 'channel_embed_dim': 64, 'max_level': 3, 'wave_kernel_size': 16, 'wavelet_names': ['sym4', 'sym5', 'db6', 'sym8', 'db8'], 'wave_init_mode': 'pad', 'use_separate_channel': True, 'fold_synthesis': 3, 'fold_gamma': 0.1}
+2026-09-06 13:58:55,740 INFO MultiHeadGate: 2 channels is not divisible by 4 heads; using 2.
+/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/enc_E64_256.pth: 57 tensor(s) do not fit this model, so loading it would train from scratch and report otherwise:
+  channel_to_token.weight: checkpoint (384, 64) vs model (512, 64)
+  channel_to_token.bias: checkpoint (384,) vs model (512,)
+  shared_transformer.blocks.0.norm1.weight: checkpoint (384,) vs model (512,)
+  shared_transformer.blocks.0.attn.qkv.weight: checkpoint (1152, 384) vs model (1536, 512)
+  shared_transformer.blocks.0.attn.qkv.bias: checkpoint (1152,) vs model (1536,)
+  shared_transformer.blocks.0.attn.proj.weight: checkpoint (384, 384) vs model (512, 512)
+  shared_transformer.blocks.0.attn.proj.bias: checkpoint (384,) vs model (512,)
+  shared_transformer.blocks.0.norm2.weight: checkpoint (384,) vs model (512,)

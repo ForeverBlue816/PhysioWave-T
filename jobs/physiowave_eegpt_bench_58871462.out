@@ -1,0 +1,10 @@
+============================================================
+  EEGPT benchmark kaggleern fold 0, modes: ft scratch  (job 58871462)
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+============================================================

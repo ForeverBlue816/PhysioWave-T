@@ -1,0 +1,72 @@
+ERROR: training needs /leonardo/home/userexternal/ychen003/pw and this is /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env.
+
+  python           /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/bin/python
+  sys.prefix       /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env
+  PW_ON_CINECA     1   (0 skips the module and the venv)
+  PW_VARS_ONLY     <unset>   (1 skips them too)
+  FAST             /leonardo_scratch/fast/IscrB_WearUsFM
+  PW_VENV          /leonardo/home/userexternal/ychen003/pw
+  VIRTUAL_ENV      /leonardo/home/userexternal/ychen003/pw
+  SLURM_JOB_ID     59089457
+  cineca-ai loaded yes
+
+  Every one of these is inherited by `sbatch --export=ALL` from the
+  shell you submitted from. Submit from a clean shell, or fix the
+  variable the state above names:
+      unset PW_VENV PW_VARS_ONLY VIRTUAL_ENV
+      sbatch ...
+srun: error: lrdn0648: task 0: Exited with exit code 1
+ERROR: training needs /leonardo/home/userexternal/ychen003/pw and this is /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env.
+
+  python           /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/bin/python
+  sys.prefix       /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env
+  PW_ON_CINECA     1   (0 skips the module and the venv)
+  PW_VARS_ONLY     <unset>   (1 skips them too)
+  FAST             /leonardo_scratch/fast/IscrB_WearUsFM
+  PW_VENV          /leonardo/home/userexternal/ychen003/pw
+  VIRTUAL_ENV      /leonardo/home/userexternal/ychen003/pw
+  SLURM_JOB_ID     59089457
+  cineca-ai loaded yes
+
+  Every one of these is inherited by `sbatch --export=ALL` from the
+  shell you submitted from. Submit from a clean shell, or fix the
+  variable the state above names:
+      unset PW_VENV PW_VARS_ONLY VIRTUAL_ENV
+      sbatch ...
+srun: error: lrdn0908: task 2: Exited with exit code 1
+ERROR: training needs /leonardo/home/userexternal/ychen003/pw and this is /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env.
+
+  python           /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/bin/python
+  sys.prefix       /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env
+  PW_ON_CINECA     1   (0 skips the module and the venv)
+  PW_VARS_ONLY     <unset>   (1 skips them too)
+  FAST             /leonardo_scratch/fast/IscrB_WearUsFM
+  PW_VENV          /leonardo/home/userexternal/ychen003/pw
+  VIRTUAL_ENV      /leonardo/home/userexternal/ychen003/pw
+  SLURM_JOB_ID     59089457
+  cineca-ai loaded yes
+
+  Every one of these is inherited by `sbatch --export=ALL` from the
+  shell you submitted from. Submit from a clean shell, or fix the
+  variable the state above names:
+      unset PW_VENV PW_VARS_ONLY VIRTUAL_ENV
+      sbatch ...
+srun: error: lrdn0751: task 1: Exited with exit code 1
+ERROR: training needs /leonardo/home/userexternal/ychen003/pw and this is /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env.
+
+  python           /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/bin/python
+  sys.prefix       /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env
+  PW_ON_CINECA     1   (0 skips the module and the venv)
+  PW_VARS_ONLY     <unset>   (1 skips them too)
+  FAST             /leonardo_scratch/fast/IscrB_WearUsFM
+  PW_VENV          /leonardo/home/userexternal/ychen003/pw
+  VIRTUAL_ENV      /leonardo/home/userexternal/ychen003/pw
+  SLURM_JOB_ID     59089457
+  cineca-ai loaded yes
+
+  Every one of these is inherited by `sbatch --export=ALL` from the
+  shell you submitted from. Submit from a clean shell, or fix the
+  variable the state above names:
+      unset PW_VENV PW_VARS_ONLY VIRTUAL_ENV
+      sbatch ...
+srun: error: lrdn1468: task 3: Exited with exit code 1

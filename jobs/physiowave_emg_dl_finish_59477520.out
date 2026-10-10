@@ -1,0 +1,33 @@
+sEMG download, finishing stage, job 59477520 on lrdn3371.leonardo.local
+==> fetching into /leonardo_scratch/large/userexternal/ychen003/bio/emg: putemg hyser cemhsey emg2qwerty emg2pose (~1475 GB at most)
+==> putemg: complete (2026-10-06T05:42:43Z) -- skipping
+==> hyser: complete (2026-10-06T06:07:10Z) -- skipping
+==> emg2qwerty -> /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2qwerty/raw
+==> https://fb-ctrl-oss.s3.amazonaws.com/emg2qwerty/emg2qwerty-data-2021-08.tar.gz (308 GB, 16 connections)
+  1/1 file(s) whole
+==> unpacking emg2qwerty-data-2021-08.tar.gz (an hour or more)
+    1135 session file(s) (expected ~1,135)
+==> emg2qwerty: complete
+==> emg2pose -> /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2pose/raw
+==> https://fb-ctrl-oss.s3.amazonaws.com/emg2pose/emg2pose_dataset.tar (463 GB, 16 connections)
+  1/1 file(s) whole
+    25,253 HDF5 file(s) in the tar (expected 25,253)
+    kept as a tar: EMG/preprocess_emg_corpus.py reads each file out of it
+==> emg2pose: complete
+
+dataset      state         on-disk  path
+putemg       complete          29G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/putEMG/raw
+hyser        complete          72G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/Hyser/raw
+cemhsey      partial          308G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/CEMHSEY/raw
+emg2qwerty   complete         317G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2qwerty/raw
+emg2pose     complete         432G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2pose/raw
+free under /leonardo_scratch/large/userexternal/ychen003/bio/emg: 7966805 GB
+
+
+dataset      state         on-disk  path
+putemg       complete          29G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/putEMG/raw
+hyser        complete          72G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/Hyser/raw
+cemhsey      partial          308G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/CEMHSEY/raw
+emg2qwerty   complete         317G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2qwerty/raw
+emg2pose     complete         432G  /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2pose/raw
+free under /leonardo_scratch/large/userexternal/ychen003/bio/emg: 7966706 GB

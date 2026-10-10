@@ -1,0 +1,4 @@
+  NOTE: no true_labels.csv, so the 10 Kaggle test subjects cannot be scored.
+        Building train/val/test from the 16 LABELLED subjects instead (--test-split labelled).
+        The test set is therefore not EEGPT's: their Table 4 row is a different set of subjects.
+  header 'P08' read as 'PO8' (a typo in the Kaggle files: it sits between PO7/POz and O1/O2)

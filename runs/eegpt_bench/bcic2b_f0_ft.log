@@ -1,0 +1,144 @@
+split /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eegpt_bench/bcic2b_f0_pretrain-v1 exists
+exporting the encoder from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+exported encoder (no route) from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  95 tensors, 25,279,489 parameters -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft/encoder.pth
+  frontend     excluded -- downstream builds its own; pass --route to include one
+  vocab sha    596f2711269e47b2
+  decoder      excluded (pretraining head)
+============================================================
+  EEGPT benchmark  bcic2b  fold 0  mode ft
+  data     /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eegpt_bench/bcic2b_f0_pretrain-v1  (preprocessing pretrain-v1)
+  encoder  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft/encoder.pth
+  output   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft
+============================================================
+2026-09-28 07:09:58,176 INFO hyper-parameters (cli > config train: > builtin):
+2026-09-28 07:09:58,176 INFO     epochs           30          [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     batch_size       64          [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     lr               0.00025     [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     weight_decay     0.01        [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     warmup_epochs    5           [builtin]
+2026-09-28 07:09:58,176 INFO     warmup_ratio     0.1         [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     grad_clip        1.0         [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     label_smoothing  0.1         [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     min_lr_ratio     0.01        [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     precision        bf16        [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     select_by        auroc       [config:finetune/eeg_c1_bcic2b]
+2026-09-28 07:09:58,176 INFO     patience         0           [builtin]
+2026-09-28 07:09:58,176 INFO     min_delta        0.0         [builtin]
+2026-09-28 07:09:58,176 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eegpt_bench/bcic2b_f0_pretrain-v1 into memory on each of 1 rank(s): train.h5 0.06 GiB val.h5 0.01 GiB test.h5 0.01 GiB
+2026-09-28 07:09:58,239 INFO train 5080 windows, 3 channels, 1024 samples/window
+2026-09-28 07:09:58,239 INFO class counts: [2540, 2540]
+2026-09-28 07:09:58,239 INFO EEG C1 downstream: 3 channels at 256.0 Hz, 1024-sample windows, 64-sample patches, route <its own frontend>
+2026-09-28 07:09:58,265 INFO Building the EEG C1 downstream model with {'patch_samples': 64, 'pool': 'mean', 'head_dropout': 0.1, 'in_channels': 3, 'window_samples': 1024, 'channel_names': ['C3', 'Cz', 'C4'], 'sampling_rate': 256.0, 'num_classes': 2, 'embed_dim': 512, 'depth': 8, 'num_heads': 8, 'mlp_ratio': 4.0, 'dropout': 0.1, 'norm': 'rmsnorm', 'ffn': 'swiglu', 'qk_norm': True, 'channel_encoding': 'id', 'channel_embed_dim': 64, 'max_level': 3, 'wave_kernel_size': 16, 'wavelet_names': ['sym4', 'sym5', 'db6', 'sym8', 'db8'], 'wave_init_mode': 'pad', 'use_separate_channel': True, 'fold_synthesis': 3, 'fold_gamma': 0.1}
+2026-09-28 07:09:58,267 INFO MultiHeadGate: 3 channels is not divisible by 4 heads; using 3.
+2026-09-28 07:09:58,484 INFO loaded: transformer 89, channel encoder 5, gate yes, frontend 0, patcher 0 <- /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft/encoder.pth
+2026-09-28 07:09:58,611 INFO model 25.32 M parameters (25,320,148 trainable, 100.0%)
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
+  _torch_pytree._register_pytree_node(
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+2026-09-28 07:10:17,095 INFO schedule: 80 steps/epoch, 2400 total, 240 warmup (10%), lr 2.50e-04 -> 2.50e-06
+2026-09-28 07:10:17,096 INFO selection: best.pth follows val auroc; no early stop, so this runs all 30 epochs (--patience N to stop sooner)
+2026-09-28 07:10:19,842 INFO epoch 0 step 0/80 (  1%) loss 0.8070 acc 0.5781 lr 2.08e-06 eta 3:36
+2026-09-28 07:10:23,096 INFO epoch 0 step 50/80 ( 64%) loss 0.7260 acc 0.5018 lr 5.42e-05 eta 0:03
+2026-09-28 07:10:29,477 INFO epoch   0/29  train_loss 0.7285  val_loss 0.6949  acc 0.4986  bal 0.4986  kappa -0.0028  auroc 0.4708  eta 5:59  *best
+2026-09-28 07:10:29,637 INFO epoch 1 step 0/80 (  1%) loss 0.7018 acc 0.4844 lr 8.54e-05 eta 0:12
+2026-09-28 07:10:33,056 INFO epoch 1 step 50/80 ( 64%) loss 0.7137 acc 0.5043 lr 1.38e-04 eta 0:02
+2026-09-28 07:10:35,763 INFO epoch   1/29  train_loss 0.7134  val_loss 0.6952  acc 0.5000  bal 0.5000  kappa 0.0000  auroc 0.5433  eta 4:21  *best
+2026-09-28 07:10:35,924 INFO epoch 2 step 0/80 (  1%) loss 0.6948 acc 0.5156 lr 1.69e-04 eta 0:12
+2026-09-28 07:10:39,362 INFO epoch 2 step 50/80 ( 64%) loss 0.6838 acc 0.5692 lr 2.21e-04 eta 0:02
+2026-09-28 07:10:42,080 INFO epoch   2/29  train_loss 0.6579  val_loss 0.6996  acc 0.5875  bal 0.5875  kappa 0.1750  auroc 0.6858  eta 3:44  *best
+2026-09-28 07:10:42,241 INFO epoch 3 step 0/80 (  1%) loss 0.6461 acc 0.6719 lr 2.50e-04 eta 0:12
+2026-09-28 07:10:45,668 INFO epoch 3 step 50/80 ( 64%) loss 0.5876 acc 0.7166 lr 2.50e-04 eta 0:02
+2026-09-28 07:10:48,376 INFO epoch   3/29  train_loss 0.5868  val_loss 0.7188  acc 0.6097  bal 0.6097  kappa 0.2194  auroc 0.7003  eta 3:23  *best
+2026-09-28 07:10:48,538 INFO epoch 4 step 0/80 (  1%) loss 0.6023 acc 0.7188 lr 2.49e-04 eta 0:12
+2026-09-28 07:10:51,974 INFO epoch 4 step 50/80 ( 64%) loss 0.5296 acc 0.7653 lr 2.48e-04 eta 0:02
+2026-09-28 07:10:54,705 INFO epoch   4/29  train_loss 0.5285  val_loss 0.6913  acc 0.6347  bal 0.6347  kappa 0.2694  auroc 0.7448  eta 3:08  *best
+2026-09-28 07:10:54,867 INFO epoch 5 step 0/80 (  1%) loss 0.5507 acc 0.7344 lr 2.47e-04 eta 0:12
+2026-09-28 07:10:58,299 INFO epoch 5 step 50/80 ( 64%) loss 0.4867 acc 0.8009 lr 2.44e-04 eta 0:02
+2026-09-28 07:11:00,720 INFO epoch   5/29  train_loss 0.4845  val_loss 0.6370  acc 0.6694  bal 0.6694  kappa 0.3389  auroc 0.7366  eta 2:54
+2026-09-28 07:11:00,876 INFO epoch 6 step 0/80 (  1%) loss 0.5064 acc 0.7656 lr 2.42e-04 eta 0:12
+2026-09-28 07:11:04,293 INFO epoch 6 step 50/80 ( 64%) loss 0.4456 acc 0.8373 lr 2.39e-04 eta 0:02
+2026-09-28 07:11:06,693 INFO epoch   6/29  train_loss 0.4504  val_loss 0.6446  acc 0.6861  bal 0.6861  kappa 0.3722  auroc 0.7397  eta 2:42
+2026-09-28 07:11:06,848 INFO epoch 7 step 0/80 (  1%) loss 0.3793 acc 0.8594 lr 2.37e-04 eta 0:12
+2026-09-28 07:11:10,262 INFO epoch 7 step 50/80 ( 64%) loss 0.4142 acc 0.8603 lr 2.32e-04 eta 0:02
+2026-09-28 07:11:12,663 INFO epoch   7/29  train_loss 0.4120  val_loss 0.8815  acc 0.6194  bal 0.6194  kappa 0.2389  auroc 0.7217  eta 2:32
+2026-09-28 07:11:12,825 INFO epoch 8 step 0/80 (  1%) loss 0.3902 acc 0.8750 lr 2.30e-04 eta 0:12
+2026-09-28 07:11:16,231 INFO epoch 8 step 50/80 ( 64%) loss 0.3571 acc 0.9056 lr 2.24e-04 eta 0:02
+2026-09-28 07:11:18,620 INFO epoch   8/29  train_loss 0.3626  val_loss 0.8021  acc 0.6708  bal 0.6708  kappa 0.3417  auroc 0.7291  eta 2:23
+2026-09-28 07:11:18,772 INFO epoch 9 step 0/80 (  1%) loss 0.3500 acc 0.9062 lr 2.21e-04 eta 0:11
+2026-09-28 07:11:22,183 INFO epoch 9 step 50/80 ( 64%) loss 0.3337 acc 0.9222 lr 2.15e-04 eta 0:02
+2026-09-28 07:11:24,568 INFO epoch   9/29  train_loss 0.3379  val_loss 0.7847  acc 0.6556  bal 0.6556  kappa 0.3111  auroc 0.7253  eta 2:14
+2026-09-28 07:11:24,727 INFO epoch 10 step 0/80 (  1%) loss 0.2734 acc 0.9688 lr 2.11e-04 eta 0:12
+2026-09-28 07:11:28,143 INFO epoch 10 step 50/80 ( 64%) loss 0.2916 acc 0.9485 lr 2.04e-04 eta 0:02
+2026-09-28 07:11:30,537 INFO epoch  10/29  train_loss 0.3056  val_loss 0.7928  acc 0.6653  bal 0.6653  kappa 0.3306  auroc 0.7370  eta 2:06
+2026-09-28 07:11:30,696 INFO epoch 11 step 0/80 (  1%) loss 0.3060 acc 0.9375 lr 2.00e-04 eta 0:12
+2026-09-28 07:11:34,123 INFO epoch 11 step 50/80 ( 64%) loss 0.2847 acc 0.9540 lr 1.93e-04 eta 0:02
+2026-09-28 07:11:36,514 INFO epoch  11/29  train_loss 0.2835  val_loss 0.8695  acc 0.6542  bal 0.6542  kappa 0.3083  auroc 0.7093  eta 1:59
+2026-09-28 07:11:36,664 INFO epoch 12 step 0/80 (  1%) loss 0.2247 acc 0.9844 lr 1.88e-04 eta 0:11
+2026-09-28 07:11:40,083 INFO epoch 12 step 50/80 ( 64%) loss 0.2585 acc 0.9660 lr 1.80e-04 eta 0:02
+2026-09-28 07:11:42,472 INFO epoch  12/29  train_loss 0.2642  val_loss 0.9329  acc 0.6431  bal 0.6431  kappa 0.2861  auroc 0.7089  eta 1:51
+2026-09-28 07:11:42,625 INFO epoch 13 step 0/80 (  1%) loss 0.2122 acc 1.0000 lr 1.75e-04 eta 0:11
+2026-09-28 07:11:46,041 INFO epoch 13 step 50/80 ( 64%) loss 0.2430 acc 0.9749 lr 1.67e-04 eta 0:02
+2026-09-28 07:11:48,434 INFO epoch  13/29  train_loss 0.2474  val_loss 0.9147  acc 0.6597  bal 0.6597  kappa 0.3194  auroc 0.7159  eta 1:44
+2026-09-28 07:11:48,591 INFO epoch 14 step 0/80 (  1%) loss 0.2422 acc 0.9844 lr 1.62e-04 eta 0:12
+2026-09-28 07:11:52,026 INFO epoch 14 step 50/80 ( 64%) loss 0.2357 acc 0.9822 lr 1.53e-04 eta 0:02
+2026-09-28 07:11:54,433 INFO epoch  14/29  train_loss 0.2425  val_loss 1.0218  acc 0.6542  bal 0.6542  kappa 0.3083  auroc 0.7113  eta 1:37
+2026-09-28 07:11:54,590 INFO epoch 15 step 0/80 (  1%) loss 0.3054 acc 0.9531 lr 1.48e-04 eta 0:12
+2026-09-28 07:11:58,021 INFO epoch 15 step 50/80 ( 64%) loss 0.2397 acc 0.9779 lr 1.39e-04 eta 0:02
+2026-09-28 07:12:00,410 INFO epoch  15/29  train_loss 0.2350  val_loss 0.9910  acc 0.6500  bal 0.6500  kappa 0.3000  auroc 0.7063  eta 1:30
+2026-09-28 07:12:00,561 INFO epoch 16 step 0/80 (  1%) loss 0.2396 acc 0.9844 lr 1.33e-04 eta 0:11
+2026-09-28 07:12:03,988 INFO epoch 16 step 50/80 ( 64%) loss 0.2292 acc 0.9838 lr 1.24e-04 eta 0:02
+2026-09-28 07:12:06,374 INFO epoch  16/29  train_loss 0.2302  val_loss 1.0275  acc 0.6347  bal 0.6347  kappa 0.2694  auroc 0.7097  eta 1:23
+2026-09-28 07:12:06,524 INFO epoch 17 step 0/80 (  1%) loss 0.2256 acc 0.9844 lr 1.19e-04 eta 0:11
+2026-09-28 07:12:09,944 INFO epoch 17 step 50/80 ( 64%) loss 0.2213 acc 0.9871 lr 1.10e-04 eta 0:02
+2026-09-28 07:12:12,332 INFO epoch  17/29  train_loss 0.2224  val_loss 0.9458  acc 0.6542  bal 0.6542  kappa 0.3083  auroc 0.7077  eta 1:16
+2026-09-28 07:12:12,482 INFO epoch 18 step 0/80 (  1%) loss 0.2063 acc 1.0000 lr 1.05e-04 eta 0:11
+2026-09-28 07:12:15,896 INFO epoch 18 step 50/80 ( 64%) loss 0.2146 acc 0.9911 lr 9.58e-05 eta 0:02
+2026-09-28 07:12:18,272 INFO epoch  18/29  train_loss 0.2153  val_loss 1.0251  acc 0.6458  bal 0.6458  kappa 0.2917  auroc 0.7057  eta 1:10
+2026-09-28 07:12:18,420 INFO epoch 19 step 0/80 (  1%) loss 0.1996 acc 1.0000 lr 9.06e-05 eta 0:11
+2026-09-28 07:12:21,863 INFO epoch 19 step 50/80 ( 64%) loss 0.2092 acc 0.9948 lr 8.21e-05 eta 0:02
+2026-09-28 07:12:24,253 INFO epoch  19/29  train_loss 0.2084  val_loss 1.0325  acc 0.6417  bal 0.6417  kappa 0.2833  auroc 0.7147  eta 1:03
+2026-09-28 07:12:24,501 INFO epoch 20 step 0/80 (  1%) loss 0.1991 acc 1.0000 lr 7.71e-05 eta 0:19
+2026-09-28 07:12:27,931 INFO epoch 20 step 50/80 ( 64%) loss 0.2078 acc 0.9957 lr 6.89e-05 eta 0:02
+2026-09-28 07:12:30,318 INFO epoch  20/29  train_loss 0.2083  val_loss 1.0280  acc 0.6458  bal 0.6458  kappa 0.2917  auroc 0.7138  eta 0:57
+2026-09-28 07:12:30,475 INFO epoch 21 step 0/80 (  1%) loss 0.2017 acc 1.0000 lr 6.42e-05 eta 0:12
+2026-09-28 07:12:33,908 INFO epoch 21 step 50/80 ( 64%) loss 0.2075 acc 0.9957 lr 5.66e-05 eta 0:02
+2026-09-28 07:12:36,308 INFO epoch  21/29  train_loss 0.2069  val_loss 1.0278  acc 0.6569  bal 0.6569  kappa 0.3139  auroc 0.7182  eta 0:50
+2026-09-28 07:12:36,467 INFO epoch 22 step 0/80 (  1%) loss 0.1988 acc 1.0000 lr 5.22e-05 eta 0:12
+2026-09-28 07:12:39,894 INFO epoch 22 step 50/80 ( 64%) loss 0.2020 acc 0.9982 lr 4.52e-05 eta 0:02
+2026-09-28 07:12:42,295 INFO epoch  22/29  train_loss 0.2023  val_loss 1.0421  acc 0.6583  bal 0.6583  kappa 0.3167  auroc 0.7048  eta 0:44
+2026-09-28 07:12:42,445 INFO epoch 23 step 0/80 (  1%) loss 0.2007 acc 1.0000 lr 4.12e-05 eta 0:11
+2026-09-28 07:12:45,854 INFO epoch 23 step 50/80 ( 64%) loss 0.2021 acc 0.9979 lr 3.49e-05 eta 0:02
+2026-09-28 07:12:48,265 INFO epoch  23/29  train_loss 0.2019  val_loss 1.0246  acc 0.6583  bal 0.6583  kappa 0.3167  auroc 0.7052  eta 0:37
+2026-09-28 07:12:48,416 INFO epoch 24 step 0/80 (  1%) loss 0.1988 acc 1.0000 lr 3.13e-05 eta 0:11
+2026-09-28 07:12:51,832 INFO epoch 24 step 50/80 ( 64%) loss 0.2003 acc 0.9994 lr 2.58e-05 eta 0:02
+2026-09-28 07:12:54,228 INFO epoch  24/29  train_loss 0.2005  val_loss 1.0516  acc 0.6500  bal 0.6500  kappa 0.3000  auroc 0.6994  eta 0:31
+2026-09-28 07:12:54,379 INFO epoch 25 step 0/80 (  1%) loss 0.1988 acc 1.0000 lr 2.28e-05 eta 0:11
+2026-09-28 07:12:57,772 INFO epoch 25 step 50/80 ( 64%) loss 0.2003 acc 0.9991 lr 1.81e-05 eta 0:02
+2026-09-28 07:13:00,162 INFO epoch  25/29  train_loss 0.1998  val_loss 1.0605  acc 0.6500  bal 0.6500  kappa 0.3000  auroc 0.6995  eta 0:25
+2026-09-28 07:13:00,319 INFO epoch 26 step 0/80 (  1%) loss 0.1987 acc 1.0000 lr 1.56e-05 eta 0:12
+2026-09-28 07:13:03,712 INFO epoch 26 step 50/80 ( 64%) loss 0.1987 acc 1.0000 lr 1.19e-05 eta 0:02
+2026-09-28 07:13:06,103 INFO epoch  26/29  train_loss 0.1987  val_loss 1.0632  acc 0.6472  bal 0.6472  kappa 0.2944  auroc 0.6912  eta 0:18
+2026-09-28 07:13:06,259 INFO epoch 27 step 0/80 (  1%) loss 0.1986 acc 1.0000 lr 9.90e-06 eta 0:12
+2026-09-28 07:13:09,682 INFO epoch 27 step 50/80 ( 64%) loss 0.1987 acc 1.0000 lr 7.15e-06 eta 0:02
+2026-09-28 07:13:12,094 INFO epoch  27/29  train_loss 0.1987  val_loss 1.0747  acc 0.6431  bal 0.6431  kappa 0.2861  auroc 0.6886  eta 0:12
+2026-09-28 07:13:12,247 INFO epoch 28 step 0/80 (  1%) loss 0.1987 acc 1.0000 lr 5.79e-06 eta 0:11
+2026-09-28 07:13:15,676 INFO epoch 28 step 50/80 ( 64%) loss 0.1987 acc 1.0000 lr 4.05e-06 eta 0:02
+2026-09-28 07:13:18,089 INFO epoch  28/29  train_loss 0.1987  val_loss 1.0766  acc 0.6444  bal 0.6444  kappa 0.2889  auroc 0.6864  eta 0:06
+2026-09-28 07:13:18,241 INFO epoch 29 step 0/80 (  1%) loss 0.1987 acc 1.0000 lr 3.32e-06 eta 0:11
+2026-09-28 07:13:21,686 INFO epoch 29 step 50/80 ( 64%) loss 0.1987 acc 1.0000 lr 2.61e-06 eta 0:02
+2026-09-28 07:13:24,102 INFO epoch  29/29  train_loss 0.1987  val_loss 1.0735  acc 0.6500  bal 0.6500  kappa 0.3000  auroc 0.6853  eta 0:00
+2026-09-28 07:13:24,347 INFO Loaded checkpoint: matched 177 tensors
+2026-09-28 07:13:24,767 INFO TEST acc 0.6236 bal 0.6236 kappa 0.2472 wf1 0.5845 auroc 0.7652
+──────────────────────────────────────────────────────────────────────────────
+  bcic2b_f0_ft  ·  TEST  ·  finetune/eeg_c1_bcic2b  ·  full fine-tune  ·  pretrained  ·  25,320,148 trainable
+──────────────────────────────────────────────────────────────────────────────
+  BalAcc   0.6236  █████████████▊                     
+  Kappa    0.2472  █████▌                  chance 0.00
+  AUROC    0.7652  ███████████▋            chance 0.50
+  W-F1     0.5845  ████████████▉                      
+  acc 0.6236   loss 0.6878
+──────────────────────────────────────────────────────────────────────────────
+2026-09-28 07:13:24,770 INFO outputs in /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft
+Done. /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2b_f0_ft/results.json  (the 'test' block is the number to report)

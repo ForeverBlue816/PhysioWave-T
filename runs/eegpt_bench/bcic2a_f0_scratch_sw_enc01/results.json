@@ -1,0 +1,33 @@
+{
+  "best_epoch": 15,
+  "select_by": "kappa",
+  "best_val": 0.19444444444444442,
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 64,
+    "lr": 0.00025,
+    "weight_decay": 0.01,
+    "warmup_epochs": 5,
+    "warmup_ratio": 0.1,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.1,
+    "min_lr_ratio": 0.01,
+    "precision": "bf16",
+    "select_by": "kappa",
+    "patience": 0,
+    "min_delta": 0.0,
+    "encoder_lr_scale": 0.1
+  },
+  "frozen_encoder": false,
+  "total_params": 25403026,
+  "trainable_params": 25403026,
+  "pretrained": false,
+  "test": {
+    "loss": 1.586973441971673,
+    "acc": 0.3489583333333333,
+    "balanced_acc": 0.34895833333333337,
+    "kappa": 0.13194444444444442,
+    "weighted_f1": 0.3313174712811338,
+    "auroc": 0.6153308256172839
+  }
+}

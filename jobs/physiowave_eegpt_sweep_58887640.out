@@ -1,0 +1,94 @@
+============================================================
+  EEGPT sweep bcic2a fold 0: 12 runs, 4 at a time  (job 58887640)
+  configs: base lr1e4 lr5e5 enc01 enc005 reg 
+  modes:   ft scratch
+  encoder: /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+============================================================
+split /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eegpt_bench/bcic2a_f0_pretrain-v1 exists
+  [gpu 1] base scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_base.log
+  [gpu 0] base ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_base.log
+  [gpu 2] lr1e4 ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_lr1e4.log
+  [gpu 3] lr1e4 scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_lr1e4.log
+  [gpu 1] base scratch: done
+  [gpu 1] lr5e5 scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_lr5e5.log
+  [gpu 3] lr1e4 scratch: done
+  [gpu 3] enc01 scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_enc01.log
+  [gpu 2] lr1e4 ft: done
+  [gpu 2] enc01 ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_enc01.log
+  [gpu 0] base ft: done
+  [gpu 0] lr5e5 ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_lr5e5.log
+  [gpu 1] lr5e5 scratch: done
+  [gpu 1] enc005 scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_enc005.log
+  [gpu 3] enc01 scratch: done
+  [gpu 3] reg scratch  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_scratch_sw_reg.log
+  [gpu 0] lr5e5 ft: done
+  [gpu 0] enc005 ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_enc005.log
+  [gpu 2] enc01 ft: done
+  [gpu 2] reg ft  -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eegpt_bench/bcic2a_f0_ft_sw_reg.log
+  [gpu 1] enc005 scratch: done
+  [gpu 3] reg scratch: done
+  [gpu 0] enc005 ft: done
+  [gpu 2] reg ft: done
+
+task       fold mode[:tag]             BAC   kappa     3rd  3rd is         trainable  best@ep
+bcic2a          EEGPT               0.5846  0.4462  0.5715  weighted_f1        probe  (Table 4, fold mean)
+              0 ft                  0.3524  0.1366  0.3526  weighted_f1   25,403,026  8 (kappa)
+              0 scratch             0.2969  0.0625  0.2927  weighted_f1   25,403,026  5 (kappa)
+              0 ft:eegptprep        0.3333  0.1111  0.2784  weighted_f1   25,403,026  7 (kappa)
+              0 scratch:eegptprep   0.3438  0.1250  0.2989  weighted_f1   25,403,026  20 (kappa)
+bcic2b          EEGPT               0.7212  0.4426  0.8059  auroc              probe  (Table 4, fold mean)
+              0 ft                  0.6236  0.2472  0.7652  auroc         25,320,148  4 (auroc)
+              0 scratch             0.6708  0.3417  0.7367  auroc         25,320,148  14 (auroc)
+              0 ft:eegptprep        0.6431  0.2861  0.7149  auroc         25,320,148  18 (auroc)
+              0 scratch:eegptprep   0.6403  0.2806  0.7090  auroc         25,320,148  14 (auroc)
+kaggleern       EEGPT               0.5837  0.1882  0.6621  auroc              probe  (Table 4, fold mean)
+              0 ft                  0.6171  0.2059  0.6632  auroc         25,813,366  6 (auroc)
+              0 scratch             0.5746  0.0995  0.6038  auroc         25,813,366  11 (auroc)
+
+  bcic2a f0: pretrained - scratch kappa = +0.0741
+  bcic2a f0 [eegptprep]: pretrained - scratch kappa = -0.0139
+  bcic2b f0: pretrained - scratch auroc = +0.0286
+  bcic2b f0 [eegptprep]: pretrained - scratch auroc = +0.0059
+  kaggleern f0: pretrained - scratch auroc = +0.0594
+
+  KaggleERN: without true_labels.csv (the Kaggle download has none) the
+  test set is 4 of the 16 labelled subjects, not EEGPT's 10 Kaggle test
+  subjects -- their row is a reference, not the same test data. The
+  split's split.json says which ('test_split').
+
+  Preprocessing: our pretraining pipeline (0.5 Hz high-pass, 50 Hz notch,
+  per-window z-score). Rows tagged 'eegptprep' use EEGPT's instead on BCIC
+  (0-38 Hz low-pass, Euclidean alignment, common average).
+
+  EEGPT's rows: frozen encoder + linear probe, mean over folds, scored on
+  their validation subjects. Ours: one fold, test subjects select nothing.
+
+============================================================================================
+  SWEEP  (configuration chosen on VALIDATION; test is that configuration's)
+============================================================================================
+task       fold mode     chosen       val      BAC   kappa     3rd  3rd is       best@ep
+bcic2a          EEGPT                       0.5846  0.4462  0.5715  weighted_f1  (Table 4)
+              0 ft       reg       0.2083   0.3056  0.0741  0.2725  weighted_f1  5
+                         val by config: reg 0.208  enc005 0.206  base 0.192  lr1e4 0.190  lr5e5 0.190  enc01 0.188
+              0 scratch  enc005    0.2199   0.3750  0.1667  0.3608  weighted_f1  12
+                         val by config: enc005 0.220  base 0.194  enc01 0.194  reg 0.192  lr5e5 0.185  lr1e4 0.171
+bcic2b          EEGPT                       0.7212  0.4426  0.8059  auroc        (Table 4)
+              0 ft       base      0.7595   0.6653  0.3306  0.7414  auroc        4
+                         val by config: base 0.760  reg 0.757  enc01 0.742  enc005 0.732  lr1e4 0.731  lr5e5 0.717
+              0 scratch  enc01     0.7456   0.6528  0.3056  0.7533  auroc        14
+                         val by config: enc01 0.746  base 0.740  lr1e4 0.738  enc005 0.738  lr5e5 0.731  reg 0.731
+kaggleern       EEGPT                       0.5837  0.1882  0.6621  auroc        (Table 4)
+              0 ft       lr5e5     0.6919   0.5496  0.1247  0.6474  auroc        6
+                         val by config: lr5e5 0.692  lr1e4 0.675  enc01 0.673  base 0.669
+              0 scratch  base      0.6446   0.5704  0.1409  0.6001  auroc        13
+                         val by config: base 0.645  lr5e5 0.644  lr1e4 0.635  enc01 0.624
+
+  bcic2a f0: tuned pretrained - tuned scratch kappa = -0.0926   (reg vs enc005)
+  bcic2b f0: tuned pretrained - tuned scratch auroc = -0.0119   (base vs enc01)
+  kaggleern f0: tuned pretrained - tuned scratch auroc = +0.0473   (lr5e5 vs base)

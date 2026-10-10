@@ -1,0 +1,170 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  sEMG C1 multi-route pretraining  (job 59761075)
+  config     pretrain/emg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn2340:21075 (id 59761075)
+  nodes      lrdn2340 lrdn2677 lrdn2893 lrdn2909 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=auto
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+  resume         auto
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=59761075 --rdzv_backend=c10d --rdzv_endpoint=lrdn2340:21075 -m physiowave.train.pretrain_main --config pretrain/emg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe --resume auto --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+  resume         auto
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+  resume         auto
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+  resume         auto
+============================================================
+NCCL version 2.19.1+cuda12.1
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/latest.pth: epoch 40, step 3720  best: total 0.27473@38  spec 0.29056@10  raw 0.24624@39  macro-route total 0.26124@38
+==================================================================
+  sEMG C1 multi-route pretraining
+  total parameters        12,052,622
+  shared transformer      10,631,808
+  frontend W16_2000       48,843
+  frontend A24_2000       100,947
+  frontend G64_2000       643,707
+  patch_embed 2000       97,152   spec decoder 244,858   raw decoder 244,858
+  downstream encoder      11,562,522   (+490,100 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    15,104  + proj 24,960
+  routes:
+    W16_2000: 16x2000 @ 2000Hz -> 16x8 = 128 tokens (patch (1, 250))
+    A24_2000: 24x2000 @ 2000Hz -> 24x8 = 192 tokens (patch (1, 250))
+    G64_2000: 64x2000 @ 2000Hz -> 64x8 = 512 tokens (patch (1, 250))
+  mixture policy: temperature:0.5
+    dataset          corpus%   step%  window%   passes/epoch
+    cemhsey_5x13      8.88%  27.96%   15.45%     0.04x
+    cemhsey_8x8      12.98%  33.33%   18.42%     0.04x
+    emg2pose         23.57%  13.98%   30.89%     0.03x
+    emg2qwerty       46.20%  11.83%   26.14%     0.01x
+    hyser             5.37%  10.75%    5.94%     0.03x
+    putemg            3.00%   2.15%    3.17%     0.03x
+  channel vocab sha256    5b4444a9bd5f7c5d
+  budget:
+    resolved steps per epoch   93  (sized so 40 epochs read 1x the corpus)
+    windows read over the run  5,108,693 of a 5,106,203-window corpus (1.00x)
+    total optimizer updates    3720   (93/epoch x 40 epochs, grad_accum 1)
+    effective world size       16
+    validation per epoch       first 20 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       W16_2000=192  A24_2000=128  G64_2000=48
+    passes per dataset/epoch   cemhsey_5x13=0.04x  cemhsey_8x8=0.04x  emg2pose=0.03x  emg2qwerty=0.01x  hyser=0.03x  putemg=0.03x
+  steps/epoch 93  epochs 40  grad_accum 1
+==================================================================
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+============================================================
+  Resume:
+    sbatch --export=ALL,RESUME=auto \
+        scripts/slurm/cineca_emg_c1_moe_pretrain.sbatch
+============================================================

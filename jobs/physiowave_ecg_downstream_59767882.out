@@ -1,0 +1,56 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  ECG C1 downstream  (job 59767882, 1 node, 4 GPUs)
+  tasks  ptbxl cpsc2018 chapman ptbxl_super
+  modes  ft probe scratch
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe/best.pth
+  output /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream
+============================================================
+[gpu 1] cpsc2018: /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/raw/cpsc2018 not downloaded -- on a login node: bash scripts/download_ecg_downstream.sh cpsc2018
+[gpu 2] chapman: /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/raw/chapman not downloaded -- on a login node: bash scripts/download_ecg_downstream.sh chapman
+[gpu 0] ptbxl: building the split (21:36)
+[gpu 3] ptbxl_super: building the split (21:36)
+[gpu 0] ptbxl ft: start 21:38 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_ft.log
+[gpu 3] ptbxl_super ft: start 21:38 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_super_ft.log
+[gpu 0] ptbxl ft: done 21:52
+[gpu 0] ptbxl probe: start 21:52 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_probe.log
+[gpu 3] ptbxl_super ft: done 21:53
+[gpu 3] ptbxl_super probe: start 21:53 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_super_probe.log
+[gpu 0] ptbxl probe: done 22:02
+[gpu 0] ptbxl scratch: start 22:02 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_scratch.log
+[gpu 3] ptbxl_super probe: done 22:03
+[gpu 3] ptbxl_super scratch: start 22:03 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/ptbxl_super_scratch.log
+[gpu 0] ptbxl scratch: done 22:18
+[gpu 3] ptbxl_super scratch: done 22:20
+
+==============================================================================
+PTB-XL, 5 superclasses, single label (paper: accuracy)
+------------------------------------------------------------------------------
+                                Acc     BalAcc     F1-mac      AUROC
+  C1 fine-tuned              0.7386     0.6468     0.6503     0.9104   (best epoch 3, by val acc)
+  C1 linear probe            0.6478     0.4395     0.4518     0.8364   (best epoch 25, by val acc)
+  C1 from scratch            0.7045     0.5665     0.5778     0.8853   (best epoch 6, by val acc)
+  PhysioWave v1 (paper)      0.7310        -          -          -     (window-level, see header)
+  pretrained - scratch  Acc +0.0341
+==============================================================================
+PTB-XL superdiagnostic, multi-label (literature: macro AUROC)
+------------------------------------------------------------------------------
+                          AUROC-mac  AUROC-mic      AUPRC     F1-mac
+  C1 fine-tuned              0.9032     0.9194     0.7695     0.7089   (best epoch 2, by val auroc)
+  C1 linear probe            0.8287     0.8574     0.6362     0.6063   (best epoch 29, by val auroc)
+  C1 from scratch            0.8771     0.8970     0.7253     0.6686   (best epoch 4, by val auroc)
+  pretrained - scratch  AUROC-mac +0.0261
+==============================================================================
+  * v1 scored 4.1 s windows with a fixed threshold and its own splits; this
+    table scores records once, at the checkpoint validation chose, with F1
+    thresholds chosen on validation. Indicative, not like-for-like.

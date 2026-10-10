@@ -1,0 +1,455 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  sEMG C1 multi-route pretraining  (job 59634636)
+  config     pretrain/emg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn0834:34636 (id 59634636)
+  nodes      lrdn0834 lrdn0857 lrdn0884 lrdn0891 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=<none>
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=59634636 --rdzv_backend=c10d --rdzv_endpoint=lrdn0834:34636 -m physiowave.train.pretrain_main --config pretrain/emg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+NCCL version 2.19.1+cuda12.1
+==================================================================
+  sEMG C1 multi-route pretraining
+  total parameters        12,052,622
+  shared transformer      10,631,808
+  frontend W16_2000       48,843
+  frontend A24_2000       100,947
+  frontend G64_2000       643,707
+  patch_embed 2000       97,152   spec decoder 244,858   raw decoder 244,858
+  downstream encoder      11,562,522   (+490,100 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    15,104  + proj 24,960
+  routes:
+    W16_2000: 16x2000 @ 2000Hz -> 16x8 = 128 tokens (patch (1, 250))
+    A24_2000: 24x2000 @ 2000Hz -> 24x8 = 192 tokens (patch (1, 250))
+    G64_2000: 64x2000 @ 2000Hz -> 64x8 = 512 tokens (patch (1, 250))
+  mixture policy: temperature:0.5
+    dataset          corpus%   step%  window%   passes/epoch
+    cemhsey_5x13      8.88%  25.81%   14.12%     0.04x
+    cemhsey_8x8      12.98%  26.88%   14.71%     0.03x
+    emg2pose         23.57%   6.45%   14.12%     0.02x
+    emg2qwerty       46.20%  19.35%   42.35%     0.02x
+    hyser             5.37%  18.28%   10.00%     0.05x
+    putemg            3.00%   3.23%    4.71%     0.04x
+  channel vocab sha256    5b4444a9bd5f7c5d
+  budget:
+    resolved steps per epoch   93  (sized so 40 epochs read 1x the corpus)
+    windows read over the run  5,108,693 of a 5,106,203-window corpus (1.00x)
+    total optimizer updates    3720   (93/epoch x 40 epochs, grad_accum 1)
+    effective world size       16
+    validation per epoch       first 20 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       W16_2000=192  A24_2000=128  G64_2000=48
+    passes per dataset/epoch   cemhsey_5x13=0.04x  cemhsey_8x8=0.03x  emg2pose=0.02x  emg2qwerty=0.02x  hyser=0.05x  putemg=0.04x
+  steps/epoch 93  epochs 40  grad_accum 1
+==================================================================
+  [15:42:38] epoch 0 step 1/93 [G64_2000 hyser] loss 0.88599 lr 3.23e-06 9 win/s eta 8:10
+  [15:44:38] epoch 0 step 23/93 [A24_2000 putemg] loss 0.79410 lr 3.87e-05 17 win/s eta 6:21
+  [15:46:21] epoch 0 step 51/93 [G64_2000 cemhsey_5x13] loss 0.75908 lr 8.39e-05 19 win/s eta 3:07
+  [15:48:22] epoch 0 step 76/93 [G64_2000 cemhsey_8x8] loss 0.73023 lr 1.24e-04 19 win/s eta 1:18
+  [15:49:28] epoch 0 step 93/93 [G64_2000 cemhsey_8x8] loss 0.71974 lr 1.52e-04 20 win/s eta 0:00
+epoch 0 done (1/40): train total 0.74857  val total 0.72743 (spec 0.99530 r 0.085 nmse 0.996 | raw 0.45956 r 0.029 nmse 1.001 | macro 0.73614)  gate 0.0005  [6:55 train + 1:57 val, elapsed 8:53, run eta 5:46:37]
+  new best total: 0.72743 at epoch 0  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.99530 at epoch 0  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.45956 at epoch 0  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.73614 at epoch 0  (macro_route_loss_total -> best_macro_total.pth)
+  [15:51:30] epoch 1 step 1/93 [G64_2000 hyser] loss 0.73166 lr 1.53e-04 16 win/s eta 4:29
+  [15:53:32] epoch 1 step 26/93 [W16_2000 emg2pose] loss 0.65777 lr 1.94e-04 18 win/s eta 5:20
+  [15:55:18] epoch 1 step 51/93 [W16_2000 emg2pose] loss 0.62535 lr 2.34e-04 18 win/s eta 3:09
+  [15:57:20] epoch 1 step 78/93 [G64_2000 cemhsey_5x13] loss 0.57605 lr 2.77e-04 19 win/s eta 1:07
+  [15:58:44] epoch 1 step 93/93 [G64_2000 cemhsey_5x13] loss 0.56056 lr 3.00e-04 19 win/s eta 0:00
+epoch 1 done (2/40): train total 0.63244  val total 0.54446 (spec 0.67191 r 0.570 nmse 0.672 | raw 0.41701 r 0.346 nmse 0.881 | macro 0.49934)  gate 0.0003  [7:16 train + 2:11 val, elapsed 18:22, run eta 5:49:07]
+  new best total: 0.54446 at epoch 1  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.67191 at epoch 1  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.41701 at epoch 1  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.49934 at epoch 1  (macro_route_loss_total -> best_macro_total.pth)
+  [16:00:59] epoch 2 step 1/93 [G64_2000 cemhsey_8x8] loss 0.48163 lr 3.00e-04 20 win/s eta 3:45
+  [16:03:00] epoch 2 step 31/93 [G64_2000 cemhsey_8x8] loss 0.41967 lr 3.00e-04 21 win/s eta 4:07
+  [16:03:47] epoch 2 step 51/93 [G64_2000 cemhsey_8x8] loss 0.38787 lr 3.00e-04 22 win/s eta 2:20
+  [16:05:50] epoch 2 step 83/93 [W16_2000 emg2pose] loss 0.47186 lr 3.00e-04 23 win/s eta 0:35
+  [16:06:20] epoch 2 step 93/93 [G64_2000 cemhsey_8x8] loss 0.37800 lr 2.99e-04 23 win/s eta 0:00
+epoch 2 done (3/40): train total 0.43653  val total 0.41489 (spec 0.44246 r 0.742 nmse 0.443 | raw 0.38733 r 0.452 nmse 0.796 | macro 0.38627)  gate 0.0033  [5:23 train + 1:09 val, elapsed 24:56, run eta 5:07:36]
+  new best total: 0.41489 at epoch 2  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.44246 at epoch 2  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.38733 at epoch 2  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.38627 at epoch 2  (macro_route_loss_total -> best_macro_total.pth)
+  [16:07:32] epoch 3 step 1/93 [G64_2000 cemhsey_5x13] loss 0.41930 lr 2.99e-04 23 win/s eta 3:09
+  [16:09:34] epoch 3 step 36/93 [G64_2000 cemhsey_5x13] loss 0.40370 lr 2.99e-04 27 win/s eta 3:15
+  [16:10:21] epoch 3 step 51/93 [G64_2000 cemhsey_8x8] loss 0.36672 lr 2.99e-04 27 win/s eta 2:20
+  [16:12:27] epoch 3 step 90/93 [W16_2000 emg2qwerty] loss 0.43529 lr 2.98e-04 28 win/s eta 0:09
+  [16:12:39] epoch 3 step 93/93 [W16_2000 emg2pose] loss 0.44762 lr 2.98e-04 28 win/s eta 0:00
+epoch 3 done (4/40): train total 0.38996  val total 0.38766 (spec 0.40293 r 0.769 nmse 0.403 | raw 0.37239 r 0.493 nmse 0.754 | macro 0.37723)  gate 0.0136  [5:09 train + 1:01 val, elapsed 31:08, run eta 4:40:12]
+  new best total: 0.38766 at epoch 3  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.40293 at epoch 3  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.37239 at epoch 3  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.37723 at epoch 3  (macro_route_loss_total -> best_macro_total.pth)
+  [16:13:48] epoch 4 step 1/93 [W16_2000 emg2qwerty] loss 0.41912 lr 2.98e-04 29 win/s eta 9:59
+  [16:15:49] epoch 4 step 45/93 [G64_2000 cemhsey_5x13] loss 0.34528 lr 2.97e-04 30 win/s eta 2:15
+  [16:16:01] epoch 4 step 51/93 [G64_2000 hyser] loss 0.30935 lr 2.97e-04 30 win/s eta 1:54
+  [16:18:06] epoch 4 step 90/93 [W16_2000 emg2qwerty] loss 0.41150 lr 2.96e-04 29 win/s eta 0:08
+  [16:18:20] epoch 4 step 93/93 [G64_2000 cemhsey_5x13] loss 0.33044 lr 2.95e-04 29 win/s eta 0:00
+epoch 4 done (5/40): train total 0.35995  val total 0.35401 (spec 0.34255 r 0.805 nmse 0.343 | raw 0.36548 r 0.514 nmse 0.746 | macro 0.33673)  gate 0.0288  [4:38 train + 0:58 val, elapsed 36:45, run eta 4:17:20]
+  new best total: 0.35401 at epoch 4  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.34255 at epoch 4  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.36548 at epoch 4  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.33673 at epoch 4  (macro_route_loss_total -> best_macro_total.pth)
+  [16:19:22] epoch 5 step 1/93 [G64_2000 cemhsey_5x13] loss 0.32284 lr 2.95e-04 24 win/s eta 3:02
+  [16:21:22] epoch 5 step 43/93 [G64_2000 cemhsey_5x13] loss 0.33844 lr 2.94e-04 29 win/s eta 2:22
+  [16:21:47] epoch 5 step 51/93 [G64_2000 hyser] loss 0.31966 lr 2.94e-04 30 win/s eta 2:01
+  [16:23:39] epoch 5 step 93/93 [W16_2000 emg2qwerty] loss 0.41442 lr 2.92e-04 30 win/s eta 0:00
+epoch 5 done (6/40): train total 0.34203  val total 0.34462 (spec 0.33999 r 0.807 nmse 0.340 | raw 0.34926 r 0.541 nmse 0.703 | macro 0.32184)  gate 0.0360  [4:19 train + 1:03 val, elapsed 42:09, run eta 3:58:56]
+  new best total: 0.34462 at epoch 5  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.33999 at epoch 5  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.34926 at epoch 5  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.32184 at epoch 5  (macro_route_loss_total -> best_macro_total.pth)
+  [16:24:46] epoch 6 step 1/93 [G64_2000 cemhsey_8x8] loss 0.29234 lr 2.92e-04 21 win/s eta 3:34
+  [16:26:50] epoch 6 step 44/93 [W16_2000 emg2pose] loss 0.41800 lr 2.90e-04 32 win/s eta 2:20
+  [16:27:16] epoch 6 step 51/93 [G64_2000 cemhsey_8x8] loss 0.31721 lr 2.90e-04 31 win/s eta 2:05
+  [16:29:00] epoch 6 step 93/93 [G64_2000 cemhsey_5x13] loss 0.30897 lr 2.87e-04 31 win/s eta 0:00
+epoch 6 done (7/40): train total 0.33554  val total 0.35114 (spec 0.35721 r 0.799 nmse 0.357 | raw 0.34508 r 0.549 nmse 0.694 | macro 0.32130)  gate 0.0394  [4:15 train + 0:50 val, elapsed 47:17, run eta 3:42:55]
+  new best raw: 0.34508 at epoch 6  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.32130 at epoch 6  (macro_route_loss_total -> best_macro_total.pth)
+  [16:29:52] epoch 7 step 1/93 [G64_2000 cemhsey_8x8] loss 0.31370 lr 2.87e-04 26 win/s eta 2:47
+  [16:31:53] epoch 7 step 46/93 [G64_2000 hyser] loss 0.33241 lr 2.85e-04 30 win/s eta 2:04
+  [16:32:05] epoch 7 step 51/93 [G64_2000 cemhsey_5x13] loss 0.32739 lr 2.85e-04 30 win/s eta 1:50
+  [16:34:05] epoch 7 step 91/93 [W16_2000 emg2pose] loss 0.44022 lr 2.82e-04 31 win/s eta 0:05
+  [16:34:15] epoch 7 step 93/93 [W16_2000 emg2qwerty] loss 0.41058 lr 2.82e-04 31 win/s eta 0:00
+epoch 7 done (8/40): train total 0.34922  val total 0.35888 (spec 0.35842 r 0.796 nmse 0.359 | raw 0.35933 r 0.514 nmse 0.734 | macro 0.32185)  gate 0.0451  [4:24 train + 1:00 val, elapsed 52:42, run eta 3:30:51]
+  [16:35:18] epoch 8 step 1/93 [G64_2000 hyser] loss 0.31591 lr 2.82e-04 24 win/s eta 3:06
+  [16:37:24] epoch 8 step 45/93 [W16_2000 emg2qwerty] loss 0.42401 lr 2.79e-04 33 win/s eta 2:16
+  [16:37:41] epoch 8 step 51/93 [W16_2000 emg2pose] loss 0.42402 lr 2.79e-04 33 win/s eta 1:59
+  [16:39:20] epoch 8 step 93/93 [W16_2000 emg2qwerty] loss 0.40198 lr 2.76e-04 32 win/s eta 0:00
+epoch 8 done (9/40): train total 0.30649  val total 0.32444 (spec 0.30182 r 0.828 nmse 0.302 | raw 0.34705 r 0.539 nmse 0.704 | macro 0.30569)  gate 0.0456  [4:04 train + 0:52 val, elapsed 57:40, run eta 3:18:40]
+  new best total: 0.32444 at epoch 8  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.30182 at epoch 8  (loss_masked_spec_mse -> best_spec.pth)
+  new best macro-route total: 0.30569 at epoch 8  (macro_route_loss_total -> best_macro_total.pth)
+  [16:40:16] epoch 9 step 1/93 [G64_2000 cemhsey_8x8] loss 0.26044 lr 2.76e-04 23 win/s eta 3:08
+  [16:42:18] epoch 9 step 45/93 [G64_2000 hyser] loss 0.24217 lr 2.72e-04 32 win/s eta 2:12
+  [16:42:33] epoch 9 step 51/93 [G64_2000 hyser] loss 0.24223 lr 2.72e-04 32 win/s eta 1:53
+  [16:44:33] epoch 9 step 93/93 [G64_2000 cemhsey_5x13] loss 0.30153 lr 2.69e-04 32 win/s eta 0:00
+epoch 9 done (10/40): train total 0.30653  val total 0.32901 (spec 0.32520 r 0.815 nmse 0.325 | raw 0.33281 r 0.572 nmse 0.671 | macro 0.30823)  gate 0.0483  [4:18 train + 0:50 val, elapsed 1:02:50, run eta 3:08:31]
+  new best raw: 0.33281 at epoch 9  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [16:45:26] epoch 10 step 1/93 [G64_2000 cemhsey_8x8] loss 0.27947 lr 2.69e-04 24 win/s eta 3:07
+  [16:47:26] epoch 10 step 46/93 [W16_2000 emg2pose] loss 0.43570 lr 2.65e-04 33 win/s eta 2:05
+  [16:47:39] epoch 10 step 51/93 [G64_2000 cemhsey_5x13] loss 0.25887 lr 2.64e-04 33 win/s eta 1:51
+  [16:49:25] epoch 10 step 93/93 [G64_2000 cemhsey_8x8] loss 0.24209 lr 2.61e-04 33 win/s eta 0:00
+epoch 10 done (11/40): train total 0.29969  val total 0.30633 (spec 0.29056 r 0.834 nmse 0.291 | raw 0.32209 r 0.589 nmse 0.645 | macro 0.30122)  gate 0.0489  [4:01 train + 0:47 val, elapsed 1:07:40, run eta 2:58:24]
+  new best total: 0.30633 at epoch 10  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.29056 at epoch 10  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.32209 at epoch 10  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.30122 at epoch 10  (macro_route_loss_total -> best_macro_total.pth)
+  [16:50:19] epoch 11 step 1/93 [G64_2000 cemhsey_5x13] loss 0.25732 lr 2.61e-04 11 win/s eta 6:50
+  [16:52:19] epoch 11 step 44/93 [G64_2000 cemhsey_5x13] loss 0.27985 lr 2.57e-04 32 win/s eta 2:18
+  [16:52:41] epoch 11 step 51/93 [G64_2000 cemhsey_8x8] loss 0.28610 lr 2.56e-04 33 win/s eta 2:01
+  [16:54:24] epoch 11 step 93/93 [G64_2000 cemhsey_5x13] loss 0.28904 lr 2.52e-04 33 win/s eta 0:00
+epoch 11 done (12/40): train total 0.29847  val total 0.32148 (spec 0.31804 r 0.818 nmse 0.318 | raw 0.32491 r 0.585 nmse 0.648 | macro 0.30152)  gate 0.0500  [4:10 train + 0:48 val, elapsed 1:12:39, run eta 2:49:32]
+  [16:55:14] epoch 12 step 1/93 [G64_2000 cemhsey_8x8] loss 0.28302 lr 2.52e-04 25 win/s eta 2:56
+  [16:57:15] epoch 12 step 49/93 [G64_2000 hyser] loss 0.23433 lr 2.47e-04 32 win/s eta 1:49
+  [16:57:23] epoch 12 step 51/93 [W16_2000 emg2qwerty] loss 0.39994 lr 2.47e-04 32 win/s eta 1:47
+  [16:59:09] epoch 12 step 93/93 [G64_2000 hyser] loss 0.26353 lr 2.43e-04 31 win/s eta 0:00
+epoch 12 done (13/40): train total 0.28778  val total 0.31499 (spec 0.30457 r 0.826 nmse 0.305 | raw 0.32539 r 0.584 nmse 0.651 | macro 0.29445)  gate 0.0524  [3:56 train + 0:37 val, elapsed 1:17:14, run eta 2:40:25]
+  new best macro-route total: 0.29445 at epoch 12  (macro_route_loss_total -> best_macro_total.pth)
+  [16:59:49] epoch 13 step 1/93 [G64_2000 cemhsey_5x13] loss 0.27829 lr 2.43e-04 26 win/s eta 2:49
+  [17:01:50] epoch 13 step 39/93 [G64_2000 hyser] loss 0.24221 lr 2.39e-04 27 win/s eta 2:49
+  [17:02:27] epoch 13 step 51/93 [G64_2000 cemhsey_5x13] loss 0.28360 lr 2.37e-04 27 win/s eta 2:11
+  [17:04:06] epoch 13 step 93/93 [G64_2000 cemhsey_5x13] loss 0.27076 lr 2.33e-04 28 win/s eta 0:00
+epoch 13 done (14/40): train total 0.28577  val total 0.31184 (spec 0.30861 r 0.823 nmse 0.309 | raw 0.31505 r 0.603 nmse 0.628 | macro 0.29470)  gate 0.0570  [4:18 train + 0:35 val, elapsed 1:22:09, run eta 2:32:33]
+  new best raw: 0.31505 at epoch 13  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [17:04:44] epoch 14 step 1/93 [G64_2000 cemhsey_8x8] loss 0.26052 lr 2.33e-04 32 win/s eta 2:19
+  [17:06:43] epoch 14 step 51/93 [G64_2000 cemhsey_5x13] loss 0.26258 lr 2.27e-04 34 win/s eta 1:39
+  [17:08:30] epoch 14 step 93/93 [G64_2000 hyser] loss 0.23001 lr 2.22e-04 34 win/s eta 0:00
+epoch 14 done (15/40): train total 0.28565  val total 0.30891 (spec 0.30792 r 0.823 nmse 0.308 | raw 0.30989 r 0.615 nmse 0.618 | macro 0.29001)  gate 0.0652  [3:47 train + 0:41 val, elapsed 1:26:38, run eta 2:24:24]
+  new best raw: 0.30989 at epoch 14  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.29001 at epoch 14  (macro_route_loss_total -> best_macro_total.pth)
+  [17:09:14] epoch 15 step 1/93 [G64_2000 cemhsey_8x8] loss 0.25230 lr 2.22e-04 30 win/s eta 2:26
+  [17:11:13] epoch 15 step 51/93 [G64_2000 cemhsey_5x13] loss 0.25428 lr 2.16e-04 33 win/s eta 1:39
+  [17:12:54] epoch 15 step 93/93 [G64_2000 hyser] loss 0.21946 lr 2.11e-04 33 win/s eta 0:00
+epoch 15 done (16/40): train total 0.27449  val total 0.30624 (spec 0.31199 r 0.820 nmse 0.312 | raw 0.30049 r 0.631 nmse 0.593 | macro 0.28967)  gate 0.0721  [3:41 train + 0:44 val, elapsed 1:31:05, run eta 2:16:37]
+  new best total: 0.30624 at epoch 15  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.30049 at epoch 15  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.28967 at epoch 15  (macro_route_loss_total -> best_macro_total.pth)
+  [17:13:40] epoch 16 step 1/93 [G64_2000 cemhsey_5x13] loss 0.26127 lr 2.11e-04 29 win/s eta 2:31
+  [17:15:41] epoch 16 step 49/93 [G64_2000 cemhsey_5x13] loss 0.26156 lr 2.05e-04 32 win/s eta 1:50
+  [17:15:44] epoch 16 step 51/93 [G64_2000 cemhsey_5x13] loss 0.26411 lr 2.05e-04 32 win/s eta 1:43
+  [17:17:14] epoch 16 step 93/93 [G64_2000 cemhsey_8x8] loss 0.22904 lr 2.00e-04 33 win/s eta 0:00
+epoch 16 done (17/40): train total 0.27378  val total 0.30432 (spec 0.31185 r 0.820 nmse 0.312 | raw 0.29678 r 0.638 nmse 0.586 | macro 0.28963)  gate 0.0789  [3:35 train + 0:47 val, elapsed 1:35:28, run eta 2:09:10]
+  new best total: 0.30432 at epoch 16  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.29678 at epoch 16  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.28963 at epoch 16  (macro_route_loss_total -> best_macro_total.pth)
+  [17:18:05] epoch 17 step 1/93 [G64_2000 cemhsey_5x13] loss 0.24860 lr 2.00e-04 19 win/s eta 3:49
+  [17:20:09] epoch 17 step 43/93 [W16_2000 emg2qwerty] loss 0.40938 lr 1.94e-04 35 win/s eta 2:27
+  [17:20:37] epoch 17 step 51/93 [G64_2000 cemhsey_8x8] loss 0.26339 lr 1.93e-04 34 win/s eta 2:07
+  [17:22:27] epoch 17 step 93/93 [G64_2000 cemhsey_8x8] loss 0.22628 lr 1.88e-04 34 win/s eta 0:00
+epoch 17 done (18/40): train total 0.28701  val total 0.30543 (spec 0.31701 r 0.817 nmse 0.317 | raw 0.29383 r 0.642 nmse 0.578 | macro 0.28894)  gate 0.0843  [4:24 train + 0:51 val, elapsed 1:40:45, run eta 2:03:08]
+  new best raw: 0.29383 at epoch 17  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.28894 at epoch 17  (macro_route_loss_total -> best_macro_total.pth)
+  [17:23:20] epoch 18 step 1/93 [G64_2000 cemhsey_5x13] loss 0.25019 lr 1.88e-04 29 win/s eta 2:34
+  [17:25:21] epoch 18 step 41/93 [G64_2000 cemhsey_8x8] loss 0.29549 lr 1.83e-04 34 win/s eta 2:35
+  [17:25:48] epoch 18 step 51/93 [G64_2000 hyser] loss 0.22823 lr 1.81e-04 34 win/s eta 2:03
+  [17:27:22] epoch 18 step 93/93 [G64_2000 cemhsey_5x13] loss 0.26856 lr 1.76e-04 34 win/s eta 0:00
+epoch 18 done (19/40): train total 0.28261  val total 0.30510 (spec 0.32203 r 0.814 nmse 0.322 | raw 0.28816 r 0.651 nmse 0.569 | macro 0.28411)  gate 0.0885  [4:03 train + 0:41 val, elapsed 1:45:31, run eta 1:56:37]
+  new best raw: 0.28816 at epoch 18  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.28411 at epoch 18  (macro_route_loss_total -> best_macro_total.pth)
+  [17:28:06] epoch 19 step 1/93 [G64_2000 cemhsey_8x8] loss 0.25165 lr 1.76e-04 26 win/s eta 2:49
+  [17:30:06] epoch 19 step 51/93 [G64_2000 cemhsey_5x13] loss 0.25254 lr 1.69e-04 32 win/s eta 1:39
+  [17:31:54] epoch 19 step 93/93 [G64_2000 cemhsey_8x8] loss 0.25451 lr 1.64e-04 33 win/s eta 0:00
+epoch 19 done (20/40): train total 0.27608  val total 0.29876 (spec 0.31577 r 0.818 nmse 0.316 | raw 0.28174 r 0.662 nmse 0.554 | macro 0.28006)  gate 0.0920  [3:49 train + 0:41 val, elapsed 1:50:02, run eta 1:50:02]
+  new best total: 0.29876 at epoch 19  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.28174 at epoch 19  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.28006 at epoch 19  (macro_route_loss_total -> best_macro_total.pth)
+  [17:32:42] epoch 20 step 1/93 [W16_2000 emg2qwerty] loss 0.40948 lr 1.64e-04 34 win/s eta 8:35
+  [17:34:42] epoch 20 step 44/93 [G64_2000 hyser] loss 0.20978 lr 1.58e-04 32 win/s eta 2:20
+  [17:34:59] epoch 20 step 51/93 [G64_2000 hyser] loss 0.21962 lr 1.57e-04 32 win/s eta 1:57
+  [17:37:01] epoch 20 step 92/93 [G64_2000 cemhsey_5x13] loss 0.25898 lr 1.52e-04 31 win/s eta 0:02
+  [17:37:07] epoch 20 step 93/93 [W16_2000 emg2pose] loss 0.44245 lr 1.51e-04 31 win/s eta 0:00
+epoch 20 done (21/40): train total 0.28039  val total 0.29875 (spec 0.31689 r 0.817 nmse 0.317 | raw 0.28059 r 0.665 nmse 0.550 | macro 0.27934)  gate 0.0945  [4:30 train + 0:59 val, elapsed 1:55:33, run eta 1:44:33]
+  new best total: 0.29875 at epoch 20  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.28059 at epoch 20  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27934 at epoch 20  (macro_route_loss_total -> best_macro_total.pth)
+  [17:38:09] epoch 21 step 1/93 [G64_2000 cemhsey_5x13] loss 0.23069 lr 1.51e-04 23 win/s eta 3:08
+  [17:40:15] epoch 21 step 33/93 [W16_2000 emg2pose] loss 0.45762 lr 1.47e-04 24 win/s eta 3:51
+  [17:41:20] epoch 21 step 51/93 [W16_2000 emg2qwerty] loss 0.40412 lr 1.45e-04 25 win/s eta 2:38
+  [17:43:23] epoch 21 step 88/93 [W16_2000 emg2qwerty] loss 0.40246 lr 1.40e-04 26 win/s eta 0:17
+  [17:43:40] epoch 21 step 93/93 [G64_2000 cemhsey_8x8] loss 0.26789 lr 1.39e-04 27 win/s eta 0:00
+epoch 21 done (22/40): train total 0.28687  val total 0.29645 (spec 0.32105 r 0.815 nmse 0.321 | raw 0.27184 r 0.679 nmse 0.533 | macro 0.27838)  gate 0.0967  [5:32 train + 0:45 val, elapsed 2:01:52, run eta 1:39:42]
+  new best total: 0.29645 at epoch 21  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.27184 at epoch 21  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27838 at epoch 21  (macro_route_loss_total -> best_macro_total.pth)
+  [17:44:28] epoch 22 step 1/93 [G64_2000 cemhsey_5x13] loss 0.23200 lr 1.39e-04 20 win/s eta 3:37
+  [17:46:33] epoch 22 step 36/93 [W16_2000 emg2pose] loss 0.45466 lr 1.35e-04 34 win/s eta 3:20
+  [17:47:19] epoch 22 step 51/93 [W16_2000 emg2pose] loss 0.44199 lr 1.33e-04 34 win/s eta 2:22
+  [17:49:07] epoch 22 step 93/93 [G64_2000 cemhsey_5x13] loss 0.24102 lr 1.27e-04 34 win/s eta 0:00
+epoch 22 done (23/40): train total 0.29172  val total 0.29236 (spec 0.31498 r 0.819 nmse 0.315 | raw 0.26972 r 0.681 nmse 0.529 | macro 0.27531)  gate 0.0980  [4:40 train + 0:39 val, elapsed 2:07:13, run eta 1:34:02]
+  new best total: 0.29236 at epoch 22  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.26972 at epoch 22  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27531 at epoch 22  (macro_route_loss_total -> best_macro_total.pth)
+  [17:49:49] epoch 23 step 1/93 [G64_2000 cemhsey_8x8] loss 0.24195 lr 1.27e-04 33 win/s eta 2:13
+  [17:51:50] epoch 23 step 51/93 [G64_2000 cemhsey_8x8] loss 0.21013 lr 1.20e-04 34 win/s eta 1:40
+  [17:53:50] epoch 23 step 87/93 [G64_2000 cemhsey_8x8] loss 0.25321 lr 1.16e-04 31 win/s eta 0:16
+  [17:54:13] epoch 23 step 93/93 [G64_2000 cemhsey_5x13] loss 0.22106 lr 1.15e-04 31 win/s eta 0:00
+epoch 23 done (24/40): train total 0.26916  val total 0.28840 (spec 0.31110 r 0.821 nmse 0.311 | raw 0.26569 r 0.687 nmse 0.518 | macro 0.27242)  gate 0.0994  [4:25 train + 1:04 val, elapsed 2:12:44, run eta 1:28:29]
+  new best total: 0.28840 at epoch 23  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.26569 at epoch 23  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27242 at epoch 23  (macro_route_loss_total -> best_macro_total.pth)
+  [17:55:20] epoch 24 step 1/93 [G64_2000 hyser] loss 0.19407 lr 1.15e-04 23 win/s eta 3:13
+  [17:57:22] epoch 24 step 34/93 [W16_2000 emg2qwerty] loss 0.39670 lr 1.11e-04 22 win/s eta 3:35
+  [17:58:28] epoch 24 step 51/93 [W16_2000 emg2pose] loss 0.46796 lr 1.09e-04 23 win/s eta 2:36
+  [18:00:32] epoch 24 step 84/93 [W16_2000 emg2pose] loss 0.44274 lr 1.04e-04 25 win/s eta 0:33
+  [18:01:12] epoch 24 step 93/93 [G64_2000 cemhsey_5x13] loss 0.23736 lr 1.03e-04 24 win/s eta 0:00
+epoch 24 done (25/40): train total 0.27115  val total 0.28649 (spec 0.30970 r 0.821 nmse 0.310 | raw 0.26327 r 0.690 nmse 0.516 | macro 0.27163)  gate 0.1004  [5:54 train + 1:01 val, elapsed 2:19:40, run eta 1:23:48]
+  new best total: 0.28649 at epoch 24  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.26327 at epoch 24  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27163 at epoch 24  (macro_route_loss_total -> best_macro_total.pth)
+  [18:02:19] epoch 25 step 1/93 [A24_2000 putemg] loss 0.17145 lr 1.03e-04 28 win/s eta 6:55
+  [18:04:20] epoch 25 step 34/93 [G64_2000 cemhsey_5x13] loss 0.23895 lr 9.91e-05 24 win/s eta 3:36
+  [18:05:17] epoch 25 step 51/93 [G64_2000 hyser] loss 0.19126 lr 9.70e-05 24 win/s eta 2:30
+  [18:07:01] epoch 25 step 93/93 [G64_2000 cemhsey_8x8] loss 0.23894 lr 9.18e-05 27 win/s eta 0:00
+epoch 25 done (26/40): train total 0.25375  val total 0.28654 (spec 0.31254 r 0.820 nmse 0.313 | raw 0.26053 r 0.693 nmse 0.511 | macro 0.27006)  gate 0.1012  [4:46 train + 0:45 val, elapsed 2:25:14, run eta 1:18:12]
+  new best raw: 0.26053 at epoch 25  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27006 at epoch 25  (macro_route_loss_total -> best_macro_total.pth)
+  [18:07:55] epoch 26 step 1/93 [W16_2000 emg2pose] loss 0.44414 lr 9.17e-05 26 win/s eta 11:14
+  [18:10:00] epoch 26 step 42/93 [W16_2000 emg2pose] loss 0.42575 lr 8.68e-05 29 win/s eta 2:40
+  [18:10:32] epoch 26 step 51/93 [G64_2000 cemhsey_5x13] loss 0.21976 lr 8.57e-05 29 win/s eta 2:15
+  [18:12:34] epoch 26 step 92/93 [W16_2000 emg2pose] loss 0.43916 lr 8.09e-05 30 win/s eta 0:03
+  [18:12:39] epoch 26 step 93/93 [W16_2000 emg2qwerty] loss 0.39721 lr 8.08e-05 30 win/s eta 0:00
+epoch 26 done (27/40): train total 0.27727  val total 0.28380 (spec 0.30856 r 0.822 nmse 0.309 | raw 0.25902 r 0.696 nmse 0.509 | macro 0.26870)  gate 0.1023  [4:51 train + 0:50 val, elapsed 2:30:57, run eta 1:12:40]
+  new best total: 0.28380 at epoch 26  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.25902 at epoch 26  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26870 at epoch 26  (macro_route_loss_total -> best_macro_total.pth)
+  [18:13:33] epoch 27 step 1/93 [G64_2000 cemhsey_5x13] loss 0.23624 lr 8.07e-05 25 win/s eta 2:55
+  [18:15:33] epoch 27 step 44/93 [G64_2000 hyser] loss 0.18275 lr 7.58e-05 30 win/s eta 2:15
+  [18:15:53] epoch 27 step 51/93 [W16_2000 emg2qwerty] loss 0.41889 lr 7.50e-05 29 win/s eta 1:56
+  [18:17:54] epoch 27 step 88/93 [G64_2000 hyser] loss 0.19173 lr 7.08e-05 27 win/s eta 0:14
+  [18:18:04] epoch 27 step 93/93 [A24_2000 putemg] loss 0.16907 lr 7.03e-05 27 win/s eta 0:00
+epoch 27 done (28/40): train total 0.24602  val total 0.28348 (spec 0.30960 r 0.821 nmse 0.310 | raw 0.25736 r 0.698 nmse 0.504 | macro 0.26812)  gate 0.1033  [4:32 train + 0:45 val, elapsed 2:36:16, run eta 1:06:58]
+  new best total: 0.28348 at epoch 27  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.25736 at epoch 27  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26812 at epoch 27  (macro_route_loss_total -> best_macro_total.pth)
+  [18:18:52] epoch 28 step 1/93 [G64_2000 cemhsey_5x13] loss 0.21777 lr 7.02e-05 28 win/s eta 2:35
+  [18:20:55] epoch 28 step 48/93 [W16_2000 emg2qwerty] loss 0.39764 lr 6.50e-05 34 win/s eta 1:56
+  [18:21:00] epoch 28 step 51/93 [G64_2000 hyser] loss 0.18691 lr 6.47e-05 34 win/s eta 1:47
+  [18:22:43] epoch 28 step 93/93 [G64_2000 cemhsey_5x13] loss 0.22070 lr 6.03e-05 34 win/s eta 0:00
+epoch 28 done (29/40): train total 0.25297  val total 0.27890 (spec 0.30437 r 0.824 nmse 0.304 | raw 0.25342 r 0.703 nmse 0.496 | macro 0.26498)  gate 0.1039  [3:53 train + 0:54 val, elapsed 2:41:04, run eta 1:01:05]
+  new best total: 0.27890 at epoch 28  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.25342 at epoch 28  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26498 at epoch 28  (macro_route_loss_total -> best_macro_total.pth)
+  [18:23:45] epoch 29 step 1/93 [W16_2000 emg2qwerty] loss 0.39936 lr 6.02e-05 27 win/s eta 10:58
+  [18:25:51] epoch 29 step 49/93 [W16_2000 emg2qwerty] loss 0.39972 lr 5.53e-05 30 win/s eta 1:59
+  [18:25:58] epoch 29 step 51/93 [W16_2000 emg2pose] loss 0.45332 lr 5.51e-05 31 win/s eta 1:54
+  [18:27:37] epoch 29 step 93/93 [G64_2000 hyser] loss 0.18098 lr 5.09e-05 31 win/s eta 0:00
+epoch 29 done (30/40): train total 0.24823  val total 0.27818 (spec 0.30486 r 0.824 nmse 0.305 | raw 0.25148 r 0.705 nmse 0.493 | macro 0.26435)  gate 0.1043  [3:58 train + 0:43 val, elapsed 2:45:47, run eta 55:15]
+  new best total: 0.27818 at epoch 29  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.25148 at epoch 29  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26435 at epoch 29  (macro_route_loss_total -> best_macro_total.pth)
+  [18:28:27] epoch 30 step 1/93 [W16_2000 emg2pose] loss 0.43362 lr 5.08e-05 37 win/s eta 7:51
+  [18:30:30] epoch 30 step 38/93 [W16_2000 emg2qwerty] loss 0.39158 lr 4.73e-05 29 win/s eta 3:06
+  [18:31:00] epoch 30 step 51/93 [G64_2000 hyser] loss 0.19298 lr 4.61e-05 30 win/s eta 2:10
+  [18:32:57] epoch 30 step 93/93 [W16_2000 emg2pose] loss 0.43859 lr 4.22e-05 32 win/s eta 0:00
+epoch 30 done (31/40): train total 0.27034  val total 0.28042 (spec 0.30770 r 0.822 nmse 0.308 | raw 0.25312 r 0.703 nmse 0.496 | macro 0.26527)  gate 0.1047  [4:35 train + 0:43 val, elapsed 2:51:07, run eta 49:40]
+  [18:33:46] epoch 31 step 1/93 [W16_2000 emg2pose] loss 0.45647 lr 4.22e-05 35 win/s eta 8:22
+  [18:35:46] epoch 31 step 45/93 [W16_2000 emg2pose] loss 0.43467 lr 3.83e-05 34 win/s eta 2:14
+  [18:35:59] epoch 31 step 51/93 [G64_2000 cemhsey_5x13] loss 0.19511 lr 3.78e-05 34 win/s eta 1:54
+  [18:37:59] epoch 31 step 92/93 [G64_2000 cemhsey_5x13] loss 0.19556 lr 3.44e-05 34 win/s eta 0:02
+  [18:38:01] epoch 31 step 93/93 [G64_2000 cemhsey_5x13] loss 0.22210 lr 3.43e-05 34 win/s eta 0:00
+epoch 31 done (32/40): train total 0.27080  val total 0.27598 (spec 0.30258 r 0.825 nmse 0.303 | raw 0.24937 r 0.708 nmse 0.489 | macro 0.26260)  gate 0.1052  [4:20 train + 0:48 val, elapsed 2:56:16, run eta 44:04]
+  new best total: 0.27598 at epoch 31  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.24937 at epoch 31  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26260 at epoch 31  (macro_route_loss_total -> best_macro_total.pth)
+  [18:38:53] epoch 32 step 1/93 [G64_2000 cemhsey_8x8] loss 0.21989 lr 3.42e-05 25 win/s eta 2:56
+  [18:40:57] epoch 32 step 45/93 [W16_2000 emg2qwerty] loss 0.40536 lr 3.08e-05 34 win/s eta 2:14
+  [18:41:15] epoch 32 step 51/93 [G64_2000 cemhsey_5x13] loss 0.20928 lr 3.03e-05 33 win/s eta 1:58
+  [18:43:19] epoch 32 step 90/93 [W16_2000 emg2pose] loss 0.44083 lr 2.74e-05 32 win/s eta 0:08
+  [18:43:27] epoch 32 step 93/93 [G64_2000 hyser] loss 0.17356 lr 2.72e-05 32 win/s eta 0:00
+epoch 32 done (33/40): train total 0.26702  val total 0.27783 (spec 0.30572 r 0.823 nmse 0.306 | raw 0.24991 r 0.708 nmse 0.490 | macro 0.26371)  gate 0.1053  [4:36 train + 0:56 val, elapsed 3:01:50, run eta 38:34]
+  [18:44:26] epoch 33 step 1/93 [G64_2000 cemhsey_8x8] loss 0.19642 lr 2.71e-05 21 win/s eta 3:25
+  [18:46:26] epoch 33 step 51/93 [G64_2000 cemhsey_8x8] loss 0.20139 lr 2.36e-05 33 win/s eta 1:40
+  [18:48:06] epoch 33 step 93/93 [G64_2000 cemhsey_8x8] loss 0.23885 lr 2.09e-05 34 win/s eta 0:00
+epoch 33 done (34/40): train total 0.25203  val total 0.27611 (spec 0.30368 r 0.824 nmse 0.304 | raw 0.24852 r 0.709 nmse 0.488 | macro 0.26263)  gate 0.1055  [3:42 train + 0:43 val, elapsed 3:06:16, run eta 32:52]
+  new best raw: 0.24852 at epoch 33  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [18:48:54] epoch 34 step 1/93 [W16_2000 emg2pose] loss 0.45650 lr 2.08e-05 42 win/s eta 6:59
+  [18:50:55] epoch 34 step 47/93 [G64_2000 cemhsey_5x13] loss 0.20763 lr 1.81e-05 37 win/s eta 2:02
+  [18:51:04] epoch 34 step 51/93 [G64_2000 cemhsey_8x8] loss 0.20113 lr 1.78e-05 37 win/s eta 1:50
+  [18:52:35] epoch 34 step 93/93 [A24_2000 putemg] loss 0.15819 lr 1.55e-05 37 win/s eta 0:00
+epoch 34 done (35/40): train total 0.25175  val total 0.27639 (spec 0.30472 r 0.824 nmse 0.305 | raw 0.24805 r 0.710 nmse 0.487 | macro 0.26248)  gate 0.1056  [3:45 train + 0:46 val, elapsed 3:10:48, run eta 27:15]
+  new best raw: 0.24805 at epoch 34  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26248 at epoch 34  (macro_route_loss_total -> best_macro_total.pth)
+  [18:53:24] epoch 35 step 1/93 [G64_2000 cemhsey_5x13] loss 0.20663 lr 1.55e-05 27 win/s eta 2:42
+  [18:55:24] epoch 35 step 48/93 [G64_2000 hyser] loss 0.18272 lr 1.31e-05 31 win/s eta 1:54
+  [18:55:29] epoch 35 step 51/93 [G64_2000 cemhsey_5x13] loss 0.21539 lr 1.29e-05 31 win/s eta 1:44
+  [18:57:10] epoch 35 step 93/93 [G64_2000 cemhsey_8x8] loss 0.20292 lr 1.10e-05 34 win/s eta 0:00
+epoch 35 done (36/40): train total 0.23832  val total 0.27574 (spec 0.30405 r 0.824 nmse 0.304 | raw 0.24741 r 0.711 nmse 0.486 | macro 0.26183)  gate 0.1057  [3:47 train + 0:40 val, elapsed 3:15:18, run eta 21:42]
+  new best total: 0.27574 at epoch 35  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.24741 at epoch 35  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26183 at epoch 35  (macro_route_loss_total -> best_macro_total.pth)
+  [18:57:54] epoch 36 step 1/93 [G64_2000 cemhsey_5x13] loss 0.20258 lr 1.10e-05 28 win/s eta 2:40
+  [18:59:47] epoch 36 step 51/93 [G64_2000 cemhsey_8x8] loss 0.21759 lr 9.01e-06 38 win/s eta 1:34
+  [19:01:34] epoch 36 step 93/93 [G64_2000 cemhsey_8x8] loss 0.22501 lr 7.54e-06 39 win/s eta 0:00
+epoch 36 done (37/40): train total 0.26411  val total 0.27569 (spec 0.30420 r 0.824 nmse 0.304 | raw 0.24717 r 0.711 nmse 0.485 | macro 0.26176)  gate 0.1058  [3:42 train + 0:49 val, elapsed 3:19:51, run eta 16:12]
+  new best total: 0.27569 at epoch 36  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.24717 at epoch 36  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26176 at epoch 36  (macro_route_loss_total -> best_macro_total.pth)
+  [19:02:27] epoch 37 step 1/93 [G64_2000 cemhsey_5x13] loss 0.22042 lr 7.51e-06 32 win/s eta 2:18
+  [19:04:12] epoch 37 step 51/93 [G64_2000 cemhsey_5x13] loss 0.20709 lr 6.04e-06 36 win/s eta 1:28
+  [19:05:50] epoch 37 step 93/93 [G64_2000 hyser] loss 0.17189 lr 5.03e-06 37 win/s eta 0:00
+epoch 37 done (38/40): train total 0.24640  val total 0.27487 (spec 0.30331 r 0.824 nmse 0.303 | raw 0.24641 r 0.712 nmse 0.483 | macro 0.26142)  gate 0.1058  [3:24 train + 0:52 val, elapsed 3:24:09, run eta 10:44]
+  new best total: 0.27487 at epoch 37  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.24641 at epoch 37  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26142 at epoch 37  (macro_route_loss_total -> best_macro_total.pth)
+  [19:06:51] epoch 38 step 1/93 [W16_2000 emg2qwerty] loss 0.38490 lr 5.00e-06 25 win/s eta 11:52
+  [19:08:54] epoch 38 step 45/93 [G64_2000 hyser] loss 0.16688 lr 4.17e-06 33 win/s eta 2:19
+  [19:09:20] epoch 38 step 51/93 [G64_2000 cemhsey_5x13] loss 0.21310 lr 4.07e-06 31 win/s eta 2:08
+  [19:11:03] epoch 38 step 93/93 [W16_2000 emg2qwerty] loss 0.40064 lr 3.51e-06 34 win/s eta 0:00
+epoch 38 done (39/40): train total 0.26129  val total 0.27473 (spec 0.30316 r 0.825 nmse 0.303 | raw 0.24629 r 0.712 nmse 0.483 | macro 0.26124)  gate 0.1059  [4:19 train + 0:51 val, elapsed 3:29:21, run eta 5:22]
+  new best total: 0.27473 at epoch 38  (loss_total -> best_total.pth, best.pth)
+  new best raw: 0.24629 at epoch 38  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26124 at epoch 38  (macro_route_loss_total -> best_macro_total.pth)
+  [19:12:00] epoch 39 step 1/93 [W16_2000 emg2qwerty] loss 0.40135 lr 3.50e-06 43 win/s eta 6:52
+  [19:13:54] epoch 39 step 51/93 [G64_2000 hyser] loss 0.17498 lr 3.10e-06 37 win/s eta 1:38
+  [19:15:49] epoch 39 step 93/93 [G64_2000 hyser] loss 0.17775 lr 3.00e-06 35 win/s eta 0:00
+epoch 39 done (40/40): train total 0.25919  val total 0.27481 (spec 0.30336 r 0.824 nmse 0.303 | raw 0.24624 r 0.712 nmse 0.483 | macro 0.26133)  gate 0.1059  [3:53 train + 0:43 val, elapsed 3:34:00, run eta 0:00]
+  new best raw: 0.24624 at epoch 39  (loss_masked_raw_smoothl1 -> best_raw.pth)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+Checkpoints: best.pth (= best_total.pth, lowest val total loss),
+  best_spec.pth, best_raw.pth, best_macro_total.pth, latest.pth
+Progress: metrics_epoch.jsonl (per route: route/W16_2000/..., route/G64_2000/...)
+
+============================================================
+  Resume:
+    sbatch --export=ALL,RESUME=auto \
+        scripts/slurm/cineca_emg_c1_moe_pretrain.sbatch
+============================================================

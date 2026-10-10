@@ -1,0 +1,114 @@
+task 0/2 of hyser, 15 worker(s)
+============================================================
+  sEMG corpus: hyser
+  raw   /leonardo_scratch/large/userexternal/ychen003/bio/emg/Hyser/raw
+  out   /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/hyser
+  task  0/2
+============================================================
+  13,154 record(s) from /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/hyser/record_list.txt (--refresh-list to re-scan)
+hyser -> G64_2000: 13,154 records in 206 unit(s) of 64; this task owns 103, 103 to do; mains 50.0; window cap none; 15 worker(s)
+  2/103 units  0.9/min  ETA 109 min  (last: 2553 windows, 0 failed)
+  unit 000000 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000002 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000004 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000006 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000008 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000016 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000018 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000020 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000022 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000024 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000026 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000028 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000030 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000032 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000034 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000036 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000038 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000040 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000042 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000044 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000046 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000048 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000050 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000052 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000054 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000056 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000058 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000060 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000062 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000064 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000066 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000068 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000070 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000072 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000074 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000076 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000078 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000080 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000082 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000084 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000086 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000088 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000090 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000092 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000094 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000096 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000098 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000100 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000102 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000104 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000106 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000108 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000110 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000112 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000114 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000116 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000118 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000120 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000122 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000124 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000126 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000128 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000130 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000132 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000134 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000136 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000138 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000140 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000142 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000144 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000146 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000148 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000150 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000152 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000154 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000156 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000158 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000160 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000162 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000164 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000166 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000168 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000170 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000172 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000174 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000176 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000178 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000180 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000182 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000184 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000186 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000188 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000190 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000192 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000194 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000196 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000198 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000200 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000202 died: A process in the process pool was terminated abruptly while the future was running or pending.
+  unit 000204 died: A process in the process pool was terminated abruptly while the future was running or pending.
+
+hyser: 768 records read, 0 failed, 7,587 windows kept of 7,680 (QC dropped {'non_finite': 0, 'flat_lead': 93, 'amplitude': 0})
+  train 6,787 windows / 11 subjects;  val 800 / 1
+  100 unit(s) of this task have no part file yet -- re-run to finish them; their manifests are not included

@@ -1,0 +1,34 @@
+2026-08-30 09:46:14,914 INFO hyper-parameters (cli > config train: > builtin):
+2026-08-30 09:46:14,914 INFO     epochs           10          [cli]
+2026-08-30 09:46:14,914 INFO     batch_size       64          [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     lr               0.001       [cli]
+2026-08-30 09:46:14,914 INFO     weight_decay     0.01        [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     warmup_epochs    5           [builtin]
+2026-08-30 09:46:14,914 INFO     warmup_ratio     0.2         [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     grad_clip        1.0         [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     label_smoothing  0.0         [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     min_lr_ratio     0.01        [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     precision        bf16        [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO     select_by        auroc       [config:finetune/eeg_c1_p300]
+2026-08-30 09:46:14,914 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0_c62 into memory on each of 1 rank(s): train.h5 2.20 GiB val.h5 0.31 GiB test.h5 0.30 GiB
+2026-08-30 09:46:16,269 INFO train 18586 windows, 62 channels, 512 samples/window
+2026-08-30 09:46:16,269 INFO class counts: [15496, 3090]
+2026-08-30 09:46:16,269 INFO EEG C1 downstream: 62 channels at 256.0 Hz, 512-sample windows, 128-sample patches, route E64_256
+2026-08-30 09:46:16,295 INFO Building the EEG C1 downstream model with {'route_id': 'E64_256', 'patch_samples': 128, 'pool': 'time', 'probe_dim': 16, 'channel_pool': 'attn', 'head_dropout': 0.5, 'head_max_norm': 0.25, 'spatial_filter': 'scale', 'freeze_encoder': True, 'in_channels': 62, 'window_samples': 512, 'channel_names': ['Fp1', 'Fpz', 'Fp2', 'AF7', 'AF3', 'AFz', 'AF4', 'AF8', 'F7', 'F5', 'F3', 'F1', 'Fz', 'F2', 'F4', 'F6', 'F8', 'FT7', 'FC5', 'FC3', 'FC1', 'FCz', 'FC2', 'FC4', 'FC6', 'FT8', 'T7', 'C5', 'C3', 'C1', 'Cz', 'C2', 'C4', 'C6', 'T8', 'TP7', 'CP5', 'CP3', 'CP1', 'CPz', 'CP2', 'CP4', 'CP6', 'TP8', 'P7', 'P5', 'P3', 'P1', 'Pz', 'P2', 'P4', 'P6', 'P8', 'PO7', 'PO3', 'POz', 'PO4', 'PO8', 'O1', 'Oz', 'O2', 'Iz'], 'sampling_rate': 256.0, 'num_classes': 2, 'embed_dim': 384, 'depth': 6, 'num_heads': 6, 'mlp_ratio': 4.0, 'dropout': 0.1, 'norm': 'rmsnorm', 'ffn': 'swiglu', 'qk_norm': True, 'channel_encoding': 'id', 'channel_embed_dim': 64, 'max_level': 3, 'wave_kernel_size': 16, 'wavelet_names': ['sym4', 'sym5', 'db6', 'sym8', 'db8'], 'wave_init_mode': 'pad', 'use_separate_channel': True, 'fold_synthesis': 3, 'fold_gamma': 0.1}
+2026-08-30 09:46:16,362 INFO adaptive spatial filter: scale, 62 -> 62 channel(s)
+2026-08-30 09:46:16,414 INFO loaded: transformer 67, channel encoder 5, gate yes, frontend 74, patcher 4 <- /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/enc_E64_256.pth
+2026-08-30 09:46:16,530 INFO model 11.38 M parameters (7,504 trainable, 0.1%)
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
+  _torch_pytree._register_pytree_node(
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+2026-08-30 09:46:17,991 INFO schedule: 291 steps/epoch, 2910 total, 582 warmup (20%), lr 1.00e-03 -> 1.00e-05
+2026-08-30 09:46:19,255 INFO epoch 0 step 0/291 (  0%) loss 0.5655 acc 0.7969 lr 3.44e-06 eta 6:06
+2026-08-30 09:46:23,139 INFO epoch 0 step 50/291 ( 18%) loss 0.5360 acc 0.8315 lr 8.93e-05 eta 0:24
+2026-08-30 09:46:27,068 INFO epoch 0 step 100/291 ( 35%) loss 0.4909 acc 0.8385 lr 1.75e-04 eta 0:17
+2026-08-30 09:46:30,995 INFO epoch 0 step 150/291 ( 52%) loss 0.4808 acc 0.8350 lr 2.61e-04 eta 0:12
+2026-08-30 09:46:34,961 INFO epoch 0 step 200/291 ( 69%) loss 0.4697 acc 0.8358 lr 3.47e-04 eta 0:07
+2026-08-30 09:46:38,884 INFO epoch 0 step 250/291 ( 86%) loss 0.4671 acc 0.8337 lr 4.33e-04 eta 0:03
+2026-08-30 09:46:44,442 INFO epoch   0/9  train_loss 0.4643  val_loss 0.4603  acc 0.8338  bal 0.5000  kappa 0.0000  auroc 0.4890  eta 3:58  *best
+2026-08-30 09:46:44,876 INFO epoch 1 step 0/291 (  0%) loss 0.4569 acc 0.8125 lr 5.03e-04 eta 2:04
+2026-08-30 09:46:48,851 INFO epoch 1 step 50/291 ( 18%) loss 0.4345 acc 0.8364 lr 5.89e-04 eta 0:20

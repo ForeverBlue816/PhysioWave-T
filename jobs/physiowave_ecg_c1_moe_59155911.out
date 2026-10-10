@@ -1,0 +1,247 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  ECG C1 multi-route pretraining  (job 59155911)
+  config     pretrain/ecg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn0822:35911 (id 59155911)
+  nodes      lrdn0822 lrdn0844 lrdn0852 lrdn1299 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=<none>
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  ECG C1 multi-route pretraining
+  config=pretrain/ecg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/ecg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=59155911 --rdzv_backend=c10d --rdzv_endpoint=lrdn0822:35911 -m physiowave.train.pretrain_main --config pretrain/ecg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  ECG C1 multi-route pretraining
+  config=pretrain/ecg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/ecg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe
+============================================================
+============================================================
+  ECG C1 multi-route pretraining
+  config=pretrain/ecg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/ecg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe
+============================================================
+============================================================
+  ECG C1 multi-route pretraining
+  config=pretrain/ecg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/ecg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe
+============================================================
+NCCL version 2.19.1+cuda12.1
+==================================================================
+  ECG C1 multi-route pretraining
+  total parameters        30,079,821
+  shared transformer      28,377,728
+  frontend L12_500        29,847
+  frontend L1_250         1,863
+  patch_embed 250        65,536   spec decoder 327,805   raw decoder 327,805
+  patch_embed 500        129,536   spec decoder 391,930   raw decoder 391,930
+  downstream encoder      28,639,839   (+1,439,982 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    2,048  + proj 33,280
+  routes:
+    L12_500: 12x5000 @ 500Hz -> 12x20 = 240 tokens (patch (1, 250))
+    L1_250: 1x2500 @ 250Hz -> 1x20 = 20 tokens (patch (1, 125))
+  mixture policy: temperature:0.5
+    dataset          corpus%   step%  window%   passes/epoch
+    code15            1.63%  20.20%    7.81%     2.52x
+    georgia           0.13%   4.10%    1.59%     6.46x
+    icentia11k       21.82%   6.00%   24.76%     0.60x
+    medalcare_xl      0.20%   5.90%    2.28%     5.87x
+    mimic_iv_ecg      9.90%  45.30%   17.52%     0.93x
+    pulsedb          66.00%  10.40%   42.91%     0.34x
+    sph               0.33%   8.10%    3.13%     5.01x
+  channel vocab sha256    3448b5a10f662855
+  budget:
+    resolved steps per epoch   1000  (explicit override)
+    total optimizer updates    60000   (1000/epoch x 60 epochs, grad_accum 1)
+    effective world size       16
+    validation per epoch       first 100 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       L12_500=96  L1_250=1024
+    passes per dataset/epoch   code15=2.52x  georgia=6.46x  icentia11k=0.60x  medalcare_xl=5.87x  mimic_iv_ecg=0.93x  pulsedb=0.34x  sph=5.01x
+  WARNING: at 1000 steps/epoch these datasets are read more than 5x per epoch:
+    georgia          6.46 passes/epoch (9,750 windows)
+    medalcare_xl     5.87 passes/epoch (15,446 windows)
+    sph              5.01 passes/epoch (24,856 windows)
+    An epoch is then a repeat of the same windows rather than new exposure. Training continues; train.max_passes_per_epoch_warn sets the threshold.
+  steps/epoch 1000  epochs 60  grad_accum 1
+==================================================================
+  [05:33:03] epoch 0 step 1/1000 [L12_500 mimic_iv_ecg] loss 0.81148 lr 3.00e-07 2 win/s eta 11:41:03
+  [05:35:48] epoch 0 step 3/1000 [L1_250 pulsedb] loss 0.87675 lr 6.00e-07 6 win/s eta 19:06:58
+  [05:38:22] epoch 0 step 8/1000 [L12_500 mimic_iv_ecg] loss 0.79462 lr 1.35e-06 5 win/s eta 12:26:41
+  [05:40:25] epoch 0 step 10/1000 [L12_500 mimic_iv_ecg] loss 0.77751 lr 1.65e-06 4 win/s eta 13:18:22
+  [05:42:35] epoch 0 step 13/1000 [L12_500 mimic_iv_ecg] loss 0.76456 lr 2.10e-06 4 win/s eta 12:57:11
+  [05:46:42] epoch 0 step 14/1000 [L1_250 pulsedb] loss 0.86335 lr 2.25e-06 4 win/s eta 16:51:18
+  [05:49:26] epoch 0 step 19/1000 [L1_250 pulsedb] loss 0.84779 lr 3.00e-06 4 win/s eta 14:42:16
+  [05:53:16] epoch 0 step 24/1000 [L1_250 pulsedb] loss 0.83089 lr 3.75e-06 5 win/s eta 14:10:44
+  [05:55:31] epoch 0 step 31/1000 [L12_500 mimic_iv_ecg] loss 0.70265 lr 4.80e-06 5 win/s eta 12:04:11
+  [05:57:48] epoch 0 step 38/1000 [L12_500 mimic_iv_ecg] loss 0.69178 lr 5.85e-06 5 win/s eta 10:44:23
+  [06:01:56] epoch 0 step 42/1000 [L1_250 pulsedb] loss 0.81721 lr 6.45e-06 5 win/s eta 11:14:45
+  [06:05:45] epoch 0 step 45/1000 [L1_250 pulsedb] loss 0.80479 lr 6.90e-06 5 win/s eta 11:48:58
+  [06:08:04] epoch 0 step 47/1000 [L12_500 mimic_iv_ecg] loss 0.67985 lr 7.20e-06 5 win/s eta 12:04:04
+  [06:10:13] epoch 0 step 51/1000 [L12_500 georgia] loss 0.67881 lr 7.80e-06 5 win/s eta 11:44:44
+  [06:12:35] epoch 0 step 58/1000 [L12_500 mimic_iv_ecg] loss 0.67221 lr 8.85e-06 5 win/s eta 10:53:31
+  [06:14:40] epoch 0 step 64/1000 [L12_500 mimic_iv_ecg] loss 0.67199 lr 9.75e-06 5 win/s eta 10:19:00
+  [06:16:48] epoch 0 step 69/1000 [L12_500 code15] loss 0.66898 lr 1.05e-05 5 win/s eta 9:59:41
+  [06:23:05] epoch 0 step 73/1000 [L1_250 pulsedb] loss 0.77164 lr 1.11e-05 5 win/s eta 10:44:17
+  [06:25:49] epoch 0 step 74/1000 [L1_250 icentia11k] loss 0.76271 lr 1.12e-05 5 win/s eta 11:08:59
+  [06:28:00] epoch 0 step 80/1000 [L12_500 mimic_iv_ecg] loss 0.67328 lr 1.21e-05 5 win/s eta 10:40:01
+  [06:30:46] epoch 0 step 83/1000 [L1_250 pulsedb] loss 0.72300 lr 1.26e-05 5 win/s eta 10:45:25
+  [06:33:29] epoch 0 step 87/1000 [L12_500 mimic_iv_ecg] loss 0.66434 lr 1.32e-05 5 win/s eta 10:41:32
+  [06:35:39] epoch 0 step 90/1000 [L12_500 mimic_iv_ecg] loss 0.66751 lr 1.36e-05 5 win/s eta 10:40:00
+  [06:37:41] epoch 0 step 94/1000 [L12_500 mimic_iv_ecg] loss 0.66659 lr 1.42e-05 5 win/s eta 10:29:46
+  [06:39:47] epoch 0 step 100/1000 [L12_500 sph] loss 0.66233 lr 1.51e-05 5 win/s eta 10:06:51
+  [06:43:55] epoch 0 step 101/1000 [L1_250 pulsedb] loss 0.72127 lr 1.53e-05 5 win/s eta 10:36:58
+  [06:46:30] epoch 0 step 105/1000 [L12_500 mimic_iv_ecg] loss 0.66592 lr 1.59e-05 5 win/s eta 10:31:59
+  [06:48:38] epoch 0 step 109/1000 [L12_500 code15] loss 0.66911 lr 1.65e-05 5 win/s eta 10:23:34
+  [06:51:49] epoch 0 step 110/1000 [L1_250 pulsedb] loss 0.71259 lr 1.66e-05 5 win/s eta 10:42:59
+  [06:54:20] epoch 0 step 115/1000 [L12_500 code15] loss 0.66450 lr 1.74e-05 5 win/s eta 10:30:59
+  [06:56:47] epoch 0 step 116/1000 [L1_250 pulsedb] loss 0.70636 lr 1.75e-05 5 win/s eta 10:43:27
+  [06:58:58] epoch 0 step 118/1000 [L12_500 mimic_iv_ecg] loss 0.67018 lr 1.78e-05 5 win/s eta 10:47:25
+  [07:01:06] epoch 0 step 126/1000 [L12_500 mimic_iv_ecg] loss 0.67146 lr 1.90e-05 5 win/s eta 10:15:34
+  [07:03:14] epoch 0 step 133/1000 [L12_500 mimic_iv_ecg] loss 0.66834 lr 2.01e-05 5 win/s eta 9:52:24
+  [07:05:49] epoch 0 step 142/1000 [L12_500 mimic_iv_ecg] loss 0.66057 lr 2.14e-05 5 win/s eta 9:24:42
+  [07:09:34] epoch 0 step 146/1000 [L1_250 icentia11k] loss 0.70860 lr 2.20e-05 5 win/s eta 9:28:36
+  [07:11:48] epoch 0 step 151/1000 [L1_250 pulsedb] loss 0.70503 lr 2.28e-05 5 win/s eta 9:19:07
+  [07:13:59] epoch 0 step 154/1000 [L12_500 mimic_iv_ecg] loss 0.66725 lr 2.32e-05 5 win/s eta 9:18:20
+  [07:16:42] epoch 0 step 159/1000 [L12_500 mimic_iv_ecg] loss 0.67031 lr 2.40e-05 6 win/s eta 9:11:57
+  [07:21:34] epoch 0 step 162/1000 [L1_250 pulsedb] loss 0.69787 lr 2.44e-05 5 win/s eta 9:24:58
+  [07:23:42] epoch 0 step 166/1000 [L12_500 mimic_iv_ecg] loss 0.67084 lr 2.50e-05 5 win/s eta 9:19:25
+  [07:27:35] epoch 0 step 167/1000 [L1_250 pulsedb] loss 0.69800 lr 2.52e-05 5 win/s eta 9:34:46
+  [07:30:18] epoch 0 step 171/1000 [L1_250 icentia11k] loss 0.70141 lr 2.58e-05 5 win/s eta 9:31:47
+  [07:32:29] epoch 0 step 174/1000 [L12_500 sph] loss 0.66295 lr 2.62e-05 6 win/s eta 9:30:17
+  [07:34:56] epoch 0 step 177/1000 [L12_500 mimic_iv_ecg] loss 0.66573 lr 2.67e-05 5 win/s eta 9:29:59
+  [07:44:04] epoch 0 step 179/1000 [L1_250 pulsedb] loss 0.69802 lr 2.70e-05 5 win/s eta 10:04:08
+  [07:50:08] epoch 0 step 181/1000 [L1_250 pulsedb] loss 0.69251 lr 2.73e-05 5 win/s eta 10:23:28
+  [07:55:41] epoch 0 step 182/1000 [L1_250 pulsedb] loss 0.69603 lr 2.74e-05 5 win/s eta 10:44:14
+  [07:57:42] epoch 0 step 186/1000 [L12_500 mimic_iv_ecg] loss 0.66615 lr 2.80e-05 5 win/s eta 10:36:07
+  [08:00:54] epoch 0 step 190/1000 [L1_250 icentia11k] loss 0.70602 lr 2.86e-05 5 win/s eta 10:33:19
+  [08:08:12] epoch 0 step 194/1000 [L1_250 pulsedb] loss 0.69599 lr 2.92e-05 5 win/s eta 10:47:29
+  [08:10:29] epoch 0 step 198/1000 [L1_250 pulsedb] loss 0.69581 lr 2.99e-05 5 win/s eta 10:40:32
+  [08:11:20] epoch 0 step 201/1000 [L12_500 mimic_iv_ecg] loss 0.66667 lr 3.03e-05 5 win/s eta 10:31:58
+  [08:13:27] epoch 0 step 203/1000 [L12_500 mimic_iv_ecg] loss 0.66720 lr 3.06e-05 5 win/s eta 10:32:29
+  [08:15:37] epoch 0 step 206/1000 [L12_500 georgia] loss 0.66611 lr 3.10e-05 5 win/s eta 10:29:19
+  [08:18:43] epoch 0 step 210/1000 [L12_500 mimic_iv_ecg] loss 0.66569 lr 3.16e-05 5 win/s eta 10:25:52
+  [08:21:05] epoch 0 step 212/1000 [L12_500 mimic_iv_ecg] loss 0.66496 lr 3.19e-05 5 win/s eta 10:27:10
+  [08:23:45] epoch 0 step 215/1000 [L12_500 mimic_iv_ecg] loss 0.66668 lr 3.24e-05 5 win/s eta 10:25:50
+  [08:25:53] epoch 0 step 218/1000 [L12_500 code15] loss 0.65480 lr 3.28e-05 5 win/s eta 10:22:28
+  [08:28:09] epoch 0 step 223/1000 [L12_500 mimic_iv_ecg] loss 0.66415 lr 3.36e-05 5 win/s eta 10:12:32
+  [08:31:01] epoch 0 step 225/1000 [L1_250 icentia11k] loss 0.70302 lr 3.39e-05 5 win/s eta 10:15:25
+  [08:33:24] epoch 0 step 229/1000 [L12_500 mimic_iv_ecg] loss 0.66398 lr 3.45e-05 5 win/s eta 10:09:33
+  [08:35:57] epoch 0 step 233/1000 [L12_500 sph] loss 0.65749 lr 3.51e-05 5 win/s eta 10:04:23
+  [08:38:32] epoch 0 step 236/1000 [L12_500 mimic_iv_ecg] loss 0.66460 lr 3.55e-05 5 win/s eta 10:02:43
+  [08:43:35] epoch 0 step 241/1000 [L1_250 pulsedb] loss 0.71218 lr 3.63e-05 5 win/s eta 10:02:17
+  [08:46:40] epoch 0 step 244/1000 [L12_500 mimic_iv_ecg] loss 0.66633 lr 3.67e-05 5 win/s eta 10:02:05
+  [08:55:17] epoch 0 step 246/1000 [L1_250 pulsedb] loss 0.69609 lr 3.70e-05 5 win/s eta 10:22:00
+  [08:57:41] epoch 0 step 248/1000 [L12_500 mimic_iv_ecg] loss 0.66303 lr 3.73e-05 5 win/s eta 10:22:37
+  [09:00:33] epoch 0 step 250/1000 [L12_500 mimic_iv_ecg] loss 0.66002 lr 3.76e-05 5 win/s eta 10:24:37
+  [09:01:12] epoch 0 step 251/1000 [L12_500 mimic_iv_ecg] loss 0.66560 lr 3.78e-05 5 win/s eta 10:23:13
+  [09:06:22] epoch 0 step 252/1000 [L1_250 pulsedb] loss 0.69743 lr 3.79e-05 4 win/s eta 10:35:15
+  [09:08:32] epoch 0 step 254/1000 [L1_250 icentia11k] loss 0.70045 lr 3.82e-05 5 win/s eta 10:34:55
+  [09:11:06] epoch 0 step 257/1000 [L1_250 pulsedb] loss 0.69174 lr 3.87e-05 5 win/s eta 10:32:25
+  [09:19:59] epoch 0 step 262/1000 [L1_250 pulsedb] loss 0.69743 lr 3.94e-05 5 win/s eta 10:41:10
+  [09:22:09] epoch 0 step 265/1000 [L12_500 sph] loss 0.65588 lr 3.99e-05 5 win/s eta 10:37:21
+  [09:25:14] epoch 0 step 267/1000 [L1_250 icentia11k] loss 0.69689 lr 4.02e-05 5 win/s eta 10:39:21
+  [09:27:32] epoch 0 step 271/1000 [L12_500 code15] loss 0.65705 lr 4.08e-05 5 win/s eta 10:32:40
+  [09:30:07] epoch 0 step 274/1000 [L12_500 mimic_iv_ecg] loss 0.66512 lr 4.12e-05 5 win/s eta 10:29:59
+  [09:35:38] epoch 0 step 279/1000 [L1_250 pulsedb] loss 0.69636 lr 4.20e-05 5 win/s eta 10:28:42
+  [09:38:55] epoch 0 step 280/1000 [L1_250 pulsedb] loss 0.69533 lr 4.22e-05 5 win/s eta 10:34:02
+  [09:41:19] epoch 0 step 283/1000 [L1_250 icentia11k] loss 0.70233 lr 4.26e-05 5 win/s eta 10:30:47
+  [09:44:03] epoch 0 step 286/1000 [L12_500 mimic_iv_ecg] loss 0.66515 lr 4.30e-05 5 win/s eta 10:28:23
+  [09:46:52] epoch 0 step 289/1000 [L12_500 mimic_iv_ecg] loss 0.66780 lr 4.35e-05 5 win/s eta 10:26:10
+  [09:49:26] epoch 0 step 291/1000 [L1_250 pulsedb] loss 0.70231 lr 4.38e-05 5 win/s eta 10:26:22
+  [09:51:38] epoch 0 step 295/1000 [L1_250 pulsedb] loss 0.69608 lr 4.44e-05 5 win/s eta 10:19:37
+  [09:53:44] epoch 0 step 298/1000 [L12_500 mimic_iv_ecg] loss 0.65991 lr 4.48e-05 5 win/s eta 10:15:44
+  [09:55:44] epoch 0 step 301/1000 [L12_500 mimic_iv_ecg] loss 0.66603 lr 4.53e-05 5 win/s eta 10:11:37
+  [10:00:16] epoch 0 step 305/1000 [L1_250 pulsedb] loss 0.69822 lr 4.59e-05 5 win/s eta 10:10:30
+  [10:03:10] epoch 0 step 309/1000 [L1_250 icentia11k] loss 0.70271 lr 4.65e-05 5 win/s eta 10:05:36
+  [10:05:45] epoch 0 step 312/1000 [L12_500 mimic_iv_ecg] loss 0.66392 lr 4.69e-05 5 win/s eta 10:02:52
+  [10:07:55] epoch 0 step 315/1000 [L12_500 mimic_iv_ecg] loss 0.65925 lr 4.74e-05 5 win/s eta 9:59:14
+  [10:09:59] epoch 0 step 317/1000 [L12_500 mimic_iv_ecg] loss 0.66381 lr 4.77e-05 5 win/s eta 9:58:10
+  [10:13:02] epoch 0 step 318/1000 [L12_500 mimic_iv_ecg] loss 0.66151 lr 4.78e-05 5 win/s eta 10:01:58
+  [10:24:51] epoch 0 step 321/1000 [L1_250 pulsedb] loss 0.69689 lr 4.83e-05 4 win/s eta 10:18:43
+  [10:31:38] epoch 0 step 325/1000 [L1_250 pulsedb] loss 0.69635 lr 4.89e-05 4 win/s eta 10:21:35
+  [10:34:53] epoch 0 step 327/1000 [L12_500 mimic_iv_ecg] loss 0.66305 lr 4.92e-05 4 win/s eta 10:22:38
+  [10:37:04] epoch 0 step 334/1000 [L1_250 pulsedb] loss 0.69309 lr 5.03e-05 4 win/s eta 10:07:37
+  [10:40:01] epoch 0 step 345/1000 [L12_500 mimic_iv_ecg] loss 0.65917 lr 5.19e-05 5 win/s eta 9:44:06
+  [10:41:45] epoch 0 step 351/1000 [L12_500 mimic_iv_ecg] loss 0.65826 lr 5.28e-05 5 win/s eta 9:32:05
+  [10:43:59] epoch 0 step 360/1000 [L12_500 mimic_iv_ecg] loss 0.65328 lr 5.41e-05 5 win/s eta 9:14:00
+  [10:47:35] epoch 0 step 371/1000 [L12_500 mimic_iv_ecg] loss 0.66172 lr 5.58e-05 5 win/s eta 8:54:26
+  [10:51:35] epoch 0 step 373/1000 [L12_500 mimic_iv_ecg] loss 0.65168 lr 5.61e-05 5 win/s eta 8:56:37
+  [10:53:39] epoch 0 step 377/1000 [L12_500 sph] loss 0.64795 lr 5.67e-05 5 win/s eta 8:50:57
+  [10:56:07] epoch 0 step 379/1000 [L12_500 mimic_iv_ecg] loss 0.65234 lr 5.70e-05 5 win/s eta 8:50:29
+  [10:58:13] epoch 0 step 389/1000 [L12_500 code15] loss 0.64222 lr 5.85e-05 5 win/s eta 8:31:50
+  [11:00:17] epoch 0 step 390/1000 [L1_250 pulsedb] loss 0.71124 lr 5.86e-05 5 win/s eta 8:32:55
+  [11:02:28] epoch 0 step 397/1000 [L1_250 pulsedb] loss 0.69809 lr 5.97e-05 5 win/s eta 8:21:25
+  [11:04:41] epoch 0 step 398/1000 [L1_250 icentia11k] loss 0.69642 lr 5.98e-05 5 win/s eta 8:22:40
+  [11:07:04] epoch 0 step 400/1000 [L12_500 mimic_iv_ecg] loss 0.64819 lr 6.01e-05 5 win/s eta 8:22:04
+  [11:07:12] epoch 0 step 401/1000 [L12_500 medalcare_xl] loss 0.67961 lr 6.03e-05 5 win/s eta 8:20:11
+  [11:10:09] epoch 0 step 406/1000 [L1_250 pulsedb] loss 0.69629 lr 6.10e-05 5 win/s eta 8:14:12
+  [11:17:43] epoch 0 step 407/1000 [L1_250 icentia11k] loss 0.70046 lr 6.12e-05 5 win/s eta 8:23:12
+  [11:28:19] epoch 0 step 408/1000 [L1_250 pulsedb] loss 0.69376 lr 6.13e-05 5 win/s eta 8:36:29
+
+============================================================
+  Resume:
+    sbatch --export=ALL,RESUME=auto \
+        scripts/slurm/cineca_ecg_c1_moe_pretrain.sbatch
+============================================================

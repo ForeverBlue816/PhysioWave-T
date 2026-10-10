@@ -1,0 +1,920 @@
+============================================================
+  EEG C1 multi-route pretraining  (job 55471243)
+  config     pretrain/eeg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn2805:31243 (id 55471243)
+  nodes      lrdn2805 lrdn2806 lrdn2811 lrdn2812 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=auto
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+  resume         auto
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=55471243 --rdzv_backend=c10d --rdzv_endpoint=lrdn2805:31243 -m physiowave.train.pretrain_main --config pretrain/eeg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe --resume auto --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+  resume         auto
+============================================================
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+  resume         auto
+============================================================
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+  resume         auto
+============================================================
+NCCL version 2.19.1+cuda12.1
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+resumed from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth: epoch 21, step 16128  best: total 0.27838@20  spec 0.34628@15  raw 0.20920@20  macro-route total 0.26779@19
+==================================================================
+  EEG C1 multi-route pretraining
+  total parameters        30,300,691
+  shared transformer      25,224,704
+  frontend E19_256        66,177
+  frontend E32_512        171,867
+  frontend E64_256        643,707
+  frontend E128_512       2,490,555
+  patch_embed 256        67,072   spec decoder 329,344   raw decoder 329,344
+  patch_embed 512        132,608   spec decoder 395,008   raw decoder 395,008
+  downstream encoder      28,851,475   (+1,449,216 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    21,504  + proj 33,280
+  routes:
+    E19_256: 19x1024 @ 256Hz -> 19x8 = 152 tokens (patch (1, 128))
+    E32_512: 32x2048 @ 512Hz -> 32x8 = 256 tokens (patch (1, 256))
+    E64_256: 64x1024 @ 256Hz -> 64x8 = 512 tokens (patch (1, 128))
+    E128_512: 128x2048 @ 512Hz -> 128x8 = 1024 tokens (patch (1, 256))
+  mixture policy: temperature:0.5
+    dataset          corpus%   step%  window%   passes/epoch
+    faced             0.84%   3.26%    4.97%     0.30x
+    hbn               8.77%  46.35%   17.69%     0.10x
+    hgd               0.15%   6.38%    2.43%     0.82x
+    m3cv              0.53%   5.86%    4.47%     0.42x
+    physionet_mi      0.24%   4.43%    3.38%     0.71x
+    tdbrain           0.56%   3.12%    4.77%     0.42x
+    tueg             88.91%  30.60%   62.28%     0.04x
+  channel vocab sha256    596f2711269e47b2
+  budget:
+    resolved steps per epoch   768  (explicit override)
+    total optimizer updates    46080   (768/epoch x 60 epochs, grad_accum 1)
+    effective world size       16
+    validation per epoch       first 100 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       E19_256=128  E32_512=96  E64_256=48  E128_512=24
+    passes per dataset/epoch   faced=0.30x  hbn=0.10x  hgd=0.82x  m3cv=0.42x  physionet_mi=0.71x  tdbrain=0.42x  tueg=0.04x
+  steps/epoch 768  epochs 60  grad_accum 1
+==================================================================
+  [07:54:11] epoch 21 step 1/768 [E128_512 hbn] loss 0.25194 lr 2.28e-04 4 win/s eta 1:27:10
+  [07:56:20] epoch 21 step 20/768 [E19_256 tueg] loss 0.30560 lr 2.28e-04 8 win/s eta 1:24:43
+  [07:58:24] epoch 21 step 37/768 [E32_512 tdbrain] loss 0.26373 lr 2.28e-04 8 win/s eta 1:25:29
+  [08:00:10] epoch 21 step 51/768 [E32_512 tdbrain] loss 0.29478 lr 2.28e-04 7 win/s eta 1:25:42
+  [08:02:15] epoch 21 step 64/768 [E32_512 tdbrain] loss 0.27615 lr 2.27e-04 7 win/s eta 1:30:02
+  [08:04:16] epoch 21 step 72/768 [E128_512 hbn] loss 0.30056 lr 2.27e-04 7 win/s eta 1:38:38
+  [08:06:19] epoch 21 step 80/768 [E128_512 hbn] loss 0.26199 lr 2.27e-04 6 win/s eta 1:45:22
+  [08:08:29] epoch 21 step 88/768 [E19_256 tueg] loss 0.30003 lr 2.27e-04 6 win/s eta 1:51:19
+  [08:10:46] epoch 21 step 99/768 [E19_256 tueg] loss 0.29873 lr 2.27e-04 6 win/s eta 1:52:48
+  [08:12:39] epoch 21 step 101/768 [E64_256 m3cv] loss 0.24317 lr 2.27e-04 5 win/s eta 2:02:42
+  [08:14:45] epoch 21 step 104/768 [E32_512 faced] loss 0.33167 lr 2.27e-04 5 win/s eta 2:12:04
+  [08:16:49] epoch 21 step 109/768 [E19_256 tueg] loss 0.28463 lr 2.27e-04 5 win/s eta 2:17:33
+  [08:18:53] epoch 21 step 116/768 [E128_512 hbn] loss 0.22625 lr 2.27e-04 5 win/s eta 2:19:26
+  [08:20:57] epoch 21 step 123/768 [E19_256 tueg] loss 0.29880 lr 2.27e-04 5 win/s eta 2:20:59
+  [08:23:13] epoch 21 step 131/768 [E128_512 hbn] loss 0.22687 lr 2.27e-04 5 win/s eta 2:21:45
+  [08:25:32] epoch 21 step 136/768 [E19_256 tueg] loss 0.30201 lr 2.27e-04 4 win/s eta 2:26:12
+  [08:28:34] epoch 21 step 139/768 [E128_512 hbn] loss 0.28112 lr 2.27e-04 4 win/s eta 2:36:08
+  [08:30:35] epoch 21 step 145/768 [E128_512 hbn] loss 0.26503 lr 2.27e-04 4 win/s eta 2:36:51
+  [08:33:43] epoch 21 step 149/768 [E19_256 tueg] loss 0.30131 lr 2.27e-04 4 win/s eta 2:44:44
+  [08:35:34] epoch 21 step 151/768 [E128_512 hbn] loss 0.24511 lr 2.27e-04 4 win/s eta 2:49:34
+  [08:38:21] epoch 21 step 162/768 [E19_256 tueg] loss 0.29289 lr 2.27e-04 4 win/s eta 2:45:38
+  [08:40:23] epoch 21 step 173/768 [E128_512 hbn] loss 0.25998 lr 2.27e-04 4 win/s eta 2:39:18
+  [08:42:23] epoch 21 step 182/768 [E32_512 tdbrain] loss 0.29472 lr 2.26e-04 4 win/s eta 2:35:35
+  [08:44:30] epoch 21 step 193/768 [E128_512 hbn] loss 0.25638 lr 2.26e-04 4 win/s eta 2:30:15
+  [08:47:00] epoch 21 step 200/768 [E19_256 tueg] loss 0.30210 lr 2.26e-04 4 win/s eta 2:30:18
+  [08:47:05] epoch 21 step 201/768 [E64_256 physionet_mi] loss 0.17147 lr 2.26e-04 4 win/s eta 2:29:32
+  [08:49:07] epoch 21 step 214/768 [E128_512 hbn] loss 0.23623 lr 2.26e-04 4 win/s eta 2:22:29
+  [08:51:08] epoch 21 step 224/768 [E128_512 hbn] loss 0.22196 lr 2.26e-04 4 win/s eta 2:18:35
+  [08:53:09] epoch 21 step 236/768 [E128_512 hbn] loss 0.26703 lr 2.26e-04 4 win/s eta 2:13:11
+  [08:55:06] epoch 21 step 251/768 [E128_512 hbn] loss 0.23423 lr 2.26e-04 4 win/s eta 2:05:43
+  [08:57:14] epoch 21 step 262/768 [E19_256 tueg] loss 0.30587 lr 2.26e-04 4 win/s eta 2:01:59
+  [09:00:08] epoch 21 step 269/768 [E128_512 hbn] loss 0.23568 lr 2.26e-04 4 win/s eta 2:02:33
+  [09:02:10] epoch 21 step 272/768 [E19_256 tueg] loss 0.30046 lr 2.26e-04 4 win/s eta 2:04:09
+  [09:04:13] epoch 21 step 283/768 [E19_256 tueg] loss 0.29840 lr 2.26e-04 4 win/s eta 2:00:12
+  [09:06:19] epoch 21 step 291/768 [E128_512 hbn] loss 0.25863 lr 2.25e-04 4 win/s eta 1:58:25
+  [09:07:53] epoch 21 step 301/768 [E19_256 tueg] loss 0.31517 lr 2.25e-04 4 win/s eta 1:54:31
+  [09:10:09] epoch 21 step 310/768 [E32_512 faced] loss 0.34349 lr 2.25e-04 4 win/s eta 1:52:23
+  [09:12:17] epoch 21 step 320/768 [E19_256 tueg] loss 0.30687 lr 2.25e-04 4 win/s eta 1:49:30
+  [09:14:22] epoch 21 step 334/768 [E64_256 m3cv] loss 0.25365 lr 2.25e-04 4 win/s eta 1:44:20
+  [09:16:35] epoch 21 step 350/768 [E19_256 tueg] loss 0.30413 lr 2.25e-04 4 win/s eta 1:38:32
+  [09:16:50] epoch 21 step 351/768 [E19_256 tueg] loss 0.30505 lr 2.25e-04 4 win/s eta 1:38:19
+  [09:18:54] epoch 21 step 361/768 [E128_512 hbn] loss 0.23062 lr 2.25e-04 4 win/s eta 1:35:38
+  [09:21:07] epoch 21 step 370/768 [E19_256 tueg] loss 0.30629 lr 2.25e-04 4 win/s eta 1:33:37
+  [09:23:16] epoch 21 step 381/768 [E19_256 tueg] loss 0.28508 lr 2.25e-04 4 win/s eta 1:30:35
+  [09:25:18] epoch 21 step 394/768 [E19_256 tueg] loss 0.30002 lr 2.24e-04 4 win/s eta 1:26:36
+  [09:26:18] epoch 21 step 401/768 [E128_512 hbn] loss 0.23601 lr 2.24e-04 4 win/s eta 1:24:24
+  [09:28:35] epoch 21 step 413/768 [E19_256 tueg] loss 0.30442 lr 2.24e-04 4 win/s eta 1:21:14
+  [09:30:52] epoch 21 step 427/768 [E19_256 tueg] loss 0.30645 lr 2.24e-04 4 win/s eta 1:17:18
+  [09:32:53] epoch 21 step 441/768 [E128_512 hbn] loss 0.24718 lr 2.24e-04 4 win/s eta 1:13:16
+  [09:34:56] epoch 21 step 451/768 [E64_256 m3cv] loss 0.23248 lr 2.24e-04 4 win/s eta 1:10:53
+  [09:37:15] epoch 21 step 463/768 [E19_256 tueg] loss 0.31105 lr 2.24e-04 4 win/s eta 1:07:58
+  [09:39:17] epoch 21 step 473/768 [E19_256 tueg] loss 0.31232 lr 2.24e-04 4 win/s eta 1:05:37
+  [09:41:25] epoch 21 step 485/768 [E19_256 tueg] loss 0.31393 lr 2.24e-04 4 win/s eta 1:02:38
+  [09:43:28] epoch 21 step 498/768 [E128_512 hbn] loss 0.28367 lr 2.24e-04 5 win/s eta 59:18
+  [09:44:50] epoch 21 step 501/768 [E19_256 tueg] loss 0.30950 lr 2.24e-04 4 win/s eta 59:01
+  [09:46:51] epoch 21 step 510/768 [E128_512 hbn] loss 0.23999 lr 2.23e-04 4 win/s eta 57:03
+  [09:48:51] epoch 21 step 522/768 [E128_512 hgd] loss 0.18036 lr 2.23e-04 5 win/s eta 54:05
+  [09:50:52] epoch 21 step 534/768 [E128_512 hbn] loss 0.26733 lr 2.23e-04 5 win/s eta 51:10
+  [09:52:55] epoch 21 step 549/768 [E128_512 hbn] loss 0.18583 lr 2.23e-04 5 win/s eta 47:24
+  [09:53:16] epoch 21 step 551/768 [E19_256 tueg] loss 0.31894 lr 2.23e-04 5 win/s eta 46:56
+  [09:55:21] epoch 21 step 566/768 [E128_512 hbn] loss 0.23372 lr 2.23e-04 5 win/s eta 43:16
+  [09:57:26] epoch 21 step 586/768 [E128_512 hbn] loss 0.27387 lr 2.23e-04 5 win/s eta 38:18
+  [09:59:36] epoch 21 step 597/768 [E19_256 tueg] loss 0.30348 lr 2.23e-04 5 win/s eta 35:57
+  [09:59:52] epoch 21 step 601/768 [E128_512 hbn] loss 0.23671 lr 2.23e-04 5 win/s eta 34:57
+  [10:01:54] epoch 21 step 614/768 [E64_256 m3cv] loss 0.25817 lr 2.22e-04 5 win/s eta 32:03
+  [10:03:57] epoch 21 step 627/768 [E128_512 hbn] loss 0.26098 lr 2.22e-04 5 win/s eta 29:12
+  [10:06:05] epoch 21 step 638/768 [E19_256 tueg] loss 0.30283 lr 2.22e-04 5 win/s eta 26:54
+  [10:08:45] epoch 21 step 643/768 [E64_256 m3cv] loss 0.22579 lr 2.22e-04 5 win/s eta 26:10
+  [10:10:46] epoch 21 step 650/768 [E19_256 tueg] loss 0.32405 lr 2.22e-04 5 win/s eta 24:48
+  [10:10:47] epoch 21 step 651/768 [E128_512 hgd] loss 0.18200 lr 2.22e-04 5 win/s eta 24:34
+  [10:13:39] epoch 21 step 664/768 [E19_256 tueg] loss 0.29999 lr 2.22e-04 5 win/s eta 21:51
+  [10:15:49] epoch 21 step 676/768 [E128_512 hbn] loss 0.21814 lr 2.22e-04 5 win/s eta 19:17
+  [10:18:04] epoch 21 step 694/768 [E19_256 tueg] loss 0.32531 lr 2.22e-04 5 win/s eta 15:21
+  [10:19:12] epoch 21 step 701/768 [E128_512 hbn] loss 0.22644 lr 2.22e-04 5 win/s eta 13:52
+  [10:21:13] epoch 21 step 713/768 [E32_512 faced] loss 0.34097 lr 2.22e-04 5 win/s eta 11:21
+  [10:23:15] epoch 21 step 728/768 [E128_512 hbn] loss 0.25592 lr 2.21e-04 5 win/s eta 8:11
+  [10:25:21] epoch 21 step 741/768 [E32_512 tdbrain] loss 0.28950 lr 2.21e-04 5 win/s eta 5:30
+  [10:26:57] epoch 21 step 751/768 [E128_512 hbn] loss 0.22719 lr 2.21e-04 5 win/s eta 3:27
+  [10:29:41] epoch 21 step 757/768 [E128_512 hbn] loss 0.25653 lr 2.21e-04 5 win/s eta 2:15
+  [10:31:50] epoch 21 step 759/768 [E19_256 tueg] loss 0.30304 lr 2.21e-04 5 win/s eta 1:52
+  [10:33:25] epoch 21 step 768/768 [E128_512 hbn] loss 0.25199 lr 2.21e-04 5 win/s eta 0:00
+epoch 21 done (22/60): train total 0.26132  val total 0.27607 (spec 0.34422 r 0.807 nmse 0.344 | raw 0.20792 r 0.832 nmse 0.302 | macro 0.26616)  gate 0.3520  [2:39:21 train + 3:21 val, elapsed 2:42:42, run eta 103:03:03]
+  new best total: 0.27607 at epoch 21  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.34422 at epoch 21  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.20792 at epoch 21  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.26616 at epoch 21  (macro_route_loss_total -> best_macro_total.pth)
+  [10:36:54] epoch 22 step 1/768 [E128_512 hbn] loss 0.23364 lr 2.21e-04 5 win/s eta 58:04
+  [10:38:54] epoch 22 step 10/768 [E128_512 hbn] loss 0.23650 lr 2.21e-04 7 win/s eta 2:38:15
+  [10:41:06] epoch 22 step 19/768 [E19_256 tueg] loss 0.30714 lr 2.21e-04 6 win/s eta 2:48:45
+  [10:43:06] epoch 22 step 30/768 [E19_256 tueg] loss 0.30758 lr 2.21e-04 7 win/s eta 2:34:32
+  [10:45:22] epoch 22 step 44/768 [E19_256 tueg] loss 0.31525 lr 2.21e-04 6 win/s eta 2:20:34
+  [10:46:36] epoch 22 step 51/768 [E128_512 hgd] loss 0.15925 lr 2.21e-04 6 win/s eta 2:17:35
+  [10:48:54] epoch 22 step 65/768 [E19_256 tueg] loss 0.29887 lr 2.20e-04 6 win/s eta 2:10:43
+  [10:50:55] epoch 22 step 73/768 [E64_256 m3cv] loss 0.27601 lr 2.20e-04 6 win/s eta 2:14:14
+  [10:53:10] epoch 22 step 87/768 [E128_512 hbn] loss 0.25128 lr 2.20e-04 6 win/s eta 2:07:54
+  [10:55:44] epoch 22 step 97/768 [E19_256 tueg] loss 0.31455 lr 2.20e-04 6 win/s eta 2:10:46
+  [10:56:30] epoch 22 step 101/768 [E19_256 tueg] loss 0.31513 lr 2.20e-04 6 win/s eta 2:09:57
+  [10:58:33] epoch 22 step 112/768 [E128_512 hbn] loss 0.29119 lr 2.20e-04 6 win/s eta 2:07:14
+  [11:00:37] epoch 22 step 121/768 [E128_512 hbn] loss 0.24050 lr 2.20e-04 5 win/s eta 2:07:15
+  [11:02:39] epoch 22 step 126/768 [E19_256 tueg] loss 0.29839 lr 2.20e-04 5 win/s eta 2:11:35
+  [11:04:39] epoch 22 step 138/768 [E19_256 tueg] loss 0.30101 lr 2.20e-04 5 win/s eta 2:07:02
+  [11:06:47] epoch 22 step 150/768 [E19_256 tueg] loss 0.30310 lr 2.20e-04 5 win/s eta 2:03:27
+  [11:06:53] epoch 22 step 151/768 [E128_512 hbn] loss 0.25807 lr 2.20e-04 5 win/s eta 2:02:52
+  [11:09:09] epoch 22 step 168/768 [E128_512 hbn] loss 0.25871 lr 2.19e-04 5 win/s eta 1:55:29
+  [11:11:15] epoch 22 step 173/768 [E19_256 tueg] loss 0.29262 lr 2.19e-04 5 win/s eta 1:58:24
+  [11:13:35] epoch 22 step 183/768 [E19_256 tueg] loss 0.29442 lr 2.19e-04 5 win/s eta 1:57:32
+  [11:15:39] epoch 22 step 192/768 [E19_256 tueg] loss 0.30486 lr 2.19e-04 5 win/s eta 1:56:30
+  [11:17:41] epoch 22 step 201/768 [E128_512 hbn] loss 0.21976 lr 2.19e-04 5 win/s eta 1:55:16
+  [11:19:42] epoch 22 step 220/768 [E128_512 hbn] loss 0.22999 lr 2.19e-04 5 win/s eta 1:46:49
+  [11:21:46] epoch 22 step 237/768 [E128_512 hbn] loss 0.26413 lr 2.19e-04 5 win/s eta 1:40:43
+  [11:24:04] epoch 22 step 247/768 [E19_256 tueg] loss 0.29407 lr 2.19e-04 5 win/s eta 1:39:39
+  [11:25:01] epoch 22 step 251/768 [E19_256 tueg] loss 0.29682 lr 2.19e-04 5 win/s eta 1:39:15
+  [11:27:03] epoch 22 step 264/768 [E19_256 tueg] loss 0.31674 lr 2.19e-04 5 win/s eta 1:35:54
+  [11:29:04] epoch 22 step 279/768 [E128_512 hbn] loss 0.26907 lr 2.18e-04 5 win/s eta 1:31:34
+  [11:31:13] epoch 22 step 293/768 [E19_256 tueg] loss 0.30420 lr 2.18e-04 5 win/s eta 1:28:10
+  [11:32:28] epoch 22 step 301/768 [E128_512 hbn] loss 0.23691 lr 2.18e-04 5 win/s eta 1:26:20
+  [11:34:32] epoch 22 step 313/768 [E19_256 tueg] loss 0.31137 lr 2.18e-04 5 win/s eta 1:23:54
+  [11:36:55] epoch 22 step 324/768 [E19_256 tueg] loss 0.31556 lr 2.18e-04 5 win/s eta 1:22:21
+  [11:39:07] epoch 22 step 336/768 [E19_256 tueg] loss 0.30163 lr 2.18e-04 6 win/s eta 1:20:05
+  [11:40:41] epoch 22 step 351/768 [E128_512 hbn] loss 0.24654 lr 2.18e-04 6 win/s eta 1:15:52
+  [11:42:43] epoch 22 step 364/768 [E19_256 tueg] loss 0.31789 lr 2.18e-04 6 win/s eta 1:13:08
+  [11:44:46] epoch 22 step 376/768 [E19_256 tueg] loss 0.31171 lr 2.18e-04 6 win/s eta 1:10:49
+  [11:47:00] epoch 22 step 391/768 [E19_256 tueg] loss 0.29638 lr 2.17e-04 6 win/s eta 1:07:39
+  [11:48:41] epoch 22 step 401/768 [E19_256 tueg] loss 0.30499 lr 2.17e-04 6 win/s eta 1:05:46
+  [11:50:44] epoch 22 step 417/768 [E128_512 hbn] loss 0.25638 lr 2.17e-04 6 win/s eta 1:02:12
+  [11:52:47] epoch 22 step 429/768 [E19_256 tueg] loss 0.30885 lr 2.17e-04 6 win/s eta 1:00:01
+  [11:54:49] epoch 22 step 445/768 [E19_256 tueg] loss 0.31620 lr 2.17e-04 6 win/s eta 56:36
+  [11:55:30] epoch 22 step 451/768 [E128_512 hbn] loss 0.26356 lr 2.17e-04 6 win/s eta 55:17
+  [11:57:30] epoch 22 step 461/768 [E128_512 hbn] loss 0.19422 lr 2.17e-04 6 win/s eta 53:44
+  [11:59:36] epoch 22 step 476/768 [E128_512 hbn] loss 0.24286 lr 2.17e-04 6 win/s eta 50:46
+  [12:01:39] epoch 22 step 495/768 [E19_256 tueg] loss 0.31928 lr 2.16e-04 6 win/s eta 46:47
+  [12:02:28] epoch 22 step 501/768 [E128_512 hgd] loss 0.15100 lr 2.16e-04 6 win/s eta 45:38
+  [12:04:33] epoch 22 step 517/768 [E32_512 tdbrain] loss 0.28932 lr 2.16e-04 6 win/s eta 42:35
+  [12:06:36] epoch 22 step 530/768 [E128_512 hbn] loss 0.22400 lr 2.16e-04 6 win/s eta 40:19
+  [12:08:37] epoch 22 step 540/768 [E128_512 hbn] loss 0.21963 lr 2.16e-04 6 win/s eta 38:45
+  [12:10:23] epoch 22 step 551/768 [E128_512 hbn] loss 0.26186 lr 2.16e-04 6 win/s eta 36:50
+  [12:12:35] epoch 22 step 564/768 [E19_256 tueg] loss 0.30248 lr 2.16e-04 6 win/s eta 34:38
+  [12:14:35] epoch 22 step 576/768 [E19_256 tueg] loss 0.30299 lr 2.16e-04 6 win/s eta 32:35
+  [12:16:35] epoch 22 step 590/768 [E19_256 tueg] loss 0.30041 lr 2.16e-04 6 win/s eta 30:05
+  [12:18:19] epoch 22 step 601/768 [E128_512 hbn] loss 0.22938 lr 2.15e-04 6 win/s eta 28:12
+  [12:20:29] epoch 22 step 615/768 [E19_256 tueg] loss 0.29621 lr 2.15e-04 6 win/s eta 25:47
+  [12:22:31] epoch 22 step 628/768 [E32_512 faced] loss 0.31249 lr 2.15e-04 6 win/s eta 23:33
+  [12:24:31] epoch 22 step 640/768 [E128_512 hbn] loss 0.22174 lr 2.15e-04 6 win/s eta 21:32
+  [12:25:52] epoch 22 step 651/768 [E128_512 hgd] loss 0.15732 lr 2.15e-04 6 win/s eta 19:35
+  [12:27:56] epoch 22 step 663/768 [E128_512 hbn] loss 0.23103 lr 2.15e-04 6 win/s eta 17:35
+  [12:29:58] epoch 22 step 682/768 [E64_256 physionet_mi] loss 0.14456 lr 2.15e-04 6 win/s eta 14:16
+  [12:32:04] epoch 22 step 697/768 [E19_256 tueg] loss 0.31147 lr 2.15e-04 6 win/s eta 11:44
+  [12:32:47] epoch 22 step 701/768 [E19_256 tueg] loss 0.30751 lr 2.14e-04 6 win/s eta 11:05
+  [12:34:48] epoch 22 step 717/768 [E19_256 tueg] loss 0.30388 lr 2.14e-04 6 win/s eta 8:23
+  [12:37:03] epoch 22 step 733/768 [E19_256 tueg] loss 0.29571 lr 2.14e-04 6 win/s eta 5:44
+  [12:39:05] epoch 22 step 750/768 [E128_512 hbn] loss 0.23756 lr 2.14e-04 6 win/s eta 2:56
+  [12:39:12] epoch 22 step 751/768 [E128_512 hbn] loss 0.23247 lr 2.14e-04 6 win/s eta 2:46
+  [12:41:08] epoch 22 step 768/768 [E128_512 hgd] loss 0.15721 lr 2.14e-04 6 win/s eta 0:00
+epoch 22 done (23/60): train total 0.24985  val total 0.26932 (spec 0.33349 r 0.814 nmse 0.334 | raw 0.20515 r 0.835 nmse 0.297 | macro 0.25832)  gate 0.3566  [2:04:18 train + 1:57 val, elapsed 4:49:01, run eta 89:06:57]
+  new best total: 0.26932 at epoch 22  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.33349 at epoch 22  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.20515 at epoch 22  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.25832 at epoch 22  (macro_route_loss_total -> best_macro_total.pth)
+  [12:43:11] epoch 23 step 1/768 [E128_512 hbn] loss 0.23858 lr 2.14e-04 7 win/s eta 42:12
+  [12:45:21] epoch 23 step 17/768 [E19_256 tueg] loss 0.30383 lr 2.14e-04 6 win/s eta 1:37:38
+  [12:47:21] epoch 23 step 30/768 [E128_512 hbn] loss 0.24440 lr 2.14e-04 6 win/s eta 1:43:49
+  [12:49:22] epoch 23 step 40/768 [E19_256 tueg] loss 0.29900 lr 2.13e-04 6 win/s eta 1:53:27
+  [12:51:22] epoch 23 step 50/768 [E19_256 tueg] loss 0.31345 lr 2.13e-04 6 win/s eta 1:58:17
+  [12:51:30] epoch 23 step 51/768 [E128_512 hbn] loss 0.22587 lr 2.13e-04 6 win/s eta 1:57:32
+  [12:53:33] epoch 23 step 63/768 [E64_256 physionet_mi] loss 0.15757 lr 2.13e-04 6 win/s eta 1:56:30
+  [12:55:35] epoch 23 step 74/768 [E128_512 hbn] loss 0.26227 lr 2.13e-04 6 win/s eta 1:56:44
+  [12:57:39] epoch 23 step 83/768 [E128_512 hbn] loss 0.23471 lr 2.13e-04 6 win/s eta 1:59:49
+  [12:59:44] epoch 23 step 98/768 [E128_512 hbn] loss 0.24052 lr 2.13e-04 6 win/s eta 1:53:32
+  [13:00:17] epoch 23 step 101/768 [E19_256 tueg] loss 0.30848 lr 2.13e-04 6 win/s eta 1:53:17
+  [13:02:19] epoch 23 step 113/768 [E19_256 tueg] loss 0.32383 lr 2.13e-04 6 win/s eta 1:51:09
+  [13:04:31] epoch 23 step 122/768 [E19_256 tueg] loss 0.28737 lr 2.13e-04 6 win/s eta 1:53:14
+  [13:06:44] epoch 23 step 134/768 [E19_256 tueg] loss 0.31079 lr 2.13e-04 6 win/s eta 1:51:39
+  [13:08:47] epoch 23 step 148/768 [E128_512 hbn] loss 0.21039 lr 2.12e-04 6 win/s eta 1:47:27
+  [13:09:03] epoch 23 step 151/768 [E128_512 hbn] loss 0.24969 lr 2.12e-04 6 win/s eta 1:45:52
+  [13:11:17] epoch 23 step 163/768 [E19_256 tueg] loss 0.29865 lr 2.12e-04 6 win/s eta 1:44:27
+  [13:13:17] epoch 23 step 174/768 [E128_512 hbn] loss 0.22519 lr 2.12e-04 6 win/s eta 1:42:54
+  [13:15:29] epoch 23 step 187/768 [E19_256 tueg] loss 0.30224 lr 2.12e-04 6 win/s eta 1:40:30
+  [13:17:32] epoch 23 step 199/768 [E128_512 hbn] loss 0.23547 lr 2.12e-04 6 win/s eta 1:38:23
+  [13:17:45] epoch 23 step 201/768 [E128_512 hbn] loss 0.23661 lr 2.12e-04 6 win/s eta 1:37:38
+  [13:19:51] epoch 23 step 213/768 [E19_256 tueg] loss 0.29118 lr 2.12e-04 6 win/s eta 1:35:40
+  [13:21:54] epoch 23 step 225/768 [E128_512 hbn] loss 0.25688 lr 2.12e-04 6 win/s eta 1:33:33
+  [13:24:01] epoch 23 step 240/768 [E19_256 tueg] loss 0.31220 lr 2.12e-04 6 win/s eta 1:29:57
+  [13:25:48] epoch 23 step 251/768 [E128_512 hbn] loss 0.21583 lr 2.11e-04 6 win/s eta 1:27:53
+  [13:27:55] epoch 23 step 267/768 [E19_256 tueg] loss 0.32562 lr 2.11e-04 6 win/s eta 1:24:01
+  [13:30:01] epoch 23 step 283/768 [E19_256 tueg] loss 0.30580 lr 2.11e-04 6 win/s eta 1:20:20
+  [13:32:01] epoch 23 step 298/768 [E128_512 hbn] loss 0.21949 lr 2.11e-04 6 win/s eta 1:17:06
+  [13:32:20] epoch 23 step 301/768 [E128_512 hbn] loss 0.22605 lr 2.11e-04 6 win/s eta 1:16:20
+  [13:34:21] epoch 23 step 317/768 [E128_512 hbn] loss 0.25439 lr 2.11e-04 6 win/s eta 1:12:51
+  [13:36:23] epoch 23 step 327/768 [E19_256 tueg] loss 0.30450 lr 2.11e-04 6 win/s eta 1:11:48
+  [13:38:33] epoch 23 step 338/768 [E19_256 tueg] loss 0.29949 lr 2.11e-04 6 win/s eta 1:10:30
+  [13:40:42] epoch 23 step 342/768 [E19_256 tueg] loss 0.29974 lr 2.11e-04 6 win/s eta 1:11:41
+  [13:42:50] epoch 23 step 351/768 [E128_512 hbn] loss 0.22582 lr 2.10e-04 6 win/s eta 1:10:55
+  [13:44:57] epoch 23 step 361/768 [E19_256 tueg] loss 0.29121 lr 2.10e-04 6 win/s eta 1:09:41
+  [13:47:01] epoch 23 step 370/768 [E32_512 faced] loss 0.29975 lr 2.10e-04 6 win/s eta 1:08:43
+  [13:49:17] epoch 23 step 387/768 [E19_256 tueg] loss 0.31968 lr 2.10e-04 6 win/s eta 1:05:07
+  [13:51:19] epoch 23 step 400/768 [E19_256 tueg] loss 0.29556 lr 2.10e-04 6 win/s eta 1:02:43
+  [13:51:25] epoch 23 step 401/768 [E128_512 hbn] loss 0.21351 lr 2.10e-04 6 win/s eta 1:02:30
+  [13:53:30] epoch 23 step 416/768 [E128_512 hbn] loss 0.25457 lr 2.10e-04 6 win/s eta 59:32
+  [13:55:31] epoch 23 step 430/768 [E64_256 m3cv] loss 0.20961 lr 2.10e-04 6 win/s eta 56:53
+  [13:57:43] epoch 23 step 442/768 [E19_256 tueg] loss 0.30842 lr 2.10e-04 6 win/s eta 55:00
+  [13:59:15] epoch 23 step 451/768 [E128_512 hbn] loss 0.25192 lr 2.10e-04 6 win/s eta 53:29
+  [14:01:23] epoch 23 step 464/768 [E128_512 hbn] loss 0.23775 lr 2.09e-04 6 win/s eta 51:15
+  [14:03:35] epoch 23 step 478/768 [E19_256 tueg] loss 0.30256 lr 2.09e-04 6 win/s eta 48:48
+  [14:05:46] epoch 23 step 487/768 [E19_256 tueg] loss 0.30152 lr 2.09e-04 6 win/s eta 47:40
+  [14:08:01] epoch 23 step 501/768 [E19_256 tueg] loss 0.30117 lr 2.09e-04 6 win/s eta 45:14
+  [14:10:09] epoch 23 step 514/768 [E19_256 tueg] loss 0.30959 lr 2.09e-04 6 win/s eta 43:00
+  [14:12:11] epoch 23 step 527/768 [E128_512 hbn] loss 0.24485 lr 2.09e-04 6 win/s eta 40:43
+  [14:14:18] epoch 23 step 540/768 [E19_256 tueg] loss 0.30433 lr 2.09e-04 6 win/s eta 38:29
+  [14:15:50] epoch 23 step 551/768 [E128_512 hbn] loss 0.23261 lr 2.09e-04 6 win/s eta 36:30
+  [14:17:53] epoch 23 step 561/768 [E19_256 tueg] loss 0.28810 lr 2.08e-04 6 win/s eta 34:57
+  [14:20:15] epoch 23 step 573/768 [E19_256 tueg] loss 0.30579 lr 2.08e-04 6 win/s eta 33:02
+  [14:22:25] epoch 23 step 584/768 [E19_256 tueg] loss 0.30406 lr 2.08e-04 6 win/s eta 31:16
+  [14:24:37] epoch 23 step 598/768 [E19_256 tueg] loss 0.29788 lr 2.08e-04 6 win/s eta 28:50
+  [14:25:23] epoch 23 step 601/768 [E128_512 hbn] loss 0.23539 lr 2.08e-04 6 win/s eta 28:24
+  [14:27:34] epoch 23 step 615/768 [E19_256 tueg] loss 0.31245 lr 2.08e-04 6 win/s eta 25:58
+  [14:29:41] epoch 23 step 630/768 [E128_512 hbn] loss 0.19719 lr 2.08e-04 6 win/s eta 23:20
+  [14:31:43] epoch 23 step 643/768 [E128_512 hbn] loss 0.22200 lr 2.08e-04 6 win/s eta 21:06
+  [14:32:44] epoch 23 step 651/768 [E128_512 hbn] loss 0.22596 lr 2.08e-04 6 win/s eta 19:41
+  [14:34:50] epoch 23 step 662/768 [E32_512 faced] loss 0.33856 lr 2.07e-04 6 win/s eta 17:53
+  [14:36:52] epoch 23 step 669/768 [E64_256 m3cv] loss 0.21963 lr 2.07e-04 6 win/s eta 16:49
+  [14:39:26] epoch 23 step 670/768 [E19_256 tueg] loss 0.28786 lr 2.07e-04 6 win/s eta 17:00
+  [14:43:53] epoch 23 step 673/768 [E128_512 hbn] loss 0.26229 lr 2.07e-04 5 win/s eta 17:02
+  [14:46:09] epoch 23 step 675/768 [E128_512 hbn] loss 0.21172 lr 2.07e-04 5 win/s eta 16:56
+  [14:49:29] epoch 23 step 677/768 [E19_256 tueg] loss 0.31273 lr 2.07e-04 5 win/s eta 16:58
+  [14:51:34] epoch 23 step 679/768 [E128_512 hbn] loss 0.21292 lr 2.07e-04 5 win/s eta 16:50
+  [14:53:54] epoch 23 step 681/768 [E19_256 tueg] loss 0.29417 lr 2.07e-04 5 win/s eta 16:42
+  [14:56:24] epoch 23 step 682/768 [E19_256 tueg] loss 0.31285 lr 2.07e-04 5 win/s eta 16:48
+  [14:58:28] epoch 23 step 685/768 [E64_256 physionet_mi] loss 0.15678 lr 2.07e-04 5 win/s eta 16:23
+  [15:01:01] epoch 23 step 688/768 [E32_512 tdbrain] loss 0.28948 lr 2.07e-04 5 win/s eta 16:02
+  [15:04:35] epoch 23 step 691/768 [E128_512 hbn] loss 0.22107 lr 2.07e-04 5 win/s eta 15:45
+  [15:06:36] epoch 23 step 692/768 [E128_512 hbn] loss 0.21549 lr 2.07e-04 5 win/s eta 15:45
+  [15:08:40] epoch 23 step 695/768 [E128_512 hgd] loss 0.13761 lr 2.07e-04 5 win/s eta 15:17
+  [15:12:00] epoch 23 step 698/768 [E128_512 hbn] loss 0.22066 lr 2.07e-04 5 win/s eta 14:55
+  [15:14:02] epoch 23 step 700/768 [E128_512 hbn] loss 0.23442 lr 2.07e-04 5 win/s eta 14:39
+  [15:14:51] epoch 23 step 701/768 [E64_256 m3cv] loss 0.22863 lr 2.07e-04 5 win/s eta 14:30
+  [15:17:33] epoch 23 step 702/768 [E19_256 tueg] loss 0.31223 lr 2.07e-04 4 win/s eta 14:31
+  [15:20:22] epoch 23 step 704/768 [E128_512 hbn] loss 0.22602 lr 2.07e-04 4 win/s eta 14:17
+  [15:23:05] epoch 23 step 705/768 [E128_512 hbn] loss 0.22657 lr 2.07e-04 4 win/s eta 14:17
+  [15:25:15] epoch 23 step 707/768 [E32_512 faced] loss 0.32943 lr 2.07e-04 4 win/s eta 13:59
+  [15:27:51] epoch 23 step 708/768 [E19_256 tueg] loss 0.30413 lr 2.07e-04 4 win/s eta 13:57
+  [15:29:52] epoch 23 step 710/768 [E128_512 hbn] loss 0.23675 lr 2.07e-04 4 win/s eta 13:37
+  [15:34:53] epoch 23 step 713/768 [E19_256 tueg] loss 0.30164 lr 2.07e-04 4 win/s eta 13:14
+  [15:36:54] epoch 23 step 716/768 [E128_512 hbn] loss 0.21595 lr 2.07e-04 4 win/s eta 12:37
+  [15:39:07] epoch 23 step 720/768 [E64_256 m3cv] loss 0.24195 lr 2.07e-04 4 win/s eta 11:43
+  [15:41:11] epoch 23 step 724/768 [E128_512 hbn] loss 0.22596 lr 2.07e-04 4 win/s eta 10:49
+  [15:43:21] epoch 23 step 726/768 [E19_256 tueg] loss 0.31499 lr 2.07e-04 4 win/s eta 10:25
+  [15:47:19] epoch 23 step 733/768 [E19_256 tueg] loss 0.30213 lr 2.07e-04 4 win/s eta 8:47
+  [15:49:33] epoch 23 step 735/768 [E128_512 hbn] loss 0.23965 lr 2.07e-04 4 win/s eta 8:22
+  [15:51:44] epoch 23 step 739/768 [E128_512 hbn] loss 0.26203 lr 2.07e-04 4 win/s eta 7:24
+  [15:54:31] epoch 23 step 742/768 [E19_256 tueg] loss 0.30645 lr 2.07e-04 4 win/s eta 6:42
+  [15:58:01] epoch 23 step 746/768 [E19_256 tueg] loss 0.29312 lr 2.07e-04 4 win/s eta 5:44
+  [16:00:03] epoch 23 step 750/768 [E19_256 tueg] loss 0.29653 lr 2.07e-04 4 win/s eta 4:43
+  [16:00:08] epoch 23 step 751/768 [E128_512 hgd] loss 0.18006 lr 2.07e-04 4 win/s eta 4:27
+  [16:02:22] epoch 23 step 757/768 [E128_512 hbn] loss 0.25910 lr 2.07e-04 4 win/s eta 2:53
+  [16:04:46] epoch 23 step 760/768 [E19_256 tueg] loss 0.31663 lr 2.07e-04 4 win/s eta 2:07
+  [16:06:37] epoch 23 step 768/768 [E32_512 faced] loss 0.31022 lr 2.06e-04 4 win/s eta 0:00
+  [16:08:37] epoch 23 val 121/238 eta 1:56
+epoch 23 done (24/60): train total 0.24896  val total 0.27403 (spec 0.34266 r 0.808 nmse 0.343 | raw 0.20539 r 0.835 nmse 0.297 | macro 0.25922)  gate 0.3604  [3:23:29 train + 4:37 val, elapsed 8:17:10, run eta 99:26:00]
+  [16:11:57] epoch 24 step 1/768 [E19_256 tueg] loss 0.30448 lr 2.06e-04 3 win/s eta 9:02:05
+  [16:14:12] epoch 24 step 7/768 [E128_512 hbn] loss 0.23544 lr 2.06e-04 3 win/s eta 5:20:42
+  [16:16:13] epoch 24 step 14/768 [E128_512 hbn] loss 0.28202 lr 2.06e-04 3 win/s eta 4:28:00
+  [16:18:56] epoch 24 step 23/768 [E19_256 tueg] loss 0.30009 lr 2.06e-04 3 win/s eta 4:09:15
+  [16:21:02] epoch 24 step 32/768 [E128_512 hbn] loss 0.23241 lr 2.06e-04 3 win/s eta 3:45:18
+  [16:23:43] epoch 24 step 40/768 [E19_256 tueg] loss 0.29797 lr 2.06e-04 3 win/s eta 3:47:03
+  [16:25:54] epoch 24 step 47/768 [E19_256 tueg] loss 0.32213 lr 2.06e-04 3 win/s eta 3:44:48
+  [16:27:57] epoch 24 step 50/768 [E128_512 hbn] loss 0.22577 lr 2.06e-04 3 win/s eta 3:59:54
+  [16:28:02] epoch 24 step 51/768 [E128_512 hgd] loss 0.14961 lr 2.06e-04 3 win/s eta 3:55:59
+  [16:30:17] epoch 24 step 57/768 [E128_512 hbn] loss 0.18523 lr 2.06e-04 3 win/s eta 3:57:29
+  [16:32:28] epoch 24 step 61/768 [E19_256 tueg] loss 0.30210 lr 2.06e-04 3 win/s eta 4:05:57
+  [16:34:46] epoch 24 step 67/768 [E128_512 hbn] loss 0.23178 lr 2.06e-04 3 win/s eta 4:06:05
+  [16:36:55] epoch 24 step 73/768 [E19_256 tueg] loss 0.30252 lr 2.06e-04 3 win/s eta 4:04:24
+  [16:38:59] epoch 24 step 78/768 [E128_512 hbn] loss 0.20803 lr 2.06e-04 3 win/s eta 4:05:25
+  [16:42:00] epoch 24 step 82/768 [E128_512 hbn] loss 0.22860 lr 2.06e-04 3 win/s eta 4:17:17
+  [16:44:10] epoch 24 step 85/768 [E128_512 hbn] loss 0.26264 lr 2.06e-04 2 win/s eta 4:24:36
+  [16:46:22] epoch 24 step 90/768 [E19_256 tueg] loss 0.29347 lr 2.06e-04 2 win/s eta 4:24:36
+  [16:49:46] epoch 24 step 95/768 [E19_256 tueg] loss 0.30692 lr 2.06e-04 2 win/s eta 4:32:55
+  [16:51:32] epoch 24 step 101/768 [E19_256 tueg] loss 0.31025 lr 2.05e-04 2 win/s eta 4:26:06
+  [16:54:26] epoch 24 step 106/768 [E19_256 tueg] loss 0.30372 lr 2.05e-04 2 win/s eta 4:29:45
+  [16:56:35] epoch 24 step 107/768 [E19_256 tueg] loss 0.31251 lr 2.05e-04 2 win/s eta 4:40:08
+  [16:58:37] epoch 24 step 115/768 [E19_256 tueg] loss 0.29253 lr 2.05e-04 2 win/s eta 4:29:02
+  [17:00:41] epoch 24 step 124/768 [E128_512 hbn] loss 0.23082 lr 2.05e-04 2 win/s eta 4:16:44
+  [17:02:51] epoch 24 step 128/768 [E128_512 hbn] loss 0.22033 lr 2.05e-04 2 win/s eta 4:18:00
+  [17:04:58] epoch 24 step 129/768 [E19_256 tueg] loss 0.30404 lr 2.05e-04 2 win/s eta 4:26:06
+  [17:07:25] epoch 24 step 141/768 [E128_512 hbn] loss 0.23684 lr 2.05e-04 2 win/s eta 4:09:46
+  [17:09:58] epoch 24 step 147/768 [E19_256 tueg] loss 0.30786 lr 2.05e-04 2 win/s eta 4:08:05
+  [17:11:23] epoch 24 step 151/768 [E128_512 hgd] loss 0.15585 lr 2.05e-04 2 win/s eta 4:05:43
+  [17:13:53] epoch 24 step 158/768 [E64_256 m3cv] loss 0.23125 lr 2.05e-04 2 win/s eta 4:01:50
+  [17:16:00] epoch 24 step 165/768 [E19_256 tueg] loss 0.30297 lr 2.05e-04 3 win/s eta 3:56:38
+  [17:18:02] epoch 24 step 173/768 [E128_512 hbn] loss 0.25587 lr 2.05e-04 3 win/s eta 3:49:42
+  [17:20:34] epoch 24 step 181/768 [E19_256 tueg] loss 0.30978 lr 2.05e-04 3 win/s eta 3:44:49
+  [17:22:41] epoch 24 step 190/768 [E64_256 m3cv] loss 0.23873 lr 2.05e-04 3 win/s eta 3:37:19
+  [17:25:09] epoch 24 step 198/768 [E19_256 tueg] loss 0.31424 lr 2.05e-04 3 win/s eta 3:32:45
+  [17:26:06] epoch 24 step 201/768 [E19_256 tueg] loss 0.30543 lr 2.05e-04 3 win/s eta 3:31:09
+  [17:28:11] epoch 24 step 210/768 [E128_512 hbn] loss 0.26165 lr 2.04e-04 3 win/s eta 3:24:25
+  [17:30:21] epoch 24 step 215/768 [E19_256 tueg] loss 0.30933 lr 2.04e-04 3 win/s eta 3:23:28
+  [17:32:21] epoch 24 step 220/768 [E128_512 hbn] loss 0.26146 lr 2.04e-04 3 win/s eta 3:22:02
+  [17:34:28] epoch 24 step 226/768 [E128_512 hbn] loss 0.23276 lr 2.04e-04 3 win/s eta 3:19:34
+  [17:36:33] epoch 24 step 234/768 [E128_512 hbn] loss 0.26620 lr 2.04e-04 3 win/s eta 3:14:40
+  [17:39:02] epoch 24 step 242/768 [E19_256 tueg] loss 0.29891 lr 2.04e-04 3 win/s eta 3:10:50
+  [17:41:08] epoch 24 step 250/768 [E64_256 physionet_mi] loss 0.15891 lr 2.04e-04 3 win/s eta 3:06:14
+  [17:41:18] epoch 24 step 251/768 [E128_512 hbn] loss 0.23219 lr 2.04e-04 3 win/s eta 3:05:30
+  [17:43:35] epoch 24 step 257/768 [E19_256 tueg] loss 0.30112 lr 2.04e-04 3 win/s eta 3:03:36
+  [17:45:41] epoch 24 step 268/768 [E128_512 hbn] loss 0.26158 lr 2.04e-04 3 win/s eta 2:56:11
+  [17:48:02] epoch 24 step 275/768 [E19_256 tueg] loss 0.30102 lr 2.04e-04 3 win/s eta 2:53:30
+  [17:50:03] epoch 24 step 282/768 [E128_512 hbn] loss 0.22229 lr 2.04e-04 3 win/s eta 2:50:16
+  [17:52:13] epoch 24 step 289/768 [E19_256 tueg] loss 0.30703 lr 2.04e-04 3 win/s eta 2:47:21
+  [17:54:19] epoch 24 step 294/768 [E128_512 hbn] loss 0.28440 lr 2.04e-04 3 win/s eta 2:46:10
+  [17:55:27] epoch 24 step 301/768 [E128_512 hbn] loss 0.25458 lr 2.04e-04 3 win/s eta 2:41:41
+  [17:57:37] epoch 24 step 311/768 [E128_512 hbn] loss 0.21866 lr 2.03e-04 3 win/s eta 2:36:18
+  [17:59:46] epoch 24 step 319/768 [E128_512 hbn] loss 0.26071 lr 2.03e-04 3 win/s eta 2:32:44
+  [18:01:55] epoch 24 step 327/768 [E128_512 hbn] loss 0.23661 lr 2.03e-04 3 win/s eta 2:29:15
+  [18:04:01] epoch 24 step 335/768 [E128_512 hbn] loss 0.24011 lr 2.03e-04 3 win/s eta 2:25:45
+  [18:06:11] epoch 24 step 343/768 [E19_256 tueg] loss 0.32655 lr 2.03e-04 3 win/s eta 2:22:25
+  [18:08:04] epoch 24 step 351/768 [E64_256 physionet_mi] loss 0.18149 lr 2.03e-04 3 win/s eta 2:18:48
+  [18:10:12] epoch 24 step 360/768 [E19_256 tueg] loss 0.31366 lr 2.03e-04 3 win/s eta 2:14:48
+  [18:12:15] epoch 24 step 369/768 [E128_512 hbn] loss 0.22517 lr 2.03e-04 3 win/s eta 2:10:50
+  [18:14:21] epoch 24 step 377/768 [E128_512 hbn] loss 0.25420 lr 2.03e-04 3 win/s eta 2:07:40
+  [18:16:30] epoch 24 step 384/768 [E128_512 hbn] loss 0.22770 lr 2.03e-04 3 win/s eta 2:05:15
+  [18:18:32] epoch 24 step 390/768 [E19_256 tueg] loss 0.30431 lr 2.03e-04 3 win/s eta 2:03:22
+  [18:20:34] epoch 24 step 397/768 [E128_512 hbn] loss 0.21888 lr 2.03e-04 3 win/s eta 2:00:51
+  [18:21:45] epoch 24 step 401/768 [E128_512 hbn] loss 0.21124 lr 2.03e-04 3 win/s eta 1:59:26
+  [18:23:51] epoch 24 step 411/768 [E19_256 tueg] loss 0.30803 lr 2.02e-04 3 win/s eta 1:55:10
+  [18:25:56] epoch 24 step 417/768 [E19_256 tueg] loss 0.29627 lr 2.02e-04 3 win/s eta 1:53:22
+  [18:28:12] epoch 24 step 426/768 [E19_256 tueg] loss 0.31633 lr 2.02e-04 3 win/s eta 1:49:57
+  [18:30:22] epoch 24 step 432/768 [E19_256 tueg] loss 0.29188 lr 2.02e-04 3 win/s eta 1:48:12
+  [18:32:42] epoch 24 step 443/768 [E19_256 tueg] loss 0.30866 lr 2.02e-04 3 win/s eta 1:43:46
+  [18:33:50] epoch 24 step 451/768 [E128_512 hbn] loss 0.22252 lr 2.02e-04 3 win/s eta 1:40:13
+  [18:35:55] epoch 24 step 460/768 [E128_512 hbn] loss 0.18133 lr 2.02e-04 3 win/s eta 1:36:52
+  [18:38:08] epoch 24 step 468/768 [E19_256 tueg] loss 0.30899 lr 2.02e-04 3 win/s eta 1:34:09
+  [18:40:12] epoch 24 step 479/768 [E128_512 hbn] loss 0.23695 lr 2.02e-04 3 win/s eta 1:29:52
+  [18:42:25] epoch 24 step 488/768 [E19_256 tueg] loss 0.30004 lr 2.02e-04 3 win/s eta 1:26:44
+  [18:44:38] epoch 24 step 495/768 [E19_256 tueg] loss 0.29825 lr 2.02e-04 3 win/s eta 1:24:36
+  [18:45:49] epoch 24 step 501/768 [E128_512 hbn] loss 0.21783 lr 2.02e-04 3 win/s eta 1:22:22
+  [18:47:56] epoch 24 step 510/768 [E19_256 tueg] loss 0.31075 lr 2.01e-04 3 win/s eta 1:19:16
+  [18:50:22] epoch 24 step 518/768 [E19_256 tueg] loss 0.30315 lr 2.01e-04 3 win/s eta 1:16:47
+  [18:52:23] epoch 24 step 528/768 [E128_512 hbn] loss 0.22722 lr 2.01e-04 3 win/s eta 1:13:14
+  [18:54:25] epoch 24 step 539/768 [E19_256 tueg] loss 0.29484 lr 2.01e-04 3 win/s eta 1:09:19
+  [18:56:25] epoch 24 step 551/768 [E128_512 hgd] loss 0.15876 lr 2.01e-04 3 win/s eta 1:05:03
+  [18:58:31] epoch 24 step 560/768 [E19_256 tueg] loss 0.29464 lr 2.01e-04 3 win/s eta 1:02:07
+  [19:00:36] epoch 24 step 569/768 [E128_512 hbn] loss 0.21281 lr 2.01e-04 3 win/s eta 59:13
+  [19:02:58] epoch 24 step 584/768 [E19_256 tueg] loss 0.31993 lr 2.01e-04 3 win/s eta 54:06
+  [19:05:00] epoch 24 step 595/768 [E32_512 faced] loss 0.32162 lr 2.01e-04 3 win/s eta 50:31
+  [19:06:14] epoch 24 step 601/768 [E128_512 hbn] loss 0.25344 lr 2.01e-04 3 win/s eta 48:37
+  [19:08:30] epoch 24 step 614/768 [E19_256 tueg] loss 0.30644 lr 2.00e-04 3 win/s eta 44:27
+  [19:10:49] epoch 24 step 626/768 [E19_256 tueg] loss 0.29042 lr 2.00e-04 3 win/s eta 40:43
+  [19:12:53] epoch 24 step 636/768 [E19_256 tueg] loss 0.30511 lr 2.00e-04 3 win/s eta 37:41
+  [19:14:56] epoch 24 step 646/768 [E128_512 hbn] loss 0.23596 lr 2.00e-04 4 win/s eta 34:41
+  [19:15:35] epoch 24 step 651/768 [E128_512 hbn] loss 0.24705 lr 2.00e-04 4 win/s eta 33:07
+  [19:17:51] epoch 24 step 662/768 [E19_256 tueg] loss 0.30376 lr 2.00e-04 4 win/s eta 29:52
+  [19:19:51] epoch 24 step 675/768 [E128_512 hbn] loss 0.25972 lr 2.00e-04 4 win/s eta 25:59
+  [19:21:54] epoch 24 step 685/768 [E19_256 tueg] loss 0.29589 lr 2.00e-04 4 win/s eta 23:06
+  [19:24:01] epoch 24 step 696/768 [E128_512 hbn] loss 0.24211 lr 2.00e-04 4 win/s eta 19:56
+  [19:24:48] epoch 24 step 701/768 [E19_256 tueg] loss 0.29882 lr 2.00e-04 4 win/s eta 18:30
+  [19:27:11] epoch 24 step 715/768 [E19_256 tueg] loss 0.30590 lr 1.99e-04 4 win/s eta 14:31
+  [19:29:13] epoch 24 step 729/768 [E128_512 hbn] loss 0.23941 lr 1.99e-04 4 win/s eta 10:35
+  [19:31:29] epoch 24 step 741/768 [E19_256 tueg] loss 0.29432 lr 1.99e-04 4 win/s eta 7:17
+  [19:33:12] epoch 24 step 751/768 [E128_512 hbn] loss 0.22021 lr 1.99e-04 4 win/s eta 4:34
+  [19:35:19] epoch 24 step 762/768 [E19_256 tueg] loss 0.29561 lr 1.99e-04 4 win/s eta 1:36
+  [19:36:27] epoch 24 step 768/768 [E64_256 m3cv] loss 0.20934 lr 1.99e-04 4 win/s eta 0:00
+  [19:38:29] epoch 24 val 234/238 eta 0:02
+epoch 24 done (25/60): train total 0.25056  val total 0.27166 (spec 0.34050 r 0.809 nmse 0.341 | raw 0.20282 r 0.837 nmse 0.293 | macro 0.25909)  gate 0.3638  [3:25:12 train + 2:18 val, elapsed 11:44:41, run eta 102:46:05]
+  new best raw: 0.20282 at epoch 24  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [19:39:07] epoch 25 step 1/768 [E19_256 tueg] loss 0.30548 lr 1.99e-04 6 win/s eta 4:22:52
+  [19:41:10] epoch 25 step 13/768 [E128_512 hbn] loss 0.28203 lr 1.99e-04 6 win/s eta 2:19:05
+  [19:43:16] epoch 25 step 26/768 [E64_256 m3cv] loss 0.21701 lr 1.99e-04 6 win/s eta 2:07:57
+  [19:45:22] epoch 25 step 38/768 [E128_512 hbn] loss 0.21354 lr 1.99e-04 5 win/s eta 2:06:29
+  [19:47:23] epoch 25 step 48/768 [E19_256 tueg] loss 0.30645 lr 1.98e-04 6 win/s eta 2:09:01
+  [19:48:20] epoch 25 step 51/768 [E19_256 tueg] loss 0.29183 lr 1.98e-04 6 win/s eta 2:14:20
+  [19:50:30] epoch 25 step 64/768 [E128_512 hbn] loss 0.25203 lr 1.98e-04 6 win/s eta 2:09:01
+  [19:52:32] epoch 25 step 82/768 [E128_512 hbn] loss 0.20349 lr 1.98e-04 6 win/s eta 1:55:06
+  [19:54:37] epoch 25 step 95/768 [E128_512 hbn] loss 0.26367 lr 1.98e-04 6 win/s eta 1:52:15
+  [19:55:23] epoch 25 step 101/768 [E128_512 hbn] loss 0.21257 lr 1.98e-04 6 win/s eta 1:49:41
+  [19:57:26] epoch 25 step 110/768 [E32_512 tdbrain] loss 0.28080 lr 1.98e-04 6 win/s eta 1:51:33
+  [19:59:29] epoch 25 step 123/768 [E128_512 hbn] loss 0.21995 lr 1.98e-04 6 win/s eta 1:48:37
+  [20:01:34] epoch 25 step 142/768 [E128_512 hbn] loss 0.20777 lr 1.98e-04 6 win/s eta 1:40:28
+  [20:03:16] epoch 25 step 151/768 [E128_512 hbn] loss 0.22975 lr 1.97e-04 6 win/s eta 1:40:03
+  [20:05:27] epoch 25 step 166/768 [E19_256 tueg] loss 0.28378 lr 1.97e-04 6 win/s eta 1:36:45
+  [20:07:44] epoch 25 step 179/768 [E19_256 tueg] loss 0.29746 lr 1.97e-04 6 win/s eta 1:35:17
+  [20:09:47] epoch 25 step 189/768 [E32_512 tdbrain] loss 0.28253 lr 1.97e-04 6 win/s eta 1:34:57
+  [20:11:39] epoch 25 step 201/768 [E128_512 hbn] loss 0.24002 lr 1.97e-04 6 win/s eta 1:32:42
+  [20:13:41] epoch 25 step 214/768 [E128_512 hbn] loss 0.25210 lr 1.97e-04 6 win/s eta 1:30:20
+  [20:15:49] epoch 25 step 231/768 [E19_256 tueg] loss 0.29831 lr 1.97e-04 6 win/s eta 1:26:05
+  [20:17:58] epoch 25 step 245/768 [E19_256 tueg] loss 0.30460 lr 1.96e-04 6 win/s eta 1:23:40
+  [20:18:31] epoch 25 step 251/768 [E64_256 physionet_mi] loss 0.17487 lr 1.96e-04 6 win/s eta 1:21:50
+  [20:20:44] epoch 25 step 265/768 [E19_256 tueg] loss 0.28617 lr 1.96e-04 6 win/s eta 1:19:38
+  [20:22:44] epoch 25 step 277/768 [E128_512 hbn] loss 0.24605 lr 1.96e-04 7 win/s eta 1:17:55
+  [20:24:47] epoch 25 step 295/768 [E32_512 faced] loss 0.32178 lr 1.96e-04 7 win/s eta 1:13:46
+  [20:25:58] epoch 25 step 301/768 [E128_512 hgd] loss 0.15707 lr 1.96e-04 7 win/s eta 1:13:12
+  [20:28:03] epoch 25 step 311/768 [E19_256 tueg] loss 0.31447 lr 1.96e-04 7 win/s eta 1:12:24
+  [20:30:06] epoch 25 step 327/768 [E128_512 hbn] loss 0.18271 lr 1.96e-04 7 win/s eta 1:09:12
+  [20:32:13] epoch 25 step 345/768 [E19_256 tueg] loss 0.31770 lr 1.95e-04 7 win/s eta 1:05:31
+  [20:33:01] epoch 25 step 351/768 [E64_256 physionet_mi] loss 0.15219 lr 1.95e-04 7 win/s eta 1:04:26
+  [20:35:02] epoch 25 step 364/768 [E128_512 hbn] loss 0.26852 lr 1.95e-04 7 win/s eta 1:02:26
+  [20:37:07] epoch 25 step 379/768 [E19_256 tueg] loss 0.29682 lr 1.95e-04 7 win/s eta 59:52
+  [20:39:12] epoch 25 step 393/768 [E19_256 tueg] loss 0.31304 lr 1.95e-04 7 win/s eta 57:39
+  [20:40:16] epoch 25 step 401/768 [E19_256 tueg] loss 0.30608 lr 1.95e-04 7 win/s eta 56:16
+  [20:42:18] epoch 25 step 415/768 [E64_256 m3cv] loss 0.22903 lr 1.95e-04 7 win/s eta 54:02
+  [20:44:18] epoch 25 step 428/768 [E128_512 hbn] loss 0.22340 lr 1.95e-04 7 win/s eta 52:03
+  [20:46:24] epoch 25 step 446/768 [E32_512 tdbrain] loss 0.28684 lr 1.94e-04 7 win/s eta 48:49
+  [20:47:18] epoch 25 step 451/768 [E32_512 tdbrain] loss 0.27855 lr 1.94e-04 7 win/s eta 48:09
+  [20:49:31] epoch 25 step 465/768 [E19_256 tueg] loss 0.29800 lr 1.94e-04 7 win/s eta 46:05
+  [20:51:36] epoch 25 step 480/768 [E19_256 tueg] loss 0.29403 lr 1.94e-04 7 win/s eta 43:41
+  [20:53:36] epoch 25 step 495/768 [E19_256 tueg] loss 0.29160 lr 1.94e-04 7 win/s eta 41:15
+  [20:54:14] epoch 25 step 501/768 [E128_512 hbn] loss 0.22612 lr 1.94e-04 7 win/s eta 40:12
+  [20:56:23] epoch 25 step 517/768 [E19_256 tueg] loss 0.31837 lr 1.94e-04 7 win/s eta 37:40
+  [20:58:23] epoch 25 step 527/768 [E19_256 tueg] loss 0.30122 lr 1.94e-04 7 win/s eta 36:24
+  [21:00:51] epoch 25 step 543/768 [E19_256 tueg] loss 0.30526 lr 1.93e-04 7 win/s eta 34:00
+  [21:02:36] epoch 25 step 551/768 [E128_512 hbn] loss 0.23864 lr 1.93e-04 7 win/s eta 33:00
+  [21:04:36] epoch 25 step 564/768 [E128_512 hbn] loss 0.22711 lr 1.93e-04 7 win/s eta 31:02
+  [21:06:41] epoch 25 step 578/768 [E128_512 hbn] loss 0.26032 lr 1.93e-04 7 win/s eta 28:53
+  [21:08:41] epoch 25 step 595/768 [E19_256 tueg] loss 0.29060 lr 1.93e-04 7 win/s eta 26:08
+  [21:09:27] epoch 25 step 601/768 [E128_512 hbn] loss 0.22279 lr 1.93e-04 7 win/s eta 25:11
+  [21:11:32] epoch 25 step 618/768 [E128_512 hbn] loss 0.23618 lr 1.93e-04 7 win/s eta 22:30
+  [21:13:35] epoch 25 step 634/768 [E128_512 hbn] loss 0.22773 lr 1.93e-04 7 win/s eta 20:02
+  [21:15:09] epoch 25 step 651/768 [E128_512 hbn] loss 0.25486 lr 1.92e-04 7 win/s eta 17:19
+  [21:17:11] epoch 25 step 664/768 [E128_512 hbn] loss 0.23649 lr 1.92e-04 7 win/s eta 15:24
+  [21:19:27] epoch 25 step 683/768 [E19_256 tueg] loss 0.31086 lr 1.92e-04 7 win/s eta 12:31
+  [21:21:30] epoch 25 step 701/768 [E128_512 hbn] loss 0.21716 lr 1.92e-04 7 win/s eta 9:49
+  [21:23:32] epoch 25 step 716/768 [E128_512 hbn] loss 0.23511 lr 1.92e-04 7 win/s eta 7:36
+  [21:25:44] epoch 25 step 730/768 [E19_256 tueg] loss 0.29653 lr 1.92e-04 7 win/s eta 5:34
+  [21:27:47] epoch 25 step 744/768 [E128_512 hbn] loss 0.20635 lr 1.91e-04 7 win/s eta 3:30
+  [21:28:48] epoch 25 step 751/768 [E128_512 hbn] loss 0.24982 lr 1.91e-04 7 win/s eta 2:29
+  [21:30:48] epoch 25 step 764/768 [E19_256 tueg] loss 0.31223 lr 1.91e-04 7 win/s eta 0:35
+  [21:31:14] epoch 25 step 768/768 [E19_256 tueg] loss 0.29755 lr 1.91e-04 7 win/s eta 0:00
+epoch 25 done (26/60): train total 0.25085  val total 0.26743 (spec 0.33335 r 0.814 nmse 0.333 | raw 0.20151 r 0.839 nmse 0.291 | macro 0.25603)  gate 0.3669  [1:52:27 train + 1:48 val, elapsed 13:38:58, run eta 92:49:01]
+  new best total: 0.26743 at epoch 25  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.33335 at epoch 25  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.20151 at epoch 25  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.25603 at epoch 25  (macro_route_loss_total -> best_macro_total.pth)
+  [21:33:08] epoch 26 step 1/768 [E64_256 m3cv] loss 0.21947 lr 1.91e-04 17 win/s eta 35:50
+  [21:35:08] epoch 26 step 18/768 [E19_256 tueg] loss 0.29086 lr 1.91e-04 8 win/s eta 1:25:43
+  [21:37:21] epoch 26 step 36/768 [E19_256 tueg] loss 0.31735 lr 1.91e-04 8 win/s eta 1:26:51
+  [21:39:09] epoch 26 step 51/768 [E32_512 faced] loss 0.31093 lr 1.91e-04 8 win/s eta 1:25:22
+  [21:41:22] epoch 26 step 71/768 [E19_256 tueg] loss 0.30576 lr 1.91e-04 8 win/s eta 1:21:17
+  [21:43:36] epoch 26 step 89/768 [E19_256 tueg] loss 0.29120 lr 1.90e-04 8 win/s eta 1:20:11
+  [21:44:51] epoch 26 step 101/768 [E32_512 faced] loss 0.31961 lr 1.90e-04 8 win/s eta 1:17:42
+  [21:46:54] epoch 26 step 114/768 [E19_256 tueg] loss 0.30864 lr 1.90e-04 8 win/s eta 1:19:15
+  [21:48:57] epoch 26 step 129/768 [E32_512 faced] loss 0.32092 lr 1.90e-04 8 win/s eta 1:18:37
+  [21:50:59] epoch 26 step 147/768 [E19_256 tueg] loss 0.30249 lr 1.90e-04 8 win/s eta 1:15:38
+  [21:51:30] epoch 26 step 151/768 [E128_512 hbn] loss 0.21641 lr 1.90e-04 8 win/s eta 1:15:16
+  [21:53:40] epoch 26 step 168/768 [E19_256 tueg] loss 0.31490 lr 1.90e-04 8 win/s eta 1:13:29
+  [21:55:49] epoch 26 step 184/768 [E19_256 tueg] loss 0.30905 lr 1.89e-04 8 win/s eta 1:12:10
+  [21:58:01] epoch 26 step 200/768 [E19_256 tueg] loss 0.30422 lr 1.89e-04 8 win/s eta 1:10:48
+  [21:58:05] epoch 26 step 201/768 [E128_512 hbn] loss 0.22849 lr 1.89e-04 8 win/s eta 1:10:32
+  [22:00:09] epoch 26 step 221/768 [E19_256 tueg] loss 0.30572 lr 1.89e-04 8 win/s eta 1:07:00
+  [22:02:16] epoch 26 step 236/768 [E19_256 tueg] loss 0.31109 lr 1.89e-04 8 win/s eta 1:05:48
+  [22:03:56] epoch 26 step 251/768 [E32_512 tdbrain] loss 0.28669 lr 1.89e-04 8 win/s eta 1:03:32
+  [22:05:56] epoch 26 step 269/768 [E128_512 hgd] loss 0.13968 lr 1.89e-04 8 win/s eta 1:00:56
+  [22:08:06] epoch 26 step 282/768 [E19_256 tueg] loss 0.30461 lr 1.88e-04 8 win/s eta 1:00:20
+  [22:10:07] epoch 26 step 299/768 [E128_512 hgd] loss 0.13409 lr 1.88e-04 8 win/s eta 58:05
+  [22:10:28] epoch 26 step 301/768 [E19_256 tueg] loss 0.30069 lr 1.88e-04 8 win/s eta 57:59
+  [22:12:28] epoch 26 step 315/768 [E128_512 hbn] loss 0.25102 lr 1.88e-04 8 win/s eta 56:38
+  [22:14:41] epoch 26 step 332/768 [E19_256 tueg] loss 0.31800 lr 1.88e-04 8 win/s eta 54:37
+  [22:16:52] epoch 26 step 349/768 [E19_256 tueg] loss 0.31862 lr 1.88e-04 8 win/s eta 52:33
+  [22:17:00] epoch 26 step 351/768 [E64_256 m3cv] loss 0.20873 lr 1.88e-04 8 win/s eta 52:10
+  [22:19:10] epoch 26 step 368/768 [E19_256 tueg] loss 0.30879 lr 1.88e-04 8 win/s eta 50:05
+  [22:21:12] epoch 26 step 382/768 [E128_512 hbn] loss 0.21375 lr 1.87e-04 8 win/s eta 48:37
+  [22:23:17] epoch 26 step 401/768 [E128_512 hbn] loss 0.28463 lr 1.87e-04 8 win/s eta 45:56
+  [22:25:21] epoch 26 step 418/768 [E128_512 hbn] loss 0.23209 lr 1.87e-04 8 win/s eta 43:45
+  [22:27:23] epoch 26 step 431/768 [E19_256 tueg] loss 0.29488 lr 1.87e-04 8 win/s eta 42:27
+  [22:29:25] epoch 26 step 451/768 [E128_512 hbn] loss 0.18945 lr 1.87e-04 8 win/s eta 39:35
+  [22:31:41] epoch 26 step 468/768 [E19_256 tueg] loss 0.31524 lr 1.86e-04 8 win/s eta 37:33
+  [22:33:50] epoch 26 step 484/768 [E19_256 tueg] loss 0.30209 lr 1.86e-04 8 win/s eta 35:38
+  [22:35:47] epoch 26 step 501/768 [E128_512 hbn] loss 0.22726 lr 1.86e-04 8 win/s eta 33:24
+  [22:37:47] epoch 26 step 517/768 [E128_512 hbn] loss 0.24061 lr 1.86e-04 8 win/s eta 31:24
+  [22:39:48] epoch 26 step 536/768 [E128_512 hbn] loss 0.23572 lr 1.86e-04 8 win/s eta 28:52
+  [22:41:25] epoch 26 step 551/768 [E128_512 hbn] loss 0.25638 lr 1.86e-04 8 win/s eta 26:54
+  [22:43:27] epoch 26 step 567/768 [E64_256 physionet_mi] loss 0.17840 lr 1.85e-04 8 win/s eta 24:56
+  [22:45:29] epoch 26 step 584/768 [E128_512 hbn] loss 0.23262 lr 1.85e-04 8 win/s eta 22:48
+  [22:47:29] epoch 26 step 599/768 [E19_256 tueg] loss 0.30247 lr 1.85e-04 8 win/s eta 20:59
+  [22:47:49] epoch 26 step 601/768 [E19_256 tueg] loss 0.29300 lr 1.85e-04 8 win/s eta 20:46
+  [22:49:49] epoch 26 step 615/768 [E128_512 hbn] loss 0.21094 lr 1.85e-04 8 win/s eta 19:05
+  [22:51:53] epoch 26 step 634/768 [E128_512 hbn] loss 0.22102 lr 1.85e-04 8 win/s eta 16:39
+  [22:53:28] epoch 26 step 651/768 [E128_512 hgd] loss 0.14666 lr 1.85e-04 8 win/s eta 14:26
+  [22:55:31] epoch 26 step 671/768 [E128_512 hbn] loss 0.25620 lr 1.84e-04 8 win/s eta 11:54
+  [22:57:35] epoch 26 step 688/768 [E19_256 tueg] loss 0.31402 lr 1.84e-04 8 win/s eta 9:49
+  [22:58:36] epoch 26 step 701/768 [E128_512 hgd] loss 0.14898 lr 1.84e-04 8 win/s eta 8:10
+  [23:00:39] epoch 26 step 719/768 [E128_512 hbn] loss 0.24394 lr 1.84e-04 8 win/s eta 5:58
+  [23:02:42] epoch 26 step 739/768 [E19_256 tueg] loss 0.30092 lr 1.84e-04 8 win/s eta 3:31
+  [23:04:22] epoch 26 step 751/768 [E64_256 m3cv] loss 0.22747 lr 1.84e-04 8 win/s eta 2:03
+  [23:06:37] epoch 26 step 767/768 [E19_256 tueg] loss 0.30121 lr 1.83e-04 8 win/s eta 0:07
+  [23:06:42] epoch 26 step 768/768 [E128_512 hbn] loss 0.20734 lr 1.83e-04 8 win/s eta 0:00
+epoch 26 done (27/60): train total 0.24269  val total 0.26466 (spec 0.33025 r 0.815 nmse 0.330 | raw 0.19907 r 0.841 nmse 0.287 | macro 0.25395)  gate 0.3696  [1:33:36 train + 2:00 val, elapsed 15:14:38, run eta 83:50:30]
+  new best total: 0.26466 at epoch 26  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.33025 at epoch 26  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.19907 at epoch 26  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.25395 at epoch 26  (macro_route_loss_total -> best_macro_total.pth)
+  [23:08:49] epoch 27 step 1/768 [E128_512 hbn] loss 0.25845 lr 1.83e-04 6 win/s eta 52:41
+  [23:10:50] epoch 27 step 16/768 [E128_512 hbn] loss 0.22260 lr 1.83e-04 8 win/s eta 1:37:30
+  [23:12:50] epoch 27 step 27/768 [E19_256 tueg] loss 0.30180 lr 1.83e-04 8 win/s eta 1:52:00
+  [23:14:52] epoch 27 step 42/768 [E128_512 hbn] loss 0.24019 lr 1.83e-04 8 win/s eta 1:45:42
+  [23:15:59] epoch 27 step 51/768 [E64_256 physionet_mi] loss 0.15580 lr 1.83e-04 7 win/s eta 1:41:47
+  [23:18:01] epoch 27 step 69/768 [E19_256 tueg] loss 0.30924 lr 1.83e-04 8 win/s eta 1:33:46
+  [23:20:01] epoch 27 step 86/768 [E128_512 hbn] loss 0.20940 lr 1.83e-04 7 win/s eta 1:29:23
+  [23:22:05] epoch 27 step 99/768 [E19_256 tueg] loss 0.31416 lr 1.82e-04 8 win/s eta 1:30:02
+  [23:22:14] epoch 27 step 101/768 [E128_512 hbn] loss 0.21189 lr 1.82e-04 7 win/s eta 1:29:04
+  [23:24:21] epoch 27 step 120/768 [E19_256 tueg] loss 0.30619 lr 1.82e-04 8 win/s eta 1:24:15
+  [23:26:22] epoch 27 step 134/768 [E19_256 tueg] loss 0.31290 lr 1.82e-04 8 win/s eta 1:23:18
+  [23:28:28] epoch 27 step 151/768 [E19_256 tueg] loss 0.29641 lr 1.82e-04 8 win/s eta 1:20:35
+  [23:30:41] epoch 27 step 170/768 [E19_256 tueg] loss 0.31522 lr 1.82e-04 8 win/s eta 1:17:07
+  [23:32:52] epoch 27 step 184/768 [E19_256 tueg] loss 0.30643 lr 1.82e-04 8 win/s eta 1:16:31
+  [23:34:07] epoch 27 step 201/768 [E64_256 physionet_mi] loss 0.15901 lr 1.81e-04 8 win/s eta 1:11:31
+  [23:36:15] epoch 27 step 221/768 [E19_256 tueg] loss 0.30269 lr 1.81e-04 8 win/s eta 1:08:03
+  [23:38:29] epoch 27 step 243/768 [E19_256 tueg] loss 0.30323 lr 1.81e-04 8 win/s eta 1:04:13
+  [23:39:25] epoch 27 step 251/768 [E128_512 hbn] loss 0.25835 lr 1.81e-04 8 win/s eta 1:03:09
+  [23:41:32] epoch 27 step 268/768 [E19_256 tueg] loss 0.30555 lr 1.81e-04 8 win/s eta 1:01:10
+  [23:43:35] epoch 27 step 287/768 [E128_512 hbn] loss 0.26029 lr 1.80e-04 8 win/s eta 58:22
+  [23:45:27] epoch 27 step 301/768 [E32_512 tdbrain] loss 0.28053 lr 1.80e-04 8 win/s eta 56:56
+  [23:47:38] epoch 27 step 315/768 [E19_256 tueg] loss 0.30806 lr 1.80e-04 8 win/s eta 55:55
+  [23:49:42] epoch 27 step 330/768 [E128_512 hbn] loss 0.20555 lr 1.80e-04 8 win/s eta 54:21
+  [23:51:51] epoch 27 step 344/768 [E19_256 tueg] loss 0.29496 lr 1.80e-04 8 win/s eta 53:06
+  [23:52:45] epoch 27 step 351/768 [E128_512 hbn] loss 0.20190 lr 1.80e-04 8 win/s eta 52:16
+  [23:54:46] epoch 27 step 371/768 [E128_512 hbn] loss 0.24629 lr 1.80e-04 8 win/s eta 49:14
+  [23:56:57] epoch 27 step 391/768 [E19_256 tueg] loss 0.31137 lr 1.79e-04 8 win/s eta 46:28
+  [23:58:04] epoch 27 step 401/768 [E128_512 hbn] loss 0.18068 lr 1.79e-04 8 win/s eta 45:08
+  [00:00:04] epoch 27 step 424/768 [E32_512 tdbrain] loss 0.28619 lr 1.79e-04 8 win/s eta 41:38
+  [00:02:06] epoch 27 step 442/768 [E19_256 tueg] loss 0.28784 lr 1.79e-04 8 win/s eta 39:20
+  [00:03:29] epoch 27 step 451/768 [E128_512 hgd] loss 0.14490 lr 1.79e-04 8 win/s eta 38:27
+  [00:05:30] epoch 27 step 469/768 [E64_256 m3cv] loss 0.21003 lr 1.79e-04 8 win/s eta 36:10
+  [00:07:33] epoch 27 step 487/768 [E128_512 hbn] loss 0.24470 lr 1.78e-04 8 win/s eta 33:55
+  [00:09:27] epoch 27 step 501/768 [E128_512 hbn] loss 0.22477 lr 1.78e-04 8 win/s eta 32:21
+  [00:11:38] epoch 27 step 518/768 [E19_256 tueg] loss 0.30620 lr 1.78e-04 8 win/s eta 30:21
+  [00:13:41] epoch 27 step 530/768 [E19_256 tueg] loss 0.29224 lr 1.78e-04 8 win/s eta 29:09
+  [00:15:47] epoch 27 step 544/768 [E19_256 tueg] loss 0.28972 lr 1.78e-04 8 win/s eta 27:36
+  [00:16:28] epoch 27 step 551/768 [E64_256 m3cv] loss 0.19961 lr 1.78e-04 8 win/s eta 26:39
+  [00:18:42] epoch 27 step 563/768 [E19_256 tueg] loss 0.27934 lr 1.78e-04 8 win/s eta 25:28
+  [00:20:49] epoch 27 step 584/768 [E19_256 tueg] loss 0.29033 lr 1.77e-04 8 win/s eta 22:42
+  [00:22:46] epoch 27 step 601/768 [E19_256 tueg] loss 0.31152 lr 1.77e-04 8 win/s eta 20:34
+  [00:24:52] epoch 27 step 621/768 [E32_512 tdbrain] loss 0.28618 lr 1.77e-04 8 win/s eta 18:00
+  [00:27:03] epoch 27 step 635/768 [E19_256 tueg] loss 0.28766 lr 1.77e-04 8 win/s eta 16:23
+  [00:28:56] epoch 27 step 651/768 [E128_512 hbn] loss 0.27677 lr 1.77e-04 8 win/s eta 14:24
+  [00:31:08] epoch 27 step 668/768 [E19_256 tueg] loss 0.30593 lr 1.77e-04 8 win/s eta 12:19
+  [00:33:11] epoch 27 step 683/768 [E19_256 tueg] loss 0.30034 lr 1.76e-04 8 win/s eta 10:30
+  [00:35:20] epoch 27 step 699/768 [E19_256 tueg] loss 0.30855 lr 1.76e-04 8 win/s eta 8:32
+  [00:35:38] epoch 27 step 701/768 [E128_512 hbn] loss 0.22094 lr 1.76e-04 8 win/s eta 8:18
+  [00:37:43] epoch 27 step 722/768 [E19_256 tueg] loss 0.29715 lr 1.76e-04 8 win/s eta 5:40
+  [00:39:54] epoch 27 step 740/768 [E19_256 tueg] loss 0.30109 lr 1.76e-04 8 win/s eta 3:26
+  [00:41:22] epoch 27 step 751/768 [E64_256 physionet_mi] loss 0.17642 lr 1.76e-04 8 win/s eta 2:05
+  [00:43:36] epoch 27 step 765/768 [E19_256 tueg] loss 0.30396 lr 1.76e-04 8 win/s eta 0:22
+  [00:43:49] epoch 27 step 768/768 [E32_512 tdbrain] loss 0.28030 lr 1.76e-04 8 win/s eta 0:00
+epoch 27 done (28/60): train total 0.24264  val total 0.26552 (spec 0.32999 r 0.816 nmse 0.330 | raw 0.20105 r 0.839 nmse 0.291 | macro 0.25410)  gate 0.3718  [1:35:03 train + 1:55 val, elapsed 16:51:40, run eta 77:04:47]
+  new best spec: 0.32999 at epoch 27  (loss_masked_spec_mse -> best_spec.pth)
+  [00:45:49] epoch 28 step 1/768 [E32_512 faced] loss 0.29984 lr 1.76e-04 24 win/s eta 52:12
+  [00:48:04] epoch 28 step 19/768 [E19_256 tueg] loss 0.29636 lr 1.75e-04 8 win/s eta 1:31:27
+  [00:50:09] epoch 28 step 34/768 [E19_256 tueg] loss 0.30184 lr 1.75e-04 8 win/s eta 1:35:00
+  [00:52:18] epoch 28 step 49/768 [E19_256 tueg] loss 0.28269 lr 1.75e-04 8 win/s eta 1:35:59
+  [00:52:40] epoch 28 step 51/768 [E19_256 tueg] loss 0.29734 lr 1.75e-04 8 win/s eta 1:37:07
+  [00:54:51] epoch 28 step 68/768 [E19_256 tueg] loss 0.29455 lr 1.75e-04 8 win/s eta 1:33:36
+  [00:56:53] epoch 28 step 86/768 [E128_512 hbn] loss 0.24639 lr 1.75e-04 8 win/s eta 1:28:16
+  [00:58:43] epoch 28 step 101/768 [E128_512 hbn] loss 0.23166 lr 1.74e-04 8 win/s eta 1:25:37
+  [01:00:44] epoch 28 step 116/768 [E128_512 hbn] loss 0.24361 lr 1.74e-04 8 win/s eta 1:24:09
+  [01:02:44] epoch 28 step 134/768 [E128_512 hbn] loss 0.19756 lr 1.74e-04 8 win/s eta 1:20:19
+  [01:04:39] epoch 28 step 151/768 [E128_512 hbn] loss 0.20893 lr 1.74e-04 8 win/s eta 1:17:12
+  [01:06:47] epoch 28 step 167/768 [E19_256 tueg] loss 0.30187 lr 1.74e-04 8 win/s eta 1:15:41
+  [01:08:51] epoch 28 step 187/768 [E128_512 hbn] loss 0.22101 lr 1.74e-04 8 win/s eta 1:11:46
+  [01:10:45] epoch 28 step 201/768 [E128_512 hbn] loss 0.21297 lr 1.73e-04 8 win/s eta 1:10:30
+  [01:12:46] epoch 28 step 213/768 [E19_256 tueg] loss 0.29933 lr 1.73e-04 8 win/s eta 1:10:22
+  [01:14:52] epoch 28 step 230/768 [E19_256 tueg] loss 0.30983 lr 1.73e-04 8 win/s eta 1:08:04
+  [01:17:00] epoch 28 step 245/768 [E19_256 tueg] loss 0.30820 lr 1.73e-04 8 win/s eta 1:06:42
+  [01:17:59] epoch 28 step 251/768 [E19_256 tueg] loss 0.29615 lr 1.73e-04 8 win/s eta 1:06:23
+  [01:20:01] epoch 28 step 267/768 [E32_512 tdbrain] loss 0.28754 lr 1.73e-04 8 win/s eta 1:04:16
+  [01:22:06] epoch 28 step 280/768 [E128_512 hbn] loss 0.25083 lr 1.73e-04 8 win/s eta 1:03:20
+  [01:24:10] epoch 28 step 297/768 [E128_512 hbn] loss 0.21103 lr 1.72e-04 8 win/s eta 1:00:55
+  [01:24:38] epoch 28 step 301/768 [E19_256 tueg] loss 0.30475 lr 1.72e-04 8 win/s eta 1:00:19
+  [01:26:39] epoch 28 step 315/768 [E19_256 tueg] loss 0.30151 lr 1.72e-04 8 win/s eta 58:48
+  [01:28:43] epoch 28 step 329/768 [E128_512 hbn] loss 0.24794 lr 1.72e-04 8 win/s eta 57:20
+  [01:30:44] epoch 28 step 347/768 [E128_512 hbn] loss 0.24247 lr 1.72e-04 8 win/s eta 54:34
+  [01:31:40] epoch 28 step 351/768 [E32_512 tdbrain] loss 0.29732 lr 1.72e-04 8 win/s eta 54:32
+  [01:33:53] epoch 28 step 365/768 [E19_256 tueg] loss 0.28331 lr 1.72e-04 8 win/s eta 53:08
+  [01:35:59] epoch 28 step 381/768 [E19_256 tueg] loss 0.30118 lr 1.72e-04 8 win/s eta 51:01
+  [01:38:03] epoch 28 step 397/768 [E19_256 tueg] loss 0.30267 lr 1.71e-04 8 win/s eta 48:52
+  [01:38:50] epoch 28 step 401/768 [E19_256 tueg] loss 0.30410 lr 1.71e-04 8 win/s eta 48:34
+  [01:40:53] epoch 28 step 416/768 [E128_512 hbn] loss 0.22809 lr 1.71e-04 8 win/s eta 46:39
+  [01:42:54] epoch 28 step 436/768 [E64_256 m3cv] loss 0.22358 lr 1.71e-04 8 win/s eta 43:30
+  [01:44:37] epoch 28 step 451/768 [E128_512 hbn] loss 0.23444 lr 1.71e-04 8 win/s eta 41:22
+  [01:46:42] epoch 28 step 469/768 [E128_512 hbn] loss 0.23418 lr 1.71e-04 8 win/s eta 38:51
+  [01:48:54] epoch 28 step 482/768 [E19_256 tueg] loss 0.29958 lr 1.71e-04 8 win/s eta 37:28
+  [01:50:58] epoch 28 step 497/768 [E19_256 tueg] loss 0.29224 lr 1.70e-04 8 win/s eta 35:33
+  [01:51:38] epoch 28 step 501/768 [E128_512 hbn] loss 0.25977 lr 1.70e-04 8 win/s eta 35:06
+  [01:53:39] epoch 28 step 514/768 [E64_256 m3cv] loss 0.23268 lr 1.70e-04 8 win/s eta 33:32
+  [01:55:47] epoch 28 step 528/768 [E19_256 tueg] loss 0.30507 lr 1.70e-04 8 win/s eta 31:49
+  [01:57:51] epoch 28 step 542/768 [E19_256 tueg] loss 0.29155 lr 1.70e-04 8 win/s eta 30:03
+  [01:58:45] epoch 28 step 551/768 [E19_256 tueg] loss 0.29017 lr 1.70e-04 8 win/s eta 28:44
+  [02:00:46] epoch 28 step 567/768 [E32_512 tdbrain] loss 0.28578 lr 1.70e-04 8 win/s eta 26:35
+  [02:02:58] epoch 28 step 583/768 [E19_256 tueg] loss 0.30232 lr 1.69e-04 8 win/s eta 24:30
+  [02:05:13] epoch 28 step 598/768 [E19_256 tueg] loss 0.29655 lr 1.69e-04 8 win/s eta 22:35
+  [02:05:47] epoch 28 step 601/768 [E19_256 tueg] loss 0.29589 lr 1.69e-04 8 win/s eta 22:14
+  [02:08:02] epoch 28 step 620/768 [E19_256 tueg] loss 0.29986 lr 1.69e-04 8 win/s eta 19:38
+  [02:10:15] epoch 28 step 636/768 [E19_256 tueg] loss 0.28883 lr 1.69e-04 8 win/s eta 17:32
+  [02:12:21] epoch 28 step 651/768 [E19_256 tueg] loss 0.30396 lr 1.69e-04 8 win/s eta 15:33
+  [02:14:25] epoch 28 step 666/768 [E19_256 tueg] loss 0.30074 lr 1.69e-04 8 win/s eta 13:34
+  [02:16:35] epoch 28 step 681/768 [E19_256 tueg] loss 0.30484 lr 1.68e-04 8 win/s eta 11:36
+  [02:18:38] epoch 28 step 699/768 [E64_256 physionet_mi] loss 0.17674 lr 1.68e-04 8 win/s eta 9:10
+  [02:18:57] epoch 28 step 701/768 [E128_512 hbn] loss 0.21038 lr 1.68e-04 8 win/s eta 8:54
+  [02:20:59] epoch 28 step 717/768 [E19_256 tueg] loss 0.30077 lr 1.68e-04 8 win/s eta 6:46
+  [02:23:09] epoch 28 step 732/768 [E19_256 tueg] loss 0.30446 lr 1.68e-04 8 win/s eta 4:47
+  [02:25:12] epoch 28 step 747/768 [E128_512 hbn] loss 0.20329 lr 1.68e-04 8 win/s eta 2:47
+  [02:25:41] epoch 28 step 751/768 [E19_256 tueg] loss 0.29665 lr 1.68e-04 8 win/s eta 2:15
+  [02:27:30] epoch 28 step 768/768 [E128_512 hbn] loss 0.20499 lr 1.68e-04 8 win/s eta 0:00
+epoch 28 done (29/60): train total 0.24516  val total 0.26353 (spec 0.32768 r 0.817 nmse 0.328 | raw 0.19938 r 0.841 nmse 0.288 | macro 0.25490)  gate 0.3738  [1:41:44 train + 1:57 val, elapsed 18:35:23, run eta 72:02:08]
+  new best total: 0.26353 at epoch 28  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.32768 at epoch 28  (loss_masked_spec_mse -> best_spec.pth)
+  [02:29:38] epoch 29 step 1/768 [E32_512 tdbrain] loss 0.28777 lr 1.68e-04 11 win/s eta 1:56:32
+  [02:31:52] epoch 29 step 18/768 [E19_256 tueg] loss 0.29494 lr 1.67e-04 8 win/s eta 1:39:31
+  [02:33:57] epoch 29 step 34/768 [E128_512 hbn] loss 0.21688 lr 1.67e-04 8 win/s eta 1:36:26
+  [02:36:11] epoch 29 step 48/768 [E19_256 tueg] loss 0.29545 lr 1.67e-04 8 win/s eta 1:40:28
+  [02:36:35] epoch 29 step 51/768 [E128_512 hgd] loss 0.14532 lr 1.67e-04 8 win/s eta 1:39:40
+  [02:38:43] epoch 29 step 69/768 [E19_256 tueg] loss 0.28786 lr 1.67e-04 8 win/s eta 1:33:35
+  [02:40:44] epoch 29 step 81/768 [E19_256 tueg] loss 0.30570 lr 1.67e-04 8 win/s eta 1:35:21
+  [02:42:50] epoch 29 step 93/768 [E19_256 tueg] loss 0.30290 lr 1.67e-04 8 win/s eta 1:36:49
+  [02:43:36] epoch 29 step 101/768 [E128_512 hbn] loss 0.23234 lr 1.67e-04 8 win/s eta 1:33:15
+  [02:45:40] epoch 29 step 119/768 [E19_256 tueg] loss 0.29412 lr 1.66e-04 8 win/s eta 1:28:12
+  [02:47:42] epoch 29 step 137/768 [E19_256 tueg] loss 0.29636 lr 1.66e-04 8 win/s eta 1:23:51
+  [02:49:46] epoch 29 step 148/768 [E128_512 hbn] loss 0.22299 lr 1.66e-04 8 win/s eta 1:24:57
+  [02:50:18] epoch 29 step 151/768 [E19_256 tueg] loss 0.29636 lr 1.66e-04 8 win/s eta 1:25:02
+  [02:52:24] epoch 29 step 167/768 [E19_256 tueg] loss 0.29612 lr 1.66e-04 8 win/s eta 1:22:26
+  [02:54:35] epoch 29 step 188/768 [E19_256 tueg] loss 0.30923 lr 1.66e-04 8 win/s eta 1:17:25
+  [02:55:55] epoch 29 step 201/768 [E128_512 hgd] loss 0.14388 lr 1.65e-04 8 win/s eta 1:14:34
+  [02:58:01] epoch 29 step 216/768 [E19_256 tueg] loss 0.29793 lr 1.65e-04 8 win/s eta 1:12:54
+  [03:00:08] epoch 29 step 232/768 [E19_256 tueg] loss 0.28892 lr 1.65e-04 8 win/s eta 1:10:47
+  [03:02:13] epoch 29 step 246/768 [E19_256 tueg] loss 0.28714 lr 1.65e-04 8 win/s eta 1:09:28
+  [03:02:32] epoch 29 step 251/768 [E128_512 hbn] loss 0.22316 lr 1.65e-04 8 win/s eta 1:08:04
+  [03:04:37] epoch 29 step 266/768 [E128_512 hbn] loss 0.23892 lr 1.65e-04 8 win/s eta 1:06:17
+  [03:06:46] epoch 29 step 283/768 [E19_256 tueg] loss 0.30692 lr 1.65e-04 8 win/s eta 1:03:53
+  [03:08:19] epoch 29 step 301/768 [E128_512 hbn] loss 0.26757 lr 1.64e-04 8 win/s eta 1:00:15
+  [03:10:20] epoch 29 step 316/768 [E128_512 hbn] loss 0.22176 lr 1.64e-04 8 win/s eta 58:25
+  [03:12:22] epoch 29 step 334/768 [E64_256 m3cv] loss 0.20316 lr 1.64e-04 8 win/s eta 55:43
+  [03:14:24] epoch 29 step 350/768 [E19_256 tueg] loss 0.29335 lr 1.64e-04 8 win/s eta 53:39
+  [03:14:29] epoch 29 step 351/768 [E128_512 hbn] loss 0.21961 lr 1.64e-04 8 win/s eta 53:27
+  [03:16:34] epoch 29 step 365/768 [E19_256 tueg] loss 0.28748 lr 1.64e-04 8 win/s eta 51:59
+  [03:18:37] epoch 29 step 380/768 [E128_512 hbn] loss 0.19315 lr 1.64e-04 8 win/s eta 50:09
+  [03:20:29] epoch 29 step 401/768 [E64_256 m3cv] loss 0.21597 lr 1.63e-04 8 win/s eta 46:40
+  [03:22:36] epoch 29 step 419/768 [E19_256 tueg] loss 0.29383 lr 1.63e-04 8 win/s eta 44:14
+  [03:24:44] epoch 29 step 431/768 [E19_256 tueg] loss 0.29830 lr 1.63e-04 8 win/s eta 43:11
+  [03:26:53] epoch 29 step 450/768 [E19_256 tueg] loss 0.28927 lr 1.63e-04 8 win/s eta 40:33
+  [03:27:00] epoch 29 step 451/768 [E32_512 tdbrain] loss 0.30874 lr 1.63e-04 8 win/s eta 40:25
+  [03:29:03] epoch 29 step 467/768 [E19_256 tueg] loss 0.29559 lr 1.63e-04 8 win/s eta 38:23
+  [03:31:04] epoch 29 step 486/768 [E128_512 hbn] loss 0.22722 lr 1.62e-04 8 win/s eta 35:43
+  [03:33:04] epoch 29 step 500/768 [E128_512 hbn] loss 0.23337 lr 1.62e-04 8 win/s eta 34:04
+  [03:33:19] epoch 29 step 501/768 [E19_256 tueg] loss 0.29288 lr 1.62e-04 8 win/s eta 34:00
+  [03:35:24] epoch 29 step 519/768 [E19_256 tueg] loss 0.28796 lr 1.62e-04 8 win/s eta 31:37
+  [03:37:35] epoch 29 step 532/768 [E19_256 tueg] loss 0.29821 lr 1.62e-04 8 win/s eta 30:12
+  [03:39:43] epoch 29 step 546/768 [E19_256 tueg] loss 0.30324 lr 1.62e-04 8 win/s eta 28:33
+  [03:40:03] epoch 29 step 551/768 [E128_512 hbn] loss 0.22860 lr 1.62e-04 8 win/s eta 27:47
+  [03:42:05] epoch 29 step 573/768 [E128_512 hbn] loss 0.22947 lr 1.62e-04 8 win/s eta 24:42
+  [03:44:11] epoch 29 step 589/768 [E19_256 tueg] loss 0.29298 lr 1.61e-04 8 win/s eta 22:42
+  [03:45:42] epoch 29 step 601/768 [E64_256 physionet_mi] loss 0.17722 lr 1.61e-04 8 win/s eta 21:10
+  [03:47:46] epoch 29 step 615/768 [E19_256 tueg] loss 0.30231 lr 1.61e-04 8 win/s eta 19:28
+  [03:49:48] epoch 29 step 633/768 [E19_256 tueg] loss 0.29345 lr 1.61e-04 8 win/s eta 17:07
+  [03:51:30] epoch 29 step 651/768 [E128_512 hbn] loss 0.23798 lr 1.61e-04 8 win/s eta 14:44
+  [03:53:31] epoch 29 step 668/768 [E128_512 hbn] loss 0.25132 lr 1.61e-04 8 win/s eta 12:34
+  [03:55:33] epoch 29 step 686/768 [E128_512 hbn] loss 0.22351 lr 1.60e-04 8 win/s eta 10:17
+  [03:56:53] epoch 29 step 701/768 [E128_512 hbn] loss 0.26976 lr 1.60e-04 8 win/s eta 8:21
+  [03:58:54] epoch 29 step 718/768 [E128_512 hbn] loss 0.18392 lr 1.60e-04 8 win/s eta 6:13
+  [04:00:57] epoch 29 step 733/768 [E128_512 hbn] loss 0.23058 lr 1.60e-04 8 win/s eta 4:22
+  [04:03:06] epoch 29 step 750/768 [E19_256 tueg] loss 0.28031 lr 1.60e-04 8 win/s eta 2:14
+  [04:03:11] epoch 29 step 751/768 [E128_512 hbn] loss 0.20683 lr 1.60e-04 8 win/s eta 2:07
+  [04:04:52] epoch 29 step 768/768 [E64_256 m3cv] loss 0.21981 lr 1.60e-04 8 win/s eta 0:00
+epoch 29 done (30/60): train total 0.24297  val total 0.26468 (spec 0.32955 r 0.816 nmse 0.330 | raw 0.19980 r 0.840 nmse 0.288 | macro 0.25255)  gate 0.3758  [1:35:22 train + 1:52 val, elapsed 20:12:40, run eta 67:22:14]
+  new best macro-route total: 0.25255 at epoch 29  (macro_route_loss_total -> best_macro_total.pth)
+  [04:06:47] epoch 30 step 1/768 [E128_512 hgd] loss 0.15556 lr 1.60e-04 20 win/s eta 15:40
+  [04:08:53] epoch 30 step 19/768 [E19_256 tueg] loss 0.29567 lr 1.59e-04 7 win/s eta 1:23:51
+  [04:10:53] epoch 30 step 37/768 [E32_512 tdbrain] loss 0.28800 lr 1.59e-04 7 win/s eta 1:21:37
+  [04:12:52] epoch 30 step 51/768 [E19_256 tueg] loss 0.28244 lr 1.59e-04 8 win/s eta 1:26:01
+  [04:15:07] epoch 30 step 68/768 [E19_256 tueg] loss 0.28694 lr 1.59e-04 8 win/s eta 1:26:01
+  [04:17:09] epoch 30 step 80/768 [E64_256 m3cv] loss 0.21695 lr 1.59e-04 8 win/s eta 1:29:20
+  [04:19:16] epoch 30 step 97/768 [E19_256 tueg] loss 0.29433 lr 1.59e-04 8 win/s eta 1:26:31
+  [04:20:07] epoch 30 step 101/768 [E19_256 tueg] loss 0.30705 lr 1.58e-04 8 win/s eta 1:28:11
+  [04:22:07] epoch 30 step 119/768 [E32_512 faced] loss 0.30575 lr 1.58e-04 8 win/s eta 1:23:47
+  [04:24:08] epoch 30 step 135/768 [E128_512 hbn] loss 0.21290 lr 1.58e-04 8 win/s eta 1:21:30
+  [04:26:09] epoch 30 step 148/768 [E19_256 tueg] loss 0.29120 lr 1.58e-04 8 win/s eta 1:21:14
+  [04:26:24] epoch 30 step 151/768 [E128_512 hbn] loss 0.25465 lr 1.58e-04 8 win/s eta 1:20:14
+  [04:28:26] epoch 30 step 170/768 [E19_256 tueg] loss 0.29960 lr 1.58e-04 8 win/s eta 1:16:16
+  [04:30:27] epoch 30 step 190/768 [E128_512 hbn] loss 0.22067 lr 1.58e-04 8 win/s eta 1:12:03
+  [04:31:21] epoch 30 step 201/768 [E128_512 hbn] loss 0.23886 lr 1.57e-04 8 win/s eta 1:09:23
+  [04:33:32] epoch 30 step 220/768 [E19_256 tueg] loss 0.29271 lr 1.57e-04 8 win/s eta 1:06:42
+  [04:35:32] epoch 30 step 236/768 [E128_512 hbn] loss 0.21414 lr 1.57e-04 8 win/s eta 1:04:52
+  [04:37:40] epoch 30 step 251/768 [E19_256 tueg] loss 0.29841 lr 1.57e-04 8 win/s eta 1:03:39
+  [04:39:43] epoch 30 step 268/768 [E128_512 hbn] loss 0.22350 lr 1.57e-04 8 win/s eta 1:01:30
+  [04:41:46] epoch 30 step 282/768 [E19_256 tueg] loss 0.30238 lr 1.57e-04 8 win/s eta 1:00:20
+  [04:43:49] epoch 30 step 298/768 [E19_256 tueg] loss 0.30823 lr 1.56e-04 8 win/s eta 58:27
+  [04:44:13] epoch 30 step 301/768 [E128_512 hbn] loss 0.26407 lr 1.56e-04 8 win/s eta 58:06
+  [04:46:25] epoch 30 step 318/768 [E19_256 tueg] loss 0.28981 lr 1.56e-04 8 win/s eta 56:07
+  [04:48:36] epoch 30 step 340/768 [E19_256 tueg] loss 0.29906 lr 1.56e-04 8 win/s eta 52:41
+  [04:50:04] epoch 30 step 351/768 [E19_256 tueg] loss 0.29603 lr 1.56e-04 8 win/s eta 51:27
+  [04:52:11] epoch 30 step 368/768 [E19_256 tueg] loss 0.30823 lr 1.56e-04 8 win/s eta 49:22
+  [04:54:24] epoch 30 step 385/768 [E19_256 tueg] loss 0.31545 lr 1.56e-04 8 win/s eta 47:23
+  [04:56:12] epoch 30 step 401/768 [E128_512 hbn] loss 0.23457 lr 1.55e-04 8 win/s eta 45:15
+  [04:58:13] epoch 30 step 421/768 [E128_512 hbn] loss 0.19133 lr 1.55e-04 8 win/s eta 42:24
+  [05:00:17] epoch 30 step 442/768 [E32_512 tdbrain] loss 0.27798 lr 1.55e-04 8 win/s eta 39:28
+  [05:01:08] epoch 30 step 451/768 [E32_512 tdbrain] loss 0.28397 lr 1.55e-04 8 win/s eta 38:13
+  [05:03:13] epoch 30 step 471/768 [E19_256 tueg] loss 0.29947 lr 1.55e-04 8 win/s eta 35:36
+  [05:05:17] epoch 30 step 486/768 [E19_256 tueg] loss 0.29928 lr 1.54e-04 8 win/s eta 33:57
+  [05:07:20] epoch 30 step 501/768 [E19_256 tueg] loss 0.29440 lr 1.54e-04 8 win/s eta 32:16
+  [05:09:23] epoch 30 step 515/768 [E19_256 tueg] loss 0.28501 lr 1.54e-04 8 win/s eta 30:46
+  [05:11:26] epoch 30 step 533/768 [E128_512 hbn] loss 0.22717 lr 1.54e-04 8 win/s eta 28:30
+  [05:13:28] epoch 30 step 548/768 [E128_512 hbn] loss 0.19809 lr 1.54e-04 8 win/s eta 26:46
+  [05:13:51] epoch 30 step 551/768 [E128_512 hbn] loss 0.19759 lr 1.54e-04 8 win/s eta 26:25
+  [05:15:54] epoch 30 step 569/768 [E128_512 hbn] loss 0.22904 lr 1.54e-04 8 win/s eta 24:10
+  [05:17:56] epoch 30 step 584/768 [E19_256 tueg] loss 0.29257 lr 1.53e-04 8 win/s eta 22:25
+  [05:19:46] epoch 30 step 601/768 [E128_512 hbn] loss 0.22178 lr 1.53e-04 8 win/s eta 20:17
+  [05:21:49] epoch 30 step 625/768 [E128_512 hbn] loss 0.22415 lr 1.53e-04 8 win/s eta 17:10
+  [05:23:53] epoch 30 step 640/768 [E128_512 hbn] loss 0.23879 lr 1.53e-04 8 win/s eta 15:25
+  [05:25:17] epoch 30 step 651/768 [E19_256 tueg] loss 0.30212 lr 1.53e-04 8 win/s eta 14:06
+  [05:27:29] epoch 30 step 667/768 [E19_256 tueg] loss 0.29262 lr 1.53e-04 8 win/s eta 12:13
+  [05:29:34] epoch 30 step 683/768 [E19_256 tueg] loss 0.30173 lr 1.52e-04 8 win/s eta 10:18
+  [05:31:35] epoch 30 step 698/768 [E128_512 hbn] loss 0.20841 lr 1.52e-04 8 win/s eta 8:30
+  [05:32:01] epoch 30 step 701/768 [E128_512 hbn] loss 0.20539 lr 1.52e-04 8 win/s eta 8:08
+  [05:34:04] epoch 30 step 719/768 [E19_256 tueg] loss 0.29946 lr 1.52e-04 8 win/s eta 5:57
+  [05:36:12] epoch 30 step 734/768 [E19_256 tueg] loss 0.29331 lr 1.52e-04 8 win/s eta 4:08
+  [05:38:18] epoch 30 step 748/768 [E19_256 tueg] loss 0.31148 lr 1.52e-04 8 win/s eta 2:26
+  [05:38:35] epoch 30 step 751/768 [E128_512 hbn] loss 0.22384 lr 1.52e-04 8 win/s eta 2:04
+  [05:40:38] epoch 30 step 766/768 [E128_512 hbn] loss 0.22890 lr 1.52e-04 8 win/s eta 0:14
+  [05:40:56] epoch 30 step 768/768 [E64_256 m3cv] loss 0.21338 lr 1.51e-04 8 win/s eta 0:00
+epoch 30 done (31/60): train total 0.24200  val total 0.26525 (spec 0.33114 r 0.815 nmse 0.331 | raw 0.19937 r 0.841 nmse 0.288 | macro 0.25277)  gate 0.3773  [1:34:10 train + 1:51 val, elapsed 21:48:43, run eta 63:15:18]
+  [05:42:52] epoch 31 step 1/768 [E64_256 m3cv] loss 0.20795 lr 1.51e-04 13 win/s eta 46:56
+  [05:44:52] epoch 31 step 17/768 [E19_256 tueg] loss 0.30795 lr 1.51e-04 8 win/s eta 1:31:14
+  [05:46:54] epoch 31 step 37/768 [E19_256 tueg] loss 0.30248 lr 1.51e-04 8 win/s eta 1:20:49
+  [05:48:13] epoch 31 step 51/768 [E128_512 hbn] loss 0.22368 lr 1.51e-04 9 win/s eta 1:16:09
+  [05:50:14] epoch 31 step 77/768 [E128_512 hbn] loss 0.24271 lr 1.51e-04 9 win/s eta 1:06:39
+  [05:52:13] epoch 31 step 101/768 [E128_512 hbn] loss 0.25479 lr 1.50e-04 10 win/s eta 1:02:07
+  [05:54:24] epoch 31 step 123/768 [E19_256 tueg] loss 0.29571 lr 1.50e-04 10 win/s eta 1:00:47
+  [05:56:25] epoch 31 step 145/768 [E128_512 hbn] loss 0.20802 lr 1.50e-04 10 win/s eta 58:29
+  [05:57:20] epoch 31 step 151/768 [E19_256 tueg] loss 0.28967 lr 1.50e-04 10 win/s eta 59:24
+  [05:59:27] epoch 31 step 168/768 [E19_256 tueg] loss 0.30194 lr 1.50e-04 10 win/s eta 59:28
+  [06:01:30] epoch 31 step 186/768 [E19_256 tueg] loss 0.28901 lr 1.50e-04 10 win/s eta 58:30
+  [06:03:00] epoch 31 step 201/768 [E128_512 hbn] loss 0.19833 lr 1.49e-04 10 win/s eta 56:57
+  [06:05:00] epoch 31 step 223/768 [E32_512 tdbrain] loss 0.28067 lr 1.49e-04 10 win/s eta 54:14
+  [06:07:07] epoch 31 step 239/768 [E19_256 tueg] loss 0.30284 lr 1.49e-04 10 win/s eta 53:49
+  [06:08:15] epoch 31 step 251/768 [E128_512 hgd] loss 0.16657 lr 1.49e-04 10 win/s eta 52:24
+  [06:10:16] epoch 31 step 268/768 [E128_512 hbn] loss 0.24825 lr 1.49e-04 10 win/s eta 51:14
+  [06:12:23] epoch 31 step 287/768 [E19_256 tueg] loss 0.29532 lr 1.48e-04 10 win/s eta 49:34
+  [06:13:33] epoch 31 step 301/768 [E128_512 hbn] loss 0.20612 lr 1.48e-04 10 win/s eta 47:42
+  [06:15:40] epoch 31 step 326/768 [E19_256 tueg] loss 0.28892 lr 1.48e-04 10 win/s eta 44:33
+  [06:17:51] epoch 31 step 348/768 [E19_256 tueg] loss 0.29770 lr 1.48e-04 10 win/s eta 42:17
+  [06:18:02] epoch 31 step 351/768 [E128_512 hbn] loss 0.21402 lr 1.48e-04 10 win/s eta 41:51
+  [06:20:08] epoch 31 step 375/768 [E19_256 tueg] loss 0.30708 lr 1.48e-04 10 win/s eta 39:07
+  [06:22:05] epoch 31 step 401/768 [E128_512 hbn] loss 0.22980 lr 1.47e-04 10 win/s eta 35:56
+  [06:24:06] epoch 31 step 421/768 [E32_512 tdbrain] loss 0.27874 lr 1.47e-04 10 win/s eta 34:02
+  [06:26:08] epoch 31 step 445/768 [E128_512 hbn] loss 0.23009 lr 1.47e-04 10 win/s eta 31:26
+  [06:26:25] epoch 31 step 451/768 [E128_512 hbn] loss 0.25089 lr 1.47e-04 10 win/s eta 30:39
+  [06:28:30] epoch 31 step 473/768 [E19_256 tueg] loss 0.29731 lr 1.47e-04 10 win/s eta 28:30
+  [06:30:33] epoch 31 step 495/768 [E128_512 hbn] loss 0.22099 lr 1.46e-04 10 win/s eta 26:19
+  [06:30:54] epoch 31 step 501/768 [E128_512 hbn] loss 0.20811 lr 1.46e-04 10 win/s eta 25:38
+  [06:33:02] epoch 31 step 523/768 [E19_256 tueg] loss 0.29622 lr 1.46e-04 11 win/s eta 23:31
+  [06:35:07] epoch 31 step 539/768 [E19_256 tueg] loss 0.30290 lr 1.46e-04 11 win/s eta 22:13
+  [06:36:09] epoch 31 step 551/768 [E19_256 tueg] loss 0.30184 lr 1.46e-04 11 win/s eta 21:00
+  [06:38:17] epoch 31 step 572/768 [E19_256 tueg] loss 0.29765 lr 1.46e-04 11 win/s eta 19:00
+  [06:40:20] epoch 31 step 597/768 [E128_512 hbn] loss 0.24634 lr 1.45e-04 11 win/s eta 16:28
+  [06:40:43] epoch 31 step 601/768 [E128_512 hbn] loss 0.17974 lr 1.45e-04 11 win/s eta 16:05
+  [06:42:44] epoch 31 step 623/768 [E128_512 hbn] loss 0.23319 lr 1.45e-04 11 win/s eta 13:56
+  [06:44:45] epoch 31 step 642/768 [E19_256 tueg] loss 0.29877 lr 1.45e-04 11 win/s eta 12:09
+  [06:45:32] epoch 31 step 651/768 [E128_512 hbn] loss 0.21553 lr 1.45e-04 11 win/s eta 11:16
+  [06:47:33] epoch 31 step 676/768 [E19_256 tueg] loss 0.30321 lr 1.44e-04 11 win/s eta 8:48
+  [06:49:36] epoch 31 step 697/768 [E128_512 hbn] loss 0.23467 lr 1.44e-04 11 win/s eta 6:48
+  [06:49:58] epoch 31 step 701/768 [E19_256 tueg] loss 0.30709 lr 1.44e-04 11 win/s eta 6:25
+  [06:51:59] epoch 31 step 725/768 [E19_256 tueg] loss 0.29637 lr 1.44e-04 11 win/s eta 4:06
+  [06:54:02] epoch 31 step 750/768 [E128_512 hbn] loss 0.22016 lr 1.44e-04 11 win/s eta 1:42
+  [06:54:05] epoch 31 step 751/768 [E128_512 hbn] loss 0.20759 lr 1.44e-04 11 win/s eta 1:36
+  [06:55:32] epoch 31 step 768/768 [E32_512 tdbrain] loss 0.27568 lr 1.43e-04 11 win/s eta 0:00
+epoch 31 done (32/60): train total 0.24275  val total 0.26595 (spec 0.33346 r 0.814 nmse 0.334 | raw 0.19844 r 0.842 nmse 0.286 | macro 0.25161)  gate 0.3784  [1:12:43 train + 1:45 val, elapsed 23:03:13, run eta 58:40:55]
+  new best raw: 0.19844 at epoch 31  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.25161 at epoch 31  (macro_route_loss_total -> best_macro_total.pth)
+  [06:57:22] epoch 32 step 1/768 [E128_512 hbn] loss 0.21997 lr 1.43e-04 8 win/s eta 38:07
+  [06:59:27] epoch 32 step 23/768 [E19_256 tueg] loss 0.30991 lr 1.43e-04 12 win/s eta 1:09:26
+  [07:01:30] epoch 32 step 46/768 [E128_512 hbn] loss 0.20775 lr 1.43e-04 12 win/s eta 1:05:51
+  [07:02:08] epoch 32 step 51/768 [E128_512 hbn] loss 0.30806 lr 1.43e-04 12 win/s eta 1:07:51
+  [07:04:09] epoch 32 step 80/768 [E128_512 hbn] loss 0.21553 lr 1.43e-04 12 win/s eta 58:49
+  [07:06:04] epoch 32 step 101/768 [E128_512 hbn] loss 0.22432 lr 1.42e-04 12 win/s eta 57:48
+  [07:08:05] epoch 32 step 127/768 [E128_512 hbn] loss 0.23405 lr 1.42e-04 12 win/s eta 54:23
+  [07:10:12] epoch 32 step 150/768 [E19_256 tueg] loss 0.31604 lr 1.42e-04 12 win/s eta 53:08
+  [07:10:17] epoch 32 step 151/768 [E128_512 hbn] loss 0.20915 lr 1.42e-04 12 win/s eta 52:59
+  [07:12:22] epoch 32 step 173/768 [E32_512 tdbrain] loss 0.27635 lr 1.42e-04 12 win/s eta 51:46
+  [07:14:31] epoch 32 step 195/768 [E19_256 tueg] loss 0.29841 lr 1.41e-04 11 win/s eta 50:33
+  [07:15:08] epoch 32 step 201/768 [E19_256 tueg] loss 0.30502 lr 1.41e-04 11 win/s eta 50:17
+  [07:17:12] epoch 32 step 222/768 [E19_256 tueg] loss 0.28485 lr 1.41e-04 11 win/s eta 48:56
+  [07:19:16] epoch 32 step 240/768 [E19_256 tueg] loss 0.30111 lr 1.41e-04 11 win/s eta 48:17
+  [07:20:11] epoch 32 step 251/768 [E128_512 hbn] loss 0.20900 lr 1.41e-04 11 win/s eta 47:06
+  [07:22:14] epoch 32 step 274/768 [E19_256 tueg] loss 0.28773 lr 1.41e-04 11 win/s eta 44:55
+  [07:24:22] epoch 32 step 296/768 [E19_256 tueg] loss 0.29466 lr 1.40e-04 11 win/s eta 43:08
+  [07:25:02] epoch 32 step 301/768 [E19_256 tueg] loss 0.28951 lr 1.40e-04 11 win/s eta 43:01
+  [07:27:05] epoch 32 step 326/768 [E128_512 hbn] loss 0.21576 lr 1.40e-04 11 win/s eta 40:21
+  [07:29:13] epoch 32 step 349/768 [E19_256 tueg] loss 0.29640 lr 1.40e-04 11 win/s eta 38:19
+  [07:29:35] epoch 32 step 351/768 [E19_256 tueg] loss 0.30472 lr 1.40e-04 11 win/s eta 38:21

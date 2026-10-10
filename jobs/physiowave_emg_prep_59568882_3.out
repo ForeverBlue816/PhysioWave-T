@@ -1,0 +1,48 @@
+task 3/4 of emg2pose, 15 worker(s)
+============================================================
+  sEMG corpus: emg2pose
+  raw   /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg2pose/raw/emg2pose_dataset.tar
+  out   /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/emg2pose
+  task  3/4
+============================================================
+  25,253 record(s) from /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/emg2pose/record_list.txt (--refresh-list to re-scan)
+emg2pose -> W16_2000: 25,253 records in 127 unit(s) of 200; this task owns 31, 31 to do; mains 60.0; window cap none; 15 worker(s)
+  1/31 units  0.4/min  ETA 73 min  (last: 6470 windows, 0 failed)
+  2/31 units  0.8/min  ETA 36 min  (last: 12299 windows, 0 failed)
+  3/31 units  1.2/min  ETA 23 min  (last: 13022 windows, 0 failed)
+  4/31 units  1.6/min  ETA 17 min  (last: 11382 windows, 0 failed)
+  5/31 units  1.9/min  ETA 14 min  (last: 13344 windows, 0 failed)
+  6/31 units  2.2/min  ETA 11 min  (last: 12272 windows, 0 failed)
+  7/31 units  2.6/min  ETA 9 min  (last: 11741 windows, 0 failed)
+  8/31 units  2.9/min  ETA 8 min  (last: 11093 windows, 0 failed)
+  9/31 units  3.3/min  ETA 7 min  (last: 11503 windows, 0 failed)
+  10/31 units  3.7/min  ETA 6 min  (last: 11761 windows, 0 failed)
+  11/31 units  3.9/min  ETA 5 min  (last: 11997 windows, 0 failed)
+  12/31 units  4.1/min  ETA 5 min  (last: 12598 windows, 0 failed)
+  13/31 units  4.4/min  ETA 4 min  (last: 12310 windows, 0 failed)
+  14/31 units  4.8/min  ETA 4 min  (last: 12373 windows, 0 failed)
+  15/31 units  5.0/min  ETA 3 min  (last: 12899 windows, 0 failed)
+  16/31 units  3.9/min  ETA 4 min  (last: 5737 windows, 0 failed)
+  17/31 units  3.9/min  ETA 4 min  (last: 6173 windows, 0 failed)
+  18/31 units  3.9/min  ETA 3 min  (last: 6131 windows, 0 failed)
+  19/31 units  4.1/min  ETA 3 min  (last: 8061 windows, 0 failed)
+  20/31 units  4.3/min  ETA 3 min  (last: 6738 windows, 0 failed)
+  21/31 units  4.5/min  ETA 2 min  (last: 5570 windows, 0 failed)
+  22/31 units  4.6/min  ETA 2 min  (last: 6498 windows, 0 failed)
+  23/31 units  4.7/min  ETA 2 min  (last: 6481 windows, 0 failed)
+  24/31 units  4.9/min  ETA 1 min  (last: 6449 windows, 0 failed)
+  25/31 units  5.0/min  ETA 1 min  (last: 6121 windows, 0 failed)
+  26/31 units  5.2/min  ETA 1 min  (last: 8784 windows, 0 failed)
+  27/31 units  5.3/min  ETA 1 min  (last: 6436 windows, 0 failed)
+  28/31 units  5.4/min  ETA 1 min  (last: 7978 windows, 0 failed)
+  29/31 units  5.6/min  ETA 0 min  (last: 6201 windows, 0 failed)
+  30/31 units  5.4/min  ETA 0 min  (last: 12505 windows, 0 failed)
+  31/31 units  5.4/min  ETA 0 min  (last: 6796 windows, 0 failed)
+
+emg2pose: 6,200 records read, 0 failed, 289,723 windows kept of 370,994 (QC dropped {'non_finite': 0, 'flat_lead': 81271, 'amplitude': 0})
+  train 279,025 windows / 96 subjects;  val 10,698 / 3
+  manifests, subject lists and statistics in /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/emg2pose
+
+When every corpus you want is done, merge them:
+  python scripts/build_eeg_c1_manifest.py --modality emg \
+      --corpus-root /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus --allow-missing --check-shards --jobs 16

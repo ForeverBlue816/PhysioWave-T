@@ -1,0 +1,16 @@
+2026-08-30 07:16:29,676 INFO hyper-parameters (cli > config train: > builtin):
+2026-08-30 07:16:29,676 INFO     epochs           100         [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     batch_size       64          [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     lr               0.001       [cli]
+2026-08-30 07:16:29,676 INFO     weight_decay     0.01        [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     warmup_epochs    5           [builtin]
+2026-08-30 07:16:29,676 INFO     warmup_ratio     0.2         [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     grad_clip        1.0         [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     label_smoothing  0.0         [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     min_lr_ratio     0.01        [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     precision        bf16        [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO     select_by        auroc       [config:finetune/eeg_c1_p300]
+2026-08-30 07:16:29,676 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0 into memory on each of 1 rank(s): train.h5 2.06 GiB val.h5 0.29 GiB test.h5 0.28 GiB
+2026-08-30 07:16:31,036 INFO train 18586 windows, 58 channels, 512 samples/window
+2026-08-30 07:16:31,037 INFO class counts: [15496, 3090]
+model.eeg_c1 needs ['sampling_rate'] and neither the config nor /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0/train.h5 supplies them. A patch length is a modelling choice; a sampling rate should be an attribute of the file.

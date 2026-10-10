@@ -1,0 +1,36 @@
+ERROR: no manifest at /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+       Preprocess the corpora first, one run per dataset:
+         DATASET=<id> bash ECG/preprocess_ecg_corpus.sh
+       then merge them:
+         python scripts/build_eeg_c1_manifest.py --modality ecg \
+             --corpus-root /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus --allow-missing
+       Nothing here falls back to synthetic data; --smoke-test is
+       the explicit way to run without a corpus.
+srun: error: lrdn0068: task 0: Exited with exit code 1
+ERROR: no manifest at /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+       Preprocess the corpora first, one run per dataset:
+         DATASET=<id> bash ECG/preprocess_ecg_corpus.sh
+       then merge them:
+         python scripts/build_eeg_c1_manifest.py --modality ecg \
+             --corpus-root /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus --allow-missing
+       Nothing here falls back to synthetic data; --smoke-test is
+       the explicit way to run without a corpus.
+srun: error: lrdn0607: task 1: Exited with exit code 1
+ERROR: no manifest at /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+       Preprocess the corpora first, one run per dataset:
+         DATASET=<id> bash ECG/preprocess_ecg_corpus.sh
+       then merge them:
+         python scripts/build_eeg_c1_manifest.py --modality ecg \
+             --corpus-root /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus --allow-missing
+       Nothing here falls back to synthetic data; --smoke-test is
+       the explicit way to run without a corpus.
+srun: error: lrdn0849: task 2: Exited with exit code 1
+ERROR: no manifest at /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus/merged/manifest_train.jsonl
+       Preprocess the corpora first, one run per dataset:
+         DATASET=<id> bash ECG/preprocess_ecg_corpus.sh
+       then merge them:
+         python scripts/build_eeg_c1_manifest.py --modality ecg \
+             --corpus-root /leonardo_scratch/large/userexternal/ychen003/bio/ecg/ecg_c1_corpus --allow-missing
+       Nothing here falls back to synthetic data; --smoke-test is
+       the explicit way to run without a corpus.
+srun: error: lrdn1021: task 3: Exited with exit code 1

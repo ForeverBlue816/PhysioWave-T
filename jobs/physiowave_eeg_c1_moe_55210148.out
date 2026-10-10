@@ -1,0 +1,136 @@
+============================================================
+  EEG C1 multi-route pretraining  (job 55210148)
+  config     pretrain/eeg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn2881:30148 (id 55210148)
+  nodes      lrdn2881 lrdn2883 lrdn2884 lrdn2885 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=<none>
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=55210148 --rdzv_backend=c10d --rdzv_endpoint=lrdn2881:30148 -m physiowave.train.pretrain_main --config pretrain/eeg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+============================================================
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+============================================================
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe
+============================================================
+NCCL version 2.19.1+cuda12.1
+  moved 3 file(s) from an earlier attempt in this directory to /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/superseded/0
+==================================================================
+  EEG C1 multi-route pretraining
+  total parameters        30,300,691
+  shared transformer      25,224,704
+  frontend E19_256        66,177
+  frontend E32_512        171,867
+  frontend E64_256        643,707
+  frontend E128_512       2,490,555
+  patch_embed 256        67,072   spec decoder 329,344   raw decoder 329,344
+  patch_embed 512        132,608   spec decoder 395,008   raw decoder 395,008
+  downstream encoder      28,851,475   (+1,449,216 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    21,504  + proj 33,280
+  routes:
+    E19_256: 19x1024 @ 256Hz -> 19x8 = 152 tokens (patch (1, 128))
+    E32_512: 32x2048 @ 512Hz -> 32x8 = 256 tokens (patch (1, 256))
+    E64_256: 64x1024 @ 256Hz -> 64x8 = 512 tokens (patch (1, 128))
+    E128_512: 128x2048 @ 512Hz -> 128x8 = 1024 tokens (patch (1, 256))
+  mixture policy: proportional
+    dataset          corpus%   step%  window%   passes/epoch
+    faced             0.84%   0.92%    0.97%     1.15x
+    hbn               8.77%  33.59%    8.87%     1.01x
+    hgd               0.15%   0.63%    0.17%     1.12x
+    m3cv              0.53%   0.88%    0.46%     0.87x
+    physionet_mi      0.24%   0.50%    0.26%     1.10x
+    tdbrain           0.56%   0.53%    0.56%     0.99x
+    tueg             88.91%  62.95%   88.70%     0.99x
+  channel vocab sha256    596f2711269e47b2
+  budget:
+    resolved steps per epoch   10573  (derived from the mixture)
+    total optimizer updates    52865   (10573/epoch x 5 epochs, grad_accum 1)
+    effective world size       16
+    per-route batch size       E19_256=128  E32_512=96  E64_256=48  E128_512=24
+    passes per dataset/epoch   faced=1.15x  hbn=1.01x  hgd=1.12x  m3cv=0.87x  physionet_mi=1.10x  tdbrain=0.99x  tueg=0.99x
+  steps/epoch 10573  epochs 5  grad_accum 1
+==================================================================
+  [11:26:31] epoch 0 step 1/10573 [E19_256 tueg] loss 0.90972 lr 5.67e-08 10 win/s eta 36:58:02
+  [11:28:32] epoch 0 step 13/10573 [E19_256 tueg] loss 0.89889 lr 3.97e-07 11 win/s eta 29:59:38
+  [11:30:35] epoch 0 step 29/10573 [E128_512 hbn] loss 0.90437 lr 8.51e-07 11 win/s eta 25:50:56
+  [11:32:45] epoch 0 step 45/10573 [E19_256 tueg] loss 0.82751 lr 1.31e-06 11 win/s eta 25:04:46
+  [11:33:26] epoch 0 step 51/10573 [E128_512 hbn] loss 0.87453 lr 1.48e-06 11 win/s eta 24:28:57
+  [11:35:27] epoch 0 step 65/10573 [E19_256 tueg] loss 0.80254 lr 1.87e-06 12 win/s eta 24:36:39
+  [11:37:36] epoch 0 step 82/10573 [E19_256 tueg] loss 0.79460 lr 2.36e-06 12 win/s eta 24:03:50
+  [11:39:38] epoch 0 step 99/10573 [E128_512 hbn] loss 0.79243 lr 2.84e-06 12 win/s eta 23:29:42
+  [11:39:59] epoch 0 step 101/10573 [E19_256 tueg] loss 0.78661 lr 2.89e-06 12 win/s eta 23:36:37
+  [11:42:04] epoch 0 step 117/10573 [E19_256 tueg] loss 0.78507 lr 3.35e-06 12 win/s eta 23:28:14
+  [11:44:09] epoch 0 step 133/10573 [E19_256 tueg] loss 0.77963 lr 3.80e-06 11 win/s eta 23:19:51
+  [11:46:15] epoch 0 step 149/10573 [E19_256 tueg] loss 0.77727 lr 4.26e-06 12 win/s eta 23:14:17
+  [11:46:28] epoch 0 step 151/10573 [E19_256 tueg] loss 0.78128 lr 4.31e-06 12 win/s eta 23:10:47
+  [11:48:37] epoch 0 step 168/10573 [E19_256 tueg] loss 0.78090 lr 4.80e-06 12 win/s eta 23:01:27
+  [11:50:45] epoch 0 step 185/10573 [E19_256 tueg] loss 0.78083 lr 5.28e-06 12 win/s eta 22:51:54
+  [11:52:36] epoch 0 step 201/10573 [E19_256 tueg] loss 0.77688 lr 5.73e-06 12 win/s eta 22:36:42
+  [11:54:47] epoch 0 step 219/10573 [E19_256 tueg] loss 0.77836 lr 6.24e-06 12 win/s eta 22:25:47
+  [11:56:48] epoch 0 step 234/10573 [E19_256 tueg] loss 0.77293 lr 6.67e-06 12 win/s eta 22:26:49
+  [11:58:57] epoch 0 step 249/10573 [E19_256 tueg] loss 0.77334 lr 7.09e-06 12 win/s eta 22:33:17
+  [11:59:19] epoch 0 step 251/10573 [E19_256 tueg] loss 0.77696 lr 7.15e-06 12 win/s eta 22:37:29

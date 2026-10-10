@@ -1,0 +1,16 @@
+ptbxl_super: 21,388 labelled record(s) under /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/raw/ptbxl (10s to list)
+  2,000/21,388 records, 0 failed
+  4,000/21,388 records, 0 failed
+  6,000/21,388 records, 0 failed
+  8,000/21,388 records, 0 failed
+  10,000/21,388 records, 0 failed
+  12,000/21,388 records, 0 failed
+  14,000/21,388 records, 0 failed
+  16,000/21,388 records, 0 failed
+  18,000/21,388 records, 0 failed
+  20,000/21,388 records, 0 failed
+  train  17,084 records    17,084 windows   14,823 subjects  {'NORM': 7596, 'MI': 4379, 'STTC': 4186, 'CD': 3907, 'HYP': 2119}
+  val     2,146 records     2,146 windows    1,917 subjects  {'NORM': 955, 'MI': 540, 'STTC': 528, 'CD': 495, 'HYP': 268}
+  test    2,158 records     2,158 windows    1,877 subjects  {'NORM': 963, 'MI': 550, 'STTC': 521, 'CD': 496, 'HYP': 262}
+  0 record(s) failed; subject overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/c1/ptbxl_super/{train,val,test}.h5 and split.json in 128s

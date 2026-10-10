@@ -1,0 +1,33 @@
+{
+  "best_epoch": 12,
+  "select_by": "auroc",
+  "best_val": 0.634744439285865,
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 64,
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "warmup_epochs": 5,
+    "warmup_ratio": 0.1,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.1,
+    "min_lr_ratio": 0.01,
+    "precision": "bf16",
+    "select_by": "auroc",
+    "patience": 0,
+    "min_delta": 0.0,
+    "encoder_lr_scale": 1.0
+  },
+  "frozen_encoder": false,
+  "total_params": 25813366,
+  "trainable_params": 25813366,
+  "pretrained": false,
+  "test": {
+    "loss": 0.6281746787183425,
+    "acc": 0.7323529411764705,
+    "balanced_acc": 0.5334769893797138,
+    "kappa": 0.07779433681073022,
+    "weighted_f1": 0.7072655698385272,
+    "auroc": 0.6081749268893336
+  }
+}

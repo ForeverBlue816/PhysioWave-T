@@ -1,0 +1,49 @@
+{
+  "best_epoch": 3,
+  "select_by": "acc",
+  "best_val": 0.7391534391534391,
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 64,
+    "lr": 3e-05,
+    "weight_decay": 0.05,
+    "warmup_epochs": 5,
+    "warmup_ratio": 0.1,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.0,
+    "min_lr_ratio": 0.01,
+    "precision": "bf16",
+    "select_by": "acc",
+    "patience": 10,
+    "min_delta": 0.0,
+    "encoder_lr_scale": 1.0
+  },
+  "frozen_encoder": false,
+  "total_params": 28576029,
+  "trainable_params": 28576029,
+  "multilabel": false,
+  "class_names": [
+    "NORM",
+    "MI",
+    "STTC",
+    "CD",
+    "HYP"
+  ],
+  "pretrained": true,
+  "test": {
+    "loss": 0.7396551871237167,
+    "window_acc": 0.736482939632546,
+    "window_balanced_acc": 0.6455259437773663,
+    "window_kappa": 0.6233089850286286,
+    "window_weighted_f1": 0.73622461631054,
+    "window_macro_f1": 0.6472672722540972,
+    "window_auroc": 0.9090160443458155,
+    "n_records": 1905,
+    "acc": 0.736482939632546,
+    "balanced_acc": 0.6455259437773663,
+    "kappa": 0.6233089850286286,
+    "weighted_f1": 0.73622461631054,
+    "macro_f1": 0.6472672722540972,
+    "auroc": 0.9090160443458155
+  }
+}
