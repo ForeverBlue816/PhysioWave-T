@@ -19,8 +19,10 @@ bash scripts/download_ecg_downstream.sh all
 bash scripts/download_ecg_downstream.sh status
 
 # 2. ONE job, one node, 4 GPUs, 6 h: GPU i builds task i's split if needed,
-#    then runs ft, probe and scratch on it one after the other
-#    (ptbxl, cpsc2018, chapman, ptbxl_super). Resubmitting skips finished runs.
+#    then runs on it, one after the other: ft at lr 1e-4, 3e-5 and 1e-5,
+#    probe at 1e-3, scratch at 1e-4 (ptbxl, cpsc2018, chapman, ptbxl_super).
+#    Resubmitting skips finished runs. Per mode, the table reports the run
+#    with the best VALIDATION score.
 sbatch scripts/slurm/cineca_ecg_downstream.sbatch
 
 # 3. the table -- the job writes it to $PW_CKPT_ROOT/ecg_downstream/summary.{txt,md,json};

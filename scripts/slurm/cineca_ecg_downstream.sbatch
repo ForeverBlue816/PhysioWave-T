@@ -26,7 +26,14 @@
 #   PRETRAINED  $PW_CKPT_ROOT/pretrain_ecg_c1_moe/best.pth
 #   TASKS       "ptbxl cpsc2018 chapman ptbxl_super"  (more than 4: GPU i also
 #               takes tasks i+4, i+8, ...)
-#   MODES       "ft probe scratch"
+#   MODES       "ft ft@3e-5 ft@1e-5 probe@1e-3 scratch". A token is MODE or
+#               MODE@LR: MODE@LR runs with that learning rate into
+#               <task>_<mode>_lr<LR>, plain MODE with the config's (1e-4).
+#               Several fine-tuning rates are run because the first PTB-XL
+#               run peaked at epoch 2-3 at 1e-4 (too fast for a pretrained
+#               encoder) and the probe was still improving at epoch 29 (too
+#               slow for a head alone). The collector reports, per mode, the
+#               run with the best VALIDATION score -- never the best test.
 #   TAG, LR, EPOCHS, SEED, SET   passed to ECG/finetune_ecg_c1.sh
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
@@ -48,7 +55,7 @@ source "${PROJECT_DIR}/scripts/cineca_env.sh"
 cd "${PROJECT_DIR}"
 
 TASKS="${TASKS:-ptbxl cpsc2018 chapman ptbxl_super}"
-MODES="${MODES:-ft probe scratch}"
+MODES="${MODES:-ft ft@3e-5 ft@1e-5 probe@1e-3 scratch}"
 read -r -a TASK_LIST <<< "${TASKS}"
 read -r -a MODE_LIST <<< "${MODES}"
 N_GPUS="${N_GPUS:-4}"
@@ -104,20 +111,23 @@ worker() {
                 > "${OUT_ROOT}/${task}_prep.log" 2>&1 \
                 || { echo "[gpu ${gpu}] ${task}: split FAILED, see ${task}_prep.log"; rc=1; continue; }
         fi
-        for mode in "${MODE_LIST[@]}"; do
-            out="${OUT_ROOT}/${task}_${mode}${TAG:+_${TAG}}"
+        for token in "${MODE_LIST[@]}"; do
+            mode="${token%%@*}"
+            lr=""; [[ "${token}" == *@* ]] && lr="${token#*@}"
+            tag="${lr:+lr${lr}}${TAG:+${lr:+_}${TAG}}"
+            out="${OUT_ROOT}/${task}_${mode}${tag:+_${tag}}"
             if [[ "${FORCE:-0}" != "1" ]] && done_already "${out}"; then
-                echo "[gpu ${gpu}] ${task} ${mode}: already done, skipped"
+                echo "[gpu ${gpu}] ${task} ${token}: already done, skipped"
                 continue
             fi
             log="${out}.log"
-            echo "[gpu ${gpu}] ${task} ${mode}: start $(date +%H:%M) -> ${log}"
+            echo "[gpu ${gpu}] ${task} ${token}: start $(date +%H:%M) -> ${log}"
             if CUDA_VISIBLE_DEVICES="${gpu}" TASK="${task}" MODE="${mode}" \
-                    DATA_DIR="${data}" OUTPUT_DIR="${out}" \
+                    LR="${lr:-${LR:-}}" DATA_DIR="${data}" OUTPUT_DIR="${out}" \
                     bash ECG/finetune_ecg_c1.sh > "${log}" 2>&1; then
-                echo "[gpu ${gpu}] ${task} ${mode}: done $(date +%H:%M)"
+                echo "[gpu ${gpu}] ${task} ${token}: done $(date +%H:%M)"
             else
-                echo "[gpu ${gpu}] ${task} ${mode}: FAILED -- see ${log}"; rc=1
+                echo "[gpu ${gpu}] ${task} ${token}: FAILED -- see ${log}"; rc=1
             fi
         done
     done

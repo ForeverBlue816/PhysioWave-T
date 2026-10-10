@@ -6,8 +6,14 @@ Table of the ECG C1 downstream runs, with the paper's PhysioWave (v1) row.
         [--json summary.json] [--markdown summary.md]
 
 Reads <root>/<task>_<mode>[_<tag>]/results.json, as ECG/finetune_ecg_c1.sh
-writes them, and prints per task: fine-tuned, linear probe and from scratch,
-the test metrics the paper reports for that task, and pretrained - scratch.
+writes them, and prints per task every run -- fine-tuned, linear probe and
+from scratch, at each learning rate tried -- with the test metrics the paper
+reports for that task.
+
+SELECTION IS BY VALIDATION. Within each mode the run with the best validation
+score (the metric the config selects on) is marked with a check and is the one
+"pretrained - scratch" compares; the others are shown, not chosen. Picking the
+learning rate by its test score would report a number tuned on the test set.
 
 The v1 row is printed for reference and is NOT a like-for-like comparison:
 v1 scored 4.1 s windows (not records), with min-max / z-score normalisation,
@@ -55,7 +61,7 @@ TITLE = {"ptbxl": "PTB-XL, 5 superclasses, single label (paper: accuracy)",
          "cpsc2018": "CPSC 2018, 9 classes, multi-label, per record (paper: F1-micro)",
          "chapman": "Chapman-Shaoxing, 4 rhythm classes, multi-label (paper: F1-micro)"}
 
-DIR_RE = re.compile(rf"^({'|'.join(TASKS)})_({'|'.join(MODES)})(?:_(\w+))?$")
+DIR_RE = re.compile(rf"^({'|'.join(TASKS)})_({'|'.join(MODES)})(?:_([\w.\-]+))?$")
 
 
 def fmt(v):
@@ -74,10 +80,22 @@ def collect(root):
             r = json.load(f)
         if "test" not in r:
             continue
-        runs.setdefault(task, {}).setdefault(tag, {})[mode] = {
-            "test": r["test"], "best_epoch": r.get("best_epoch"),
-            "select_by": r.get("select_by"), "dir": os.path.dirname(path)}
+        runs.setdefault(task, []).append({
+            "mode": mode, "tag": tag, "test": r["test"],
+            "lr": (r.get("hparams") or {}).get("lr"),
+            "best_val": r.get("best_val"), "best_epoch": r.get("best_epoch"),
+            "select_by": r.get("select_by"), "dir": os.path.dirname(path)})
     return runs
+
+
+def selected(rows):
+    """Per mode, the run with the best validation score."""
+    best = {}
+    for r in rows:
+        v = r["best_val"] if r["best_val"] is not None else float("-inf")
+        if r["mode"] not in best or v > best[r["mode"]][0]:
+            best[r["mode"]] = (v, r)
+    return {m: r for m, (_, r) in best.items()}
 
 
 def main(argv=None) -> int:
@@ -96,33 +114,43 @@ def main(argv=None) -> int:
         if task not in runs:
             continue
         cols = COLUMNS[task]
-        for tag, modes in sorted(runs[task].items()):
-            head = TITLE[task] + (f"  [{tag}]" if tag else "")
-            print("=" * 78)
-            print(head)
-            print("-" * 78)
-            print(f"  {'':22s}" + "".join(f"{lab:>11s}" for _, lab in cols))
-            md += [f"## {head}", "",
-                   "| | " + " | ".join(lab for _, lab in cols) + " |",
-                   "|---|" + "---|" * len(cols)]
-            for mode in MODES:
-                if mode in modes:
-                    t = modes[mode]["test"]
-                    vals = [t.get(k) for k, _ in cols]
-                    extra = f"   (best epoch {modes[mode]['best_epoch']}, by val {modes[mode]['select_by']})"
-                    print(f"  {MODE_NAME[mode]:22s}" + "".join(f"{fmt(v):>11s}" for v in vals) + extra)
-                    md.append(f"| {MODE_NAME[mode]} | " + " | ".join(fmt(v) for v in vals) + " |")
-            if task in PAPER_V1:
-                ref = PAPER_V1[task]
-                print(f"  {'PhysioWave v1 (paper)':22s}" + "".join(
-                    f"{fmt(ref.get(k)):>11s}" for k, _ in cols) + "   (window-level, see header)")
-                md.append("| PhysioWave v1 (paper)* | " + " | ".join(
-                    fmt(ref.get(k)) for k, _ in cols) + " |")
-            if "ft" in modes and "scratch" in modes:
-                k, lab = cols[0]
-                d = modes["ft"]["test"].get(k, float("nan")) - modes["scratch"]["test"].get(k, float("nan"))
-                print(f"  pretrained - scratch  {lab} {d:+.4f}")
+        rows = sorted(runs[task], key=lambda r: (MODES.index(r["mode"]),
+                                                 -(r["lr"] or 0), r["tag"]))
+        pick = selected(rows)
+        print("=" * 90)
+        print(TITLE[task])
+        print("-" * 90)
+        print(f"  {'':26s}{'lr':>8s}" + "".join(f"{lab:>11s}" for _, lab in cols)
+              + f"{'val':>9s}  ep")
+        md += [f"## {TITLE[task]}", "",
+               "| | lr | " + " | ".join(lab for _, lab in cols) + " | val | |",
+               "|---|---|" + "---|" * len(cols) + "---|---|"]
+        for r in rows:
+            mark = "\u2713" if pick.get(r["mode"]) is r else " "
+            name = f"{mark} {MODE_NAME[r['mode']]}" + (f" [{r['tag']}]" if r["tag"]
+                                                     and not r["tag"].startswith("lr") else "")
+            vals = [r["test"].get(k) for k, _ in cols]
+            lr = f"{r['lr']:.0e}" if r["lr"] else "-"
+            print(f"  {name:26s}{lr:>8s}" + "".join(f"{fmt(v):>11s}" for v in vals)
+                  + f"{fmt(r['best_val']):>9s}  {r['best_epoch']}")
+            md.append(f"| {name} | {lr} | " + " | ".join(fmt(v) for v in vals)
+                      + f" | {fmt(r['best_val'])} | ep {r['best_epoch']} |")
+        if task in PAPER_V1:
+            ref = PAPER_V1[task]
+            print(f"  {'  PhysioWave v1 (paper)*':26s}{'':>8s}" + "".join(
+                f"{fmt(ref.get(k)):>11s}" for k, _ in cols))
+            md.append("| PhysioWave v1 (paper)* | | " + " | ".join(
+                fmt(ref.get(k)) for k, _ in cols) + " | | |")
+        if "ft" in pick and "scratch" in pick:
+            k, lab = cols[0]
+            d = pick["ft"]["test"].get(k, float("nan")) - pick["scratch"]["test"].get(k, float("nan"))
+            line = (f"pretrained - scratch ({lab}, each chosen on validation): {d:+.4f}")
+            print("  " + line)
             md.append("")
+            md.append(line)
+        md.append("")
+    print("=" * 90)
+    print("  \u2713 the run of each mode with the best validation score; only it is compared.")
     print("=" * 78)
     print("  * v1 scored 4.1 s windows with a fixed threshold and its own splits; this")
     print("    table scores records once, at the checkpoint validation chose, with F1")
