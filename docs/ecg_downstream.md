@@ -14,7 +14,7 @@ model papers report. Every task runs in three modes:
 ```bash
 cd ~/PhysioWave-T && git pull && source $HOME/pw/bin/activate
 
-# 1. data (login node, ~10 GB, resumable; CPSC 2018 takes an hour or two)
+# 1. data (login node, ~10 GB, resumable; CPSC 2018 from Kaggle, needs the Kaggle token)
 bash scripts/download_ecg_downstream.sh all
 bash scripts/download_ecg_downstream.sh status
 
@@ -134,7 +134,7 @@ The C1 rows score each record once, on a split nothing was selected on.
 
 | file | what |
 |---|---|
-| `scripts/download_ecg_downstream.sh` | the three downloads (S3 for PTB-XL and Chapman; parallel PhysioNet HTTP for CPSC) |
+| `scripts/download_ecg_downstream.sh` | the three downloads (S3 for PTB-XL and Chapman; PhysioNet's Kaggle copies for CPSC, or `CPSC_SOURCE=physionet` for parallel PhysioNet HTTP) |
 | `scripts/fetch_physionet_http.py` | parallel, resumable WFDB mirror from a PhysioNet HTTP directory |
 | `ECG/ecg_downstream_prep.py` | raw → `{train,val,test}.h5` + `split.json` |
 | `configs/finetune/ecg_c1_*.yaml` | per-task model and training settings |

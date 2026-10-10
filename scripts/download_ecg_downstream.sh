@@ -15,15 +15,16 @@
 #             S3 bucket (2.6 GB, minutes). Serves TASK=ptbxl and ptbxl_super.
 #   chapman   PhysioNet ecg-arrhythmia 1.0.0 (Chapman-Shaoxing + Ningbo,
 #             45,152 records), open S3 (5.5 GB, minutes).
-#   cpsc2018  CPSC 2018 as Challenge 2021 publishes it, cpsc_2018 and
-#             cpsc_2018_extra (~1.5 GB). NOT on the open bucket: it comes over
-#             PhysioNet's own HTTP server, ~20-40 KB/s a connection, so 16 at a
-#             time -- an hour or two. If the login node stops it, rerun.
+#   cpsc2018  CPSC 2018 (6,877) + CPSC-Extra (3,453), 1.3 GB, from PhysioNet's
+#             own uploads to Kaggle (needs the Kaggle CLI and a token, as for
+#             MIMIC-IV-ECG). CPSC_SOURCE=physionet takes Challenge 2021's copy
+#             over PhysioNet's HTTP server instead, ~20-40 KB/s a connection.
 #
 # LAYOUT -- what ECG/ecg_downstream_prep.py and the sbatch expect:
 #   $ECG_ROOT/downstream/raw/ptbxl/{ptbxl_database.csv, scp_statements.csv, records500/}
 #   $ECG_ROOT/downstream/raw/chapman/{WFDBRecords/, ConditionNames_SNOMED-CT.csv}
-#   $ECG_ROOT/downstream/raw/cpsc2018/{cpsc_2018/g1.., cpsc_2018_extra/g1..}
+#   $ECG_ROOT/downstream/raw/cpsc2018/{Training_WFDB/, Training_2/}  (Kaggle)
+#                                    or {cpsc_2018/g*, cpsc_2018_extra/g*} (PhysioNet)
 #   $ECG_ROOT/downstream/c1/<task>/   written by the preprocessing
 #
 # None of these is in the ECG C1 pretraining corpus; preprocessing refuses
@@ -74,18 +75,55 @@ get_chapman() {
     [[ ${n} -ge 45000 ]]
 }
 
+#: CPSC 2018 from PhysioNet's own uploads to Kaggle (CC0) unless
+#: CPSC_SOURCE=physionet: Challenge 2020's Training_WFDB (the 6,877 CPSC 2018
+#: training records) and Training_2 (the 3,453 of CPSC-Extra). PhysioNet's
+#: HTTP server is the slow alternative (~20-40 KB/s a connection).
+CPSC_SOURCE="${CPSC_SOURCE:-kaggle}"
+CPSC_KAGGLE="${CPSC_KAGGLE:-physionet/china-physiological-signal-challenge-in-2018 physionet/china-12lead-ecg-challenge-database}"
+
+kaggle_cli() {
+    local kaggle="${KAGGLE_BIN:-${HOME}/kaggleenv/bin/kaggle}"
+    if [[ ! -x "${kaggle}" ]]; then
+        say "installing the kaggle CLI into ${kaggle%/bin/kaggle}" >&2
+        python3 -m venv "${kaggle%/bin/kaggle}" && \
+            env -u PYTHONPATH "${kaggle%/kaggle}/pip" install -q -U pip kaggle >&2 \
+            || { warn "could not install the kaggle CLI"; return 1; }
+    fi
+    if [[ -z "${KAGGLE_API_TOKEN:-}" && ! -s "${HOME}/.kaggle/access_token" \
+          && ! -f "${HOME}/.kaggle/kaggle.json" && ! -f "${HOME}/.config/kaggle/kaggle.json" ]]; then
+        warn "no Kaggle credentials (https://www.kaggle.com/settings/api -> Generate New Token)"
+        return 1
+    fi
+    echo "${kaggle}"
+}
+
 get_cpsc2018() {
-    local d; d="$(raw_dir cpsc2018)" part
-    for part in cpsc_2018 cpsc_2018_extra; do
-        say "PhysioNet HTTP ${CHALLENGE}/${part}/ (${JOBS} connections)"
-        "${PYTHON}" "${HERE}/fetch_physionet_http.py" \
-            --base "${CHALLENGE}/${part}/" --dest "${d}/${part}" \
-            --jobs "${JOBS}" || return 1
-    done
-    local a b
-    a=$(find "${d}/cpsc_2018" -name '*.hea' | wc -l)
-    b=$(find "${d}/cpsc_2018_extra" -name '*.hea' | wc -l)
-    echo "    ${a} cpsc_2018 + ${b} cpsc_2018_extra records (expected 6,877 + 3,453)"
+    local d part a b ds kaggle
+    d="$(raw_dir cpsc2018)"
+    if [[ "${CPSC_SOURCE}" == "kaggle" ]]; then
+        kaggle="$(kaggle_cli)" || return 1
+        for ds in ${CPSC_KAGGLE}; do
+            say "Kaggle ${ds}"
+            env -u PYTHONPATH "${kaggle}" datasets download -d "${ds}" -p "${d}" \
+                --unzip || { warn "kaggle download of ${ds} failed"; return 1; }
+        done
+        a=$(find "${d}" -path '*Training_WFDB*' -name 'A*.hea' | wc -l)
+        b=$(find "${d}" -path '*Training_2*' -name 'Q*.hea' | wc -l)
+    else
+        for part in cpsc_2018 cpsc_2018_extra; do
+            say "PhysioNet HTTP ${CHALLENGE}/${part}/ (${JOBS} connections)"
+            "${PYTHON}" "${HERE}/fetch_physionet_http.py" \
+                --base "${CHALLENGE}/${part}/" --dest "${d}/${part}" \
+                --jobs "${JOBS}" || return 1
+        done
+        a=$(find "${d}/cpsc_2018" -name '*.hea' | wc -l)
+        b=$(find "${d}/cpsc_2018_extra" -name '*.hea' | wc -l)
+    fi
+    echo "    ${a} CPSC 2018 + ${b} CPSC-Extra records (expected 6,877 + 3,453)"
+    # Which form the labels take is a property of the release; say it.
+    grep -h -m1 '^#Dx\|^# Dx' $(find "${d}" -name 'A0001.hea' | head -1) 2>/dev/null \
+        | sed 's/^/    label line of A0001: /'
     [[ ${a} -ge 6877 && ${b} -ge 3453 ]]
 }
 

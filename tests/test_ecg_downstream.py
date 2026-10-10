@@ -208,3 +208,21 @@ def test_multilabel_finetune_end_to_end_and_table(tmp_path):
     r = subprocess.run([PY, os.path.join(ROOT, "scripts", "collect_ecg_downstream.py"),
                         "--root", str(tmp_path / "runs")], capture_output=True, text=True)
     assert r.returncode == 0 and "CPSC 2018" in r.stdout and "0.7709" in r.stdout
+
+
+def test_cpsc_kaggle_layout_and_abbreviated_labels(tmp_path):
+    # PhysioNet's Kaggle copies: Training_WFDB (CPSC 2018) and Training_2
+    # (CPSC-Extra); early releases write "AF", "I-AVB", "Normal" on the Dx line.
+    raw = tmp_path / "raw"
+    _write(raw / "Training_WFDB", "A0001", 10, 1, "AF")
+    _write(raw / "Training_WFDB", "A0002", 10, 2, "I-AVB,PVC")
+    _write(raw / "Training_WFDB", "A0003", 10, 3, "Normal")
+    for i in range(1, 8):
+        _write(raw / "Training_2", f"Q{i:04d}", 10, 10 + i, "426783006")
+    from ecg_downstream_prep import CPSC_CLASSES, list_cpsc
+    recs = {r["record"]: r["label"] for r in list_cpsc(str(raw))}
+    names = [c for c, _ in CPSC_CLASSES]
+    assert len(recs) == 10
+    assert recs["cpsc_A0001"][names.index("AF")] == 1
+    assert recs["cpsc_A0002"][[names.index("IAVB"), names.index("PVC")]].tolist() == [1, 1]
+    assert recs["cpsc_A0003"][names.index("SNR")] == 1 and recs["cpsc_A0003"].sum() == 1

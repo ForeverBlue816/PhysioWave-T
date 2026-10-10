@@ -140,10 +140,22 @@ def _dx_codes(hea_path: str) -> List[str]:
     return []
 
 
+#: Abbreviations some releases write on the Dx line instead of SNOMED codes
+#: (the CPSC 2018 original and the early Challenge 2020 headers: "AF",
+#: "I-AVB", "Normal"), matched case-insensitively alongside the codes.
+DX_ALIASES = {
+    "SNR": {"normal", "snr", "nsr", "sr"}, "AF": {"af", "afib"},
+    "IAVB": {"i-avb", "iavb", "1avb"}, "LBBB": {"lbbb", "clbbb"},
+    "RBBB": {"rbbb", "crbbb"}, "PAC": {"pac", "apc"},
+    "PVC": {"pvc", "vpc", "ves"}, "STD": {"std"}, "STE": {"ste"},
+}
+
+
 def _multihot(codes, classes) -> np.ndarray:
     y = np.zeros(len(classes), np.float32)
-    for k, (_, cset) in enumerate(classes):
-        if any(c in cset for c in codes):
+    low = {str(c).strip().lower() for c in codes}
+    for k, (name, cset) in enumerate(classes):
+        if any(c in cset for c in codes) or low & DX_ALIASES.get(name, set()):
             y[k] = 1.0
     return y
 
@@ -210,13 +222,25 @@ def _list_by_dx(raw: str, classes, prefix: str, dirs=None) -> List[Dict]:
     return recs
 
 
+#: The CPSC 2018 training set and CPSC-Extra under the names they ship as:
+#: Challenge 2021 (cpsc_2018, cpsc_2018_extra) and PhysioNet's Kaggle copies
+#: of Challenge 2020 (Training_WFDB, Training_2). Records are A* and Q*.
+CPSC_DIRS = ("cpsc_2018", "cpsc_2018_extra", "Training_WFDB", "Training_2")
+
+
 def list_cpsc(raw: str) -> List[Dict]:
-    dirs = [d for d in (glob.glob(os.path.join(raw, "**", "cpsc_2018"), recursive=True)
-                        + glob.glob(os.path.join(raw, "**", "cpsc_2018_extra"), recursive=True))
-            if os.path.isdir(d)]
+    dirs = sorted({d for name in CPSC_DIRS
+                   for d in glob.glob(os.path.join(raw, "**", name), recursive=True)
+                   if os.path.isdir(d)})
     if not dirs:
-        raise SystemExit(f"no cpsc_2018 / cpsc_2018_extra directory under {raw}")
-    return _list_by_dx(raw, CPSC_CLASSES, "cpsc", dirs)
+        raise SystemExit(f"none of {CPSC_DIRS} under {raw}")
+    recs = _list_by_dx(raw, CPSC_CLASSES, "cpsc", dirs)
+    seen, out = set(), []
+    for r in recs:                     # one copy per record if two releases overlap
+        if r["record"] not in seen:
+            seen.add(r["record"])
+            out.append(r)
+    return out
 
 
 def list_chapman(raw: str) -> List[Dict]:
