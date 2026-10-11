@@ -99,3 +99,40 @@ exported L12_500 from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretra
 2026-10-10 05:55:44,089 INFO epoch 11 step 50/162 ( 31%) loss 0.0133 acc 0.9684 lr 7.86e-05 eta 0:26
 2026-10-10 05:55:55,806 INFO epoch 11 step 100/162 ( 62%) loss 0.0129 acc 0.9698 lr 7.71e-05 eta 0:14
 2026-10-10 05:56:07,523 INFO epoch 11 step 150/162 ( 93%) loss 0.0126 acc 0.9712 lr 7.56e-05 eta 0:02
+2026-10-10 05:56:13,472 INFO epoch  11/29  train_loss 0.0123  val_loss 0.3442  auroc 0.9261  microF1 0.7653  macroF1 0.7224  auprc 0.7518  eta 12:31
+2026-10-10 05:56:13,921 INFO epoch 12 step 0/162 (  1%) loss 0.0043 acc 1.0000 lr 7.52e-05 eta 1:10
+2026-10-10 05:56:25,641 INFO epoch 12 step 50/162 ( 31%) loss 0.0092 acc 0.9828 lr 7.37e-05 eta 0:26
+2026-10-10 05:56:37,359 INFO epoch 12 step 100/162 ( 62%) loss 0.0096 acc 0.9804 lr 7.21e-05 eta 0:14
+2026-10-10 05:56:49,076 INFO epoch 12 step 150/162 ( 93%) loss 0.0100 acc 0.9784 lr 7.05e-05 eta 0:02
+2026-10-10 05:56:55,023 INFO epoch  12/29  train_loss 0.0103  val_loss 0.3314  auroc 0.9325  microF1 0.7683  macroF1 0.7229  auprc 0.7639  eta 11:49
+2026-10-10 05:56:55,455 INFO epoch 13 step 0/162 (  1%) loss 0.0052 acc 0.9844 lr 7.01e-05 eta 1:09
+2026-10-10 05:57:07,173 INFO epoch 13 step 50/162 ( 31%) loss 0.0061 acc 0.9856 lr 6.84e-05 eta 0:26
+2026-10-10 05:57:18,890 INFO epoch 13 step 100/162 ( 62%) loss 0.0074 acc 0.9831 lr 6.68e-05 eta 0:14
+2026-10-10 05:57:30,612 INFO epoch 13 step 150/162 ( 93%) loss 0.0079 acc 0.9826 lr 6.51e-05 eta 0:02
+2026-10-10 05:57:36,559 INFO epoch  13/29  train_loss 0.0081  val_loss 0.3617  auroc 0.9224  microF1 0.7488  macroF1 0.7151  auprc 0.7493  eta 11:07
+2026-10-10 05:57:36,988 INFO epoch 14 step 0/162 (  1%) loss 0.0053 acc 0.9844 lr 6.47e-05 eta 1:08
+2026-10-10 05:57:48,707 INFO epoch 14 step 50/162 ( 31%) loss 0.0053 acc 0.9881 lr 6.30e-05 eta 0:26
+2026-10-10 05:58:00,425 INFO epoch 14 step 100/162 ( 62%) loss 0.0067 acc 0.9851 lr 6.12e-05 eta 0:14
+2026-10-10 05:58:12,142 INFO epoch 14 step 150/162 ( 93%) loss 0.0072 acc 0.9843 lr 5.95e-05 eta 0:02
+2026-10-10 05:58:18,106 INFO epoch  14/29  train_loss 0.0072  val_loss 0.3626  auroc 0.9245  microF1 0.7616  macroF1 0.7231  auprc 0.7555  eta 10:25
+2026-10-10 05:58:18,553 INFO epoch 15 step 0/162 (  1%) loss 0.0016 acc 1.0000 lr 5.91e-05 eta 1:11
+2026-10-10 05:58:30,269 INFO epoch 15 step 50/162 ( 31%) loss 0.0056 acc 0.9868 lr 5.73e-05 eta 0:26
+2026-10-10 05:58:41,983 INFO epoch 15 step 100/162 ( 62%) loss 0.0068 acc 0.9851 lr 5.55e-05 eta 0:14
+2026-10-10 05:58:53,701 INFO epoch 15 step 150/162 ( 93%) loss 0.0063 acc 0.9864 lr 5.38e-05 eta 0:02
+2026-10-10 05:58:59,648 INFO epoch  15/29  train_loss 0.0062  val_loss 0.3701  auroc 0.9302  microF1 0.7709  macroF1 0.7367  auprc 0.7655  eta 9:43
+2026-10-10 05:58:59,651 INFO early stop at epoch 15: val auroc flat for 10 epochs (best 5)
+2026-10-10 05:58:59,905 INFO Loaded checkpoint: matched 188 tensors
+2026-10-10 05:59:05,311 INFO TEST macroAUROC 0.9416 microAUROC 0.9557 microF1 0.7725 macroF1 0.7081 (tuned thresholds: micro 0.7591 macro 0.7309)
+──────────────────────────────────────────────────────────────────────────────
+  cpsc2018_ft  ·  TEST  ·  finetune/ecg_c1_cpsc2018  ·  full fine-tune  ·  pretrained  ·  28,578,081 trainable
+──────────────────────────────────────────────────────────────────────────────
+  F1 mic   0.7591  ████████████████▊                  
+  F1 mac   0.7309  ████████████████▏                  
+  AUROC    0.9416  ███████████████████▍    chance 0.50
+  AUROCu   0.9557  █████████████████████              
+  F1u@.5   0.7725  █████████████████                  
+  F1m@.5   0.7081  ███████████████▋                   
+  acc 0.6904   weighted_f1 0.7631   loss 0.2322
+──────────────────────────────────────────────────────────────────────────────
+2026-10-10 05:59:05,314 INFO outputs in /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/cpsc2018_ft
+Done. /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/ecg_downstream/cpsc2018_ft/results.json (its 'test' block is the number to report)

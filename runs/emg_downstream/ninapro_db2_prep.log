@@ -1,0 +1,6 @@
+ninapro_db2: 120 unit(s) under /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/raw/ninapro_db2
+  train   59,352 windows    40 subjects    7,488 segments
+  val      6,522 windows    40 subjects      832 segments
+  test    32,675 windows    40 subjects    4,160 segments
+  subject overlap {'train/val': 40, 'train/test': 40, 'val/test': 40}; segment overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}; 0 unit(s) failed
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/c1/ninapro_db2/{train,val,test}.h5 and split.json in 149s

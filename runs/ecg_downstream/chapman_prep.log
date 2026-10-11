@@ -1,0 +1,28 @@
+chapman: 44,203 labelled record(s) under /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/raw/chapman (2720s to list)
+  2,000/44,203 records, 1 failed
+  4,000/44,203 records, 1 failed
+  6,000/44,203 records, 1 failed
+  8,000/44,203 records, 1 failed
+  10,000/44,203 records, 1 failed
+  12,000/44,203 records, 8 failed
+  14,000/44,203 records, 12 failed
+  16,000/44,203 records, 17 failed
+  18,000/44,203 records, 18 failed
+  20,000/44,203 records, 21 failed
+  22,000/44,203 records, 28 failed
+  24,000/44,203 records, 35 failed
+  26,000/44,203 records, 47 failed
+  28,000/44,203 records, 56 failed
+  30,000/44,203 records, 56 failed
+  32,000/44,203 records, 56 failed
+  34,000/44,203 records, 64 failed
+  36,000/44,203 records, 76 failed
+  38,000/44,203 records, 82 failed
+  40,000/44,203 records, 82 failed
+  42,000/44,203 records, 92 failed
+  44,000/44,203 records, 97 failed
+  train  30,872 records    30,872 windows   30,872 subjects  {'SB': 11514, 'AFIB': 6853, 'GSVT': 730, 'SR': 12448}
+  val     8,819 records     8,819 windows    8,819 subjects  {'SB': 3350, 'AFIB': 1968, 'GSVT': 203, 'SR': 3473}
+  test    4,415 records     4,415 windows    4,415 subjects  {'SB': 1661, 'AFIB': 1005, 'GSVT': 95, 'SR': 1740}
+  97 record(s) failed; subject overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/ecg/downstream/c1/chapman/{train,val,test}.h5 and split.json in 3043s
