@@ -81,12 +81,14 @@ model:
   channel_token_gate_init: 0.0
 
 train:
-  # 40 epochs that between them read the corpus about once
-  # (corpus_passes_per_run below). As on EEG, an epoch is a fixed number of
-  # steps drawn from the mixture, not a pass: EEG's 60 x 768 steps read about
-  # half its corpus. latest.pth is written at epoch ends; RESUME=auto
-  # continues across jobs.
-  epochs: 40
+  # ECG's budget: 60 epochs of 1000 steps, 60,000 optimizer updates, about
+  # 16 reads of the corpus (~1,370 windows a step across 16 ranks). The first
+  # run sized the epoch from corpus_passes_per_run 1.0, which came to 93 steps
+  # and 3,720 updates -- a twelfth of EEG's 46,080 -- and its validation loss
+  # was still falling when the cosine schedule ran out. An epoch is ~40 min on
+  # 4 nodes, so latest.pth lands well inside every walltime; the run takes
+  # two or three 24 h jobs chained with RESUME=auto.
+  epochs: 60
   warmup_epochs: 2
   lr: 3.0e-4
   min_lr_ratio: 0.01
@@ -94,17 +96,12 @@ train:
   clip_grad_norm: 1.0
   precision: bf16
   grad_accumulation_steps: 1
-  # null: sized from the data so that epochs x steps x windows-per-step comes
-  # to corpus_passes_per_run x the corpus. The banner prints the resolved
-  # steps, total updates and "windows read over the run"; an explicit number
-  # here (or STEPS_PER_EPOCH=) overrides it.
-  steps_per_epoch: null
-  corpus_passes_per_run: 1.0
+  # Explicit, as on ECG. STEPS_PER_EPOCH= at submission overrides it; null
+  # sizes the epoch from train.corpus_passes_per_run instead.
+  steps_per_epoch: 1000
   val_mask_seed: 1234
-  # Per dataset, per rank. An epoch here is short (on the order of a hundred
-  # steps), so a 100-batch validation sweep over six corpora would take longer
-  # than the training it measures.
-  val_max_batches_per_dataset: 20
+  # Per dataset, per rank: ~2 min over six corpora against a ~40 min epoch.
+  val_max_batches_per_dataset: 50
   # Per rank: ~24 k tokens a step on every route.
   batch_size_by_route:
     W16_2000: 192
