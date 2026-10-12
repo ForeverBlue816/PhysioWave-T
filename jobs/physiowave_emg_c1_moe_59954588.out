@@ -1,0 +1,1137 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  sEMG C1 multi-route pretraining  (job 59954588)
+  config     pretrain/emg_c1_moe
+  torch      2.2.0a0+git6c8c5ad
+  4 node(s) x 4 gpu = 16 rank(s)
+  rendezvous lrdn0005:34588 (id 59954588)
+  nodes      lrdn0005 lrdn0009 lrdn0706 lrdn3120 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=<none>
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+python -m torch.distributed.run --nnodes=4 --nproc_per_node=4 --node_rank=0 --rdzv_id=59954588 --rdzv_backend=c10d --rdzv_endpoint=lrdn0005:34588 -m physiowave.train.pretrain_main --config pretrain/emg_c1_moe --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl 
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+============================================================
+  sEMG C1 multi-route pretraining
+  config=pretrain/emg_c1_moe
+  nodes=4 x 4 gpu = 16 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/emg_c1_moe.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe
+  open files     limit 131072, shards kept open per dataset 4096, prefetch 1, collective timeout 60 min
+============================================================
+NCCL version 2.19.1+cuda12.1
+==================================================================
+  sEMG C1 multi-route pretraining
+  total parameters        12,052,622
+  shared transformer      10,631,808
+  frontend W16_2000       48,843
+  frontend A24_2000       100,947
+  frontend G64_2000       643,707
+  patch_embed 2000       97,152   spec decoder 244,858   raw decoder 244,858
+  downstream encoder      11,562,522   (+490,100 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    15,104  + proj 24,960
+  routes:
+    W16_2000: 16x2000 @ 2000Hz -> 16x8 = 128 tokens (patch (1, 250))
+    A24_2000: 24x2000 @ 2000Hz -> 24x8 = 192 tokens (patch (1, 250))
+    G64_2000: 64x2000 @ 2000Hz -> 64x8 = 512 tokens (patch (1, 250))
+  mixture policy: temperature:0.5
+    dataset          corpus%   step%  window%   passes/epoch
+    cemhsey_5x13      8.88%  25.00%   14.25%     0.42x
+    cemhsey_8x8      12.98%  28.00%   15.96%     0.32x
+    emg2pose         23.57%   9.50%   21.66%     0.24x
+    emg2qwerty       46.20%  12.80%   29.19%     0.17x
+    hyser             5.37%  19.60%   11.17%     0.55x
+    putemg            3.00%   5.10%    7.75%     0.68x
+  channel vocab sha256    5b4444a9bd5f7c5d
+  budget:
+    resolved steps per epoch   1000  (explicit override)
+    windows read over the run  82,398,281 of a 5,106,203-window corpus (16.14x)
+    total optimizer updates    60000   (1000/epoch x 60 epochs, grad_accum 1)
+    effective world size       16
+    validation per epoch       first 50 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       W16_2000=192  A24_2000=128  G64_2000=48
+    passes per dataset/epoch   cemhsey_5x13=0.42x  cemhsey_8x8=0.32x  emg2pose=0.24x  emg2qwerty=0.17x  hyser=0.55x  putemg=0.68x
+  steps/epoch 1000  epochs 60  grad_accum 1
+==================================================================
+  [06:54:21] epoch 0 step 1/1000 [G64_2000 hyser] loss 0.87530 lr 3.00e-07 4 win/s eta 2:58:09
+  [06:56:35] epoch 0 step 7/1000 [W16_2000 emg2qwerty] loss 0.83923 lr 1.20e-06 5 win/s eta 5:43:20
+  [06:58:39] epoch 0 step 18/1000 [G64_2000 cemhsey_5x13] loss 0.82265 lr 2.85e-06 6 win/s eta 4:04:56
+  [07:00:59] epoch 0 step 30/1000 [W16_2000 emg2qwerty] loss 0.76146 lr 4.65e-06 6 win/s eta 3:40:30
+  [07:02:19] epoch 0 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.76377 lr 7.80e-06 9 win/s eta 2:31:38
+  [07:04:23] epoch 0 step 68/1000 [G64_2000 cemhsey_8x8] loss 0.73591 lr 1.03e-05 10 win/s eta 2:19:54
+  [07:06:27] epoch 0 step 83/1000 [G64_2000 hyser] loss 0.74815 lr 1.26e-05 10 win/s eta 2:15:41
+  [07:08:33] epoch 0 step 100/1000 [A24_2000 putemg] loss 0.78142 lr 1.51e-05 10 win/s eta 2:09:22
+  [07:08:38] epoch 0 step 101/1000 [G64_2000 hyser] loss 0.74342 lr 1.53e-05 10 win/s eta 2:08:44
+  [07:10:39] epoch 0 step 115/1000 [G64_2000 cemhsey_5x13] loss 0.75257 lr 1.74e-05 10 win/s eta 2:06:47
+  [07:12:42] epoch 0 step 128/1000 [G64_2000 cemhsey_5x13] loss 0.75337 lr 1.93e-05 10 win/s eta 2:06:11
+  [07:14:46] epoch 0 step 141/1000 [G64_2000 cemhsey_8x8] loss 0.73923 lr 2.13e-05 10 win/s eta 2:05:27
+  [07:15:45] epoch 0 step 151/1000 [G64_2000 hyser] loss 0.75310 lr 2.28e-05 10 win/s eta 2:01:20
+  [07:17:57] epoch 0 step 165/1000 [W16_2000 emg2pose] loss 0.68775 lr 2.49e-05 10 win/s eta 2:00:20
+  [07:20:00] epoch 0 step 185/1000 [G64_2000 hyser] loss 0.74335 lr 2.79e-05 10 win/s eta 1:53:46
+  [07:21:31] epoch 0 step 201/1000 [G64_2000 hyser] loss 0.73799 lr 3.03e-05 10 win/s eta 1:48:43
+  [07:23:36] epoch 0 step 216/1000 [W16_2000 emg2qwerty] loss 0.69733 lr 3.25e-05 10 win/s eta 1:46:49
+  [07:25:41] epoch 0 step 232/1000 [G64_2000 cemhsey_8x8] loss 0.73274 lr 3.49e-05 10 win/s eta 1:44:19
+  [07:27:48] epoch 0 step 247/1000 [W16_2000 emg2pose] loss 0.68138 lr 3.72e-05 10 win/s eta 1:42:32
+  [07:28:25] epoch 0 step 251/1000 [W16_2000 emg2qwerty] loss 0.68949 lr 3.78e-05 10 win/s eta 1:42:10
+  [07:30:27] epoch 0 step 272/1000 [G64_2000 cemhsey_5x13] loss 0.72096 lr 4.09e-05 10 win/s eta 1:37:06
+  [07:32:29] epoch 0 step 293/1000 [G64_2000 hyser] loss 0.68442 lr 4.41e-05 11 win/s eta 1:32:26
+  [07:33:25] epoch 0 step 301/1000 [G64_2000 hyser] loss 0.67578 lr 4.53e-05 11 win/s eta 1:31:08
+  [07:35:28] epoch 0 step 324/1000 [W16_2000 emg2pose] loss 0.64748 lr 4.87e-05 11 win/s eta 1:26:09
+  [07:37:28] epoch 0 step 341/1000 [G64_2000 cemhsey_5x13] loss 0.63204 lr 5.13e-05 11 win/s eta 1:23:40
+  [07:38:00] epoch 0 step 351/1000 [W16_2000 emg2pose] loss 0.61623 lr 5.28e-05 11 win/s eta 1:21:02
+  [07:40:03] epoch 0 step 387/1000 [W16_2000 emg2qwerty] loss 0.58175 lr 5.82e-05 12 win/s eta 1:12:41
+  [07:41:25] epoch 0 step 401/1000 [G64_2000 cemhsey_8x8] loss 0.55589 lr 6.03e-05 12 win/s eta 1:10:34
+  [07:43:40] epoch 0 step 421/1000 [W16_2000 emg2qwerty] loss 0.57687 lr 6.33e-05 12 win/s eta 1:08:04
+  [07:45:43] epoch 0 step 440/1000 [W16_2000 emg2qwerty] loss 0.55306 lr 6.61e-05 12 win/s eta 1:05:36
+  [07:47:22] epoch 0 step 451/1000 [G64_2000 cemhsey_5x13] loss 0.57378 lr 6.78e-05 12 win/s eta 1:04:45
+  [07:49:22] epoch 0 step 466/1000 [W16_2000 emg2qwerty] loss 0.53169 lr 7.00e-05 12 win/s eta 1:03:14
+  [07:51:23] epoch 0 step 484/1000 [G64_2000 cemhsey_8x8] loss 0.51700 lr 7.27e-05 12 win/s eta 1:00:59
+  [07:53:33] epoch 0 step 498/1000 [W16_2000 emg2qwerty] loss 0.51744 lr 7.48e-05 12 win/s eta 59:51
+  [07:53:55] epoch 0 step 501/1000 [W16_2000 emg2qwerty] loss 0.51513 lr 7.53e-05 12 win/s eta 59:30
+  [07:55:56] epoch 0 step 524/1000 [W16_2000 emg2pose] loss 0.53962 lr 7.87e-05 12 win/s eta 56:06
+  [07:57:58] epoch 0 step 542/1000 [W16_2000 emg2pose] loss 0.52954 lr 8.15e-05 12 win/s eta 53:55
+  [07:59:00] epoch 0 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.45178 lr 8.28e-05 12 win/s eta 52:49
+  [08:01:02] epoch 0 step 571/1000 [G64_2000 cemhsey_8x8] loss 0.46816 lr 8.58e-05 12 win/s eta 50:13
+  [08:03:02] epoch 0 step 592/1000 [G64_2000 cemhsey_8x8] loss 0.42508 lr 8.89e-05 12 win/s eta 47:27
+  [08:04:21] epoch 0 step 601/1000 [G64_2000 cemhsey_8x8] loss 0.41718 lr 9.03e-05 12 win/s eta 46:35
+  [08:06:25] epoch 0 step 614/1000 [A24_2000 putemg] loss 0.30010 lr 9.22e-05 12 win/s eta 45:25
+  [08:08:28] epoch 0 step 635/1000 [G64_2000 cemhsey_5x13] loss 0.46746 lr 9.54e-05 12 win/s eta 42:42
+  [08:10:28] epoch 0 step 650/1000 [G64_2000 cemhsey_5x13] loss 0.47605 lr 9.76e-05 12 win/s eta 41:04
+  [08:10:31] epoch 0 step 651/1000 [G64_2000 cemhsey_8x8] loss 0.41953 lr 9.78e-05 12 win/s eta 40:55
+  [08:12:33] epoch 0 step 670/1000 [G64_2000 cemhsey_8x8] loss 0.39452 lr 1.01e-04 12 win/s eta 38:36
+  [08:14:36] epoch 0 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.39010 lr 1.05e-04 12 win/s eta 34:18
+  [08:16:41] epoch 0 step 732/1000 [G64_2000 cemhsey_5x13] loss 0.41766 lr 1.10e-04 13 win/s eta 30:12
+  [08:18:13] epoch 0 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.37635 lr 1.13e-04 13 win/s eta 27:52
+  [08:20:15] epoch 0 step 772/1000 [W16_2000 emg2pose] loss 0.45852 lr 1.16e-04 13 win/s eta 25:25
+  [08:22:17] epoch 0 step 791/1000 [G64_2000 cemhsey_5x13] loss 0.41504 lr 1.19e-04 13 win/s eta 23:16
+  [08:23:39] epoch 0 step 801/1000 [W16_2000 emg2qwerty] loss 0.43716 lr 1.20e-04 13 win/s eta 22:13
+  [08:25:47] epoch 0 step 818/1000 [W16_2000 emg2pose] loss 0.47454 lr 1.23e-04 13 win/s eta 20:23
+  [08:27:48] epoch 0 step 830/1000 [G64_2000 cemhsey_8x8] loss 0.36807 lr 1.25e-04 12 win/s eta 19:10
+  [08:29:52] epoch 0 step 846/1000 [G64_2000 hyser] loss 0.33567 lr 1.27e-04 12 win/s eta 17:25
+  [08:30:26] epoch 0 step 851/1000 [G64_2000 cemhsey_5x13] loss 0.39897 lr 1.28e-04 12 win/s eta 16:51
+  [08:32:29] epoch 0 step 869/1000 [G64_2000 cemhsey_5x13] loss 0.39671 lr 1.31e-04 12 win/s eta 14:49
+  [08:34:35] epoch 0 step 890/1000 [W16_2000 emg2qwerty] loss 0.43447 lr 1.34e-04 13 win/s eta 12:24
+  [08:35:49] epoch 0 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.36322 lr 1.35e-04 12 win/s eta 11:10
+  [08:37:57] epoch 0 step 923/1000 [W16_2000 emg2pose] loss 0.48574 lr 1.39e-04 13 win/s eta 8:39
+  [08:39:58] epoch 0 step 942/1000 [G64_2000 hyser] loss 0.34494 lr 1.41e-04 13 win/s eta 6:30
+  [08:40:53] epoch 0 step 951/1000 [W16_2000 emg2pose] loss 0.45607 lr 1.43e-04 13 win/s eta 5:29
+  [08:42:56] epoch 0 step 978/1000 [G64_2000 cemhsey_8x8] loss 0.35498 lr 1.47e-04 13 win/s eta 2:26
+  [08:45:10] epoch 0 step 997/1000 [W16_2000 emg2qwerty] loss 0.42082 lr 1.50e-04 13 win/s eta 0:20
+  [08:45:29] epoch 0 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.36733 lr 1.50e-04 13 win/s eta 0:00
+  [08:47:29] epoch 0 val 78/128 eta 1:17
+epoch 0 done (1/60): train total 0.54245  val total 0.39186 (spec 0.40912 r 0.765 nmse 0.409 | raw 0.37459 r 0.489 nmse 0.767 | macro 0.35149)  gate 0.0135  [1:51:18 train + 4:45 val, elapsed 1:56:04, run eta 114:08:24]
+  new best total: 0.39186 at epoch 0  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.40912 at epoch 0  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.37459 at epoch 0  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.35149 at epoch 0  (macro_route_loss_total -> best_macro_total.pth)
+  [08:50:20] epoch 1 step 1/1000 [G64_2000 hyser] loss 0.34211 lr 1.50e-04 12 win/s eta 1:07:46
+  [08:52:22] epoch 1 step 19/1000 [W16_2000 emg2pose] loss 0.44902 lr 1.53e-04 12 win/s eta 1:48:24
+  [08:54:19] epoch 1 step 51/1000 [W16_2000 emg2pose] loss 0.45158 lr 1.58e-04 18 win/s eta 1:15:20
+  [08:56:25] epoch 1 step 74/1000 [G64_2000 cemhsey_8x8] loss 0.34223 lr 1.61e-04 17 win/s eta 1:16:55
+  [08:58:27] epoch 1 step 89/1000 [G64_2000 hyser] loss 0.33334 lr 1.63e-04 16 win/s eta 1:23:43
+  [08:59:49] epoch 1 step 101/1000 [G64_2000 cemhsey_5x13] loss 0.33837 lr 1.65e-04 16 win/s eta 1:24:59
+  [09:02:02] epoch 1 step 124/1000 [W16_2000 emg2qwerty] loss 0.42712 lr 1.69e-04 15 win/s eta 1:23:06
+  [09:04:03] epoch 1 step 145/1000 [G64_2000 cemhsey_5x13] loss 0.33897 lr 1.72e-04 15 win/s eta 1:21:19
+  [09:04:59] epoch 1 step 151/1000 [W16_2000 emg2qwerty] loss 0.40973 lr 1.73e-04 15 win/s eta 1:22:44
+  [09:07:06] epoch 1 step 173/1000 [W16_2000 emg2qwerty] loss 0.39362 lr 1.76e-04 15 win/s eta 1:20:30
+  [09:09:09] epoch 1 step 191/1000 [G64_2000 hyser] loss 0.30874 lr 1.79e-04 15 win/s eta 1:20:02
+  [09:10:24] epoch 1 step 201/1000 [G64_2000 hyser] loss 0.32635 lr 1.80e-04 15 win/s eta 1:20:03
+  [09:12:25] epoch 1 step 225/1000 [G64_2000 cemhsey_5x13] loss 0.36893 lr 1.84e-04 15 win/s eta 1:16:19
+  [09:14:28] epoch 1 step 241/1000 [G64_2000 cemhsey_8x8] loss 0.31797 lr 1.86e-04 15 win/s eta 1:16:13
+  [09:15:35] epoch 1 step 251/1000 [W16_2000 emg2qwerty] loss 0.39923 lr 1.88e-04 15 win/s eta 1:15:32
+  [09:17:39] epoch 1 step 271/1000 [G64_2000 hyser] loss 0.28735 lr 1.91e-04 14 win/s eta 1:13:39
+  [09:19:40] epoch 1 step 300/1000 [G64_2000 cemhsey_8x8] loss 0.30136 lr 1.95e-04 15 win/s eta 1:08:36
+  [09:19:53] epoch 1 step 301/1000 [W16_2000 emg2pose] loss 0.42375 lr 1.95e-04 15 win/s eta 1:08:46
+  [09:21:56] epoch 1 step 318/1000 [W16_2000 emg2pose] loss 0.42289 lr 1.98e-04 14 win/s eta 1:07:55
+  [09:23:57] epoch 1 step 345/1000 [G64_2000 hyser] loss 0.29830 lr 2.02e-04 14 win/s eta 1:03:56
+  [09:24:41] epoch 1 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.30571 lr 2.03e-04 14 win/s eta 1:03:37
+  [09:26:45] epoch 1 step 370/1000 [A24_2000 putemg] loss 0.21056 lr 2.06e-04 14 win/s eta 1:02:08
+  [09:28:48] epoch 1 step 387/1000 [G64_2000 cemhsey_5x13] loss 0.30352 lr 2.08e-04 14 win/s eta 1:01:02
+  [09:30:14] epoch 1 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.31133 lr 2.10e-04 14 win/s eta 59:42
+  [09:32:17] epoch 1 step 434/1000 [G64_2000 hyser] loss 0.29169 lr 2.15e-04 15 win/s eta 54:47
+  [09:33:47] epoch 1 step 451/1000 [G64_2000 cemhsey_8x8] loss 0.32986 lr 2.18e-04 15 win/s eta 52:58
+  [09:35:50] epoch 1 step 472/1000 [G64_2000 cemhsey_8x8] loss 0.31233 lr 2.21e-04 15 win/s eta 50:59
+  [09:37:54] epoch 1 step 490/1000 [G64_2000 hyser] loss 0.27600 lr 2.24e-04 15 win/s eta 49:35
+  [09:39:09] epoch 1 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.28827 lr 2.25e-04 15 win/s eta 48:41
+  [09:41:16] epoch 1 step 522/1000 [W16_2000 emg2pose] loss 0.43803 lr 2.28e-04 15 win/s eta 46:41
+  [09:43:18] epoch 1 step 545/1000 [W16_2000 emg2pose] loss 0.44675 lr 2.32e-04 15 win/s eta 44:16
+  [09:43:58] epoch 1 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.29277 lr 2.33e-04 15 win/s eta 43:45
+  [09:46:09] epoch 1 step 571/1000 [W16_2000 emg2qwerty] loss 0.41875 lr 2.36e-04 15 win/s eta 41:59
+  [09:48:12] epoch 1 step 599/1000 [G64_2000 hyser] loss 0.30892 lr 2.40e-04 15 win/s eta 38:47
+  [09:48:26] epoch 1 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.34890 lr 2.40e-04 15 win/s eta 38:37
+  [09:50:26] epoch 1 step 619/1000 [W16_2000 emg2pose] loss 0.44431 lr 2.43e-04 15 win/s eta 37:02
+  [09:52:36] epoch 1 step 642/1000 [W16_2000 emg2qwerty] loss 0.41463 lr 2.46e-04 15 win/s eta 34:45
+  [09:53:38] epoch 1 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.31960 lr 2.48e-04 15 win/s eta 33:58
+  [09:55:40] epoch 1 step 672/1000 [G64_2000 cemhsey_5x13] loss 0.28761 lr 2.51e-04 15 win/s eta 31:55
+  [09:57:58] epoch 1 step 690/1000 [W16_2000 emg2pose] loss 0.41126 lr 2.54e-04 14 win/s eta 30:25
+  [09:58:52] epoch 1 step 701/1000 [W16_2000 emg2qwerty] loss 0.39836 lr 2.55e-04 15 win/s eta 29:15
+  [10:00:56] epoch 1 step 723/1000 [W16_2000 emg2qwerty] loss 0.40663 lr 2.59e-04 14 win/s eta 27:04
+  [10:03:00] epoch 1 step 743/1000 [W16_2000 emg2pose] loss 0.42789 lr 2.62e-04 15 win/s eta 25:09
+  [10:03:44] epoch 1 step 751/1000 [W16_2000 emg2pose] loss 0.44486 lr 2.63e-04 15 win/s eta 24:21
+  [10:05:45] epoch 1 step 776/1000 [W16_2000 emg2pose] loss 0.48609 lr 2.67e-04 15 win/s eta 21:47
+  [10:07:46] epoch 1 step 792/1000 [W16_2000 emg2pose] loss 0.44172 lr 2.69e-04 15 win/s eta 20:21
+  [10:08:45] epoch 1 step 801/1000 [G64_2000 cemhsey_5x13] loss 0.32254 lr 2.70e-04 15 win/s eta 19:30
+  [10:10:46] epoch 1 step 837/1000 [G64_2000 cemhsey_8x8] loss 0.29754 lr 2.76e-04 15 win/s eta 15:40
+  [10:11:39] epoch 1 step 851/1000 [W16_2000 emg2pose] loss 0.42766 lr 2.78e-04 15 win/s eta 14:15
+  [10:13:50] epoch 1 step 872/1000 [A24_2000 putemg] loss 0.23172 lr 2.81e-04 15 win/s eta 12:16
+  [10:16:00] epoch 1 step 887/1000 [W16_2000 emg2qwerty] loss 0.42232 lr 2.83e-04 15 win/s eta 10:55
+  [10:17:27] epoch 1 step 901/1000 [W16_2000 emg2qwerty] loss 0.41320 lr 2.85e-04 15 win/s eta 9:34
+  [10:19:30] epoch 1 step 924/1000 [G64_2000 cemhsey_5x13] loss 0.28955 lr 2.89e-04 15 win/s eta 7:20
+  [10:21:37] epoch 1 step 944/1000 [W16_2000 emg2qwerty] loss 0.40404 lr 2.92e-04 15 win/s eta 5:25
+  [10:22:08] epoch 1 step 951/1000 [G64_2000 cemhsey_5x13] loss 0.31707 lr 2.93e-04 15 win/s eta 4:44
+  [10:24:08] epoch 1 step 969/1000 [G64_2000 cemhsey_5x13] loss 0.28142 lr 2.95e-04 15 win/s eta 3:00
+  [10:26:16] epoch 1 step 988/1000 [W16_2000 emg2qwerty] loss 0.42526 lr 2.98e-04 15 win/s eta 1:09
+  [10:27:29] epoch 1 step 1000/1000 [G64_2000 hyser] loss 0.25840 lr 3.00e-04 15 win/s eta 0:00
+  [10:29:30] epoch 1 val 90/128 eta 0:50
+epoch 1 done (2/60): train total 0.33214  val total 0.34230 (spec 0.35333 r 0.796 nmse 0.353 | raw 0.33126 r 0.579 nmse 0.661 | macro 0.32433)  gate 0.0601  [1:37:13 train + 3:18 val, elapsed 3:36:37, run eta 104:42:11]
+  new best total: 0.34230 at epoch 1  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.35333 at epoch 1  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.33126 at epoch 1  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.32433 at epoch 1  (macro_route_loss_total -> best_macro_total.pth)
+  [10:30:53] epoch 2 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.29323 lr 3.00e-04 12 win/s eta 1:07:55
+  [10:32:56] epoch 2 step 23/1000 [G64_2000 hyser] loss 0.26413 lr 3.00e-04 14 win/s eta 1:29:51
+  [10:34:57] epoch 2 step 48/1000 [G64_2000 hyser] loss 0.25463 lr 3.00e-04 15 win/s eta 1:22:02
+  [10:35:06] epoch 2 step 51/1000 [G64_2000 cemhsey_8x8] loss 0.24990 lr 3.00e-04 15 win/s eta 1:19:53
+  [10:37:13] epoch 2 step 67/1000 [W16_2000 emg2pose] loss 0.48393 lr 3.00e-04 14 win/s eta 1:29:10
+  [10:39:19] epoch 2 step 86/1000 [W16_2000 emg2qwerty] loss 0.44204 lr 3.00e-04 14 win/s eta 1:30:19
+  [10:40:49] epoch 2 step 101/1000 [W16_2000 emg2pose] loss 0.48777 lr 3.00e-04 14 win/s eta 1:29:00
+  [10:43:22] epoch 2 step 120/1000 [W16_2000 emg2qwerty] loss 0.44818 lr 3.00e-04 13 win/s eta 1:32:06
+  [10:45:35] epoch 2 step 150/1000 [W16_2000 emg2pose] loss 0.49711 lr 3.00e-04 14 win/s eta 1:23:39
+  [10:45:39] epoch 2 step 151/1000 [G64_2000 hyser] loss 0.25116 lr 3.00e-04 14 win/s eta 1:23:22
+  [10:47:44] epoch 2 step 170/1000 [G64_2000 cemhsey_8x8] loss 0.28547 lr 3.00e-04 14 win/s eta 1:22:36
+  [10:49:56] epoch 2 step 195/1000 [W16_2000 emg2qwerty] loss 0.44778 lr 3.00e-04 14 win/s eta 1:18:55
+  [10:50:56] epoch 2 step 201/1000 [G64_2000 hyser] loss 0.25349 lr 3.00e-04 14 win/s eta 1:19:58
+  [10:53:01] epoch 2 step 232/1000 [W16_2000 emg2qwerty] loss 0.44237 lr 3.00e-04 15 win/s eta 1:13:30
+  [10:53:44] epoch 2 step 251/1000 [G64_2000 hyser] loss 0.23865 lr 3.00e-04 15 win/s eta 1:08:24
+  [10:55:49] epoch 2 step 266/1000 [W16_2000 emg2qwerty] loss 0.43223 lr 3.00e-04 15 win/s eta 1:08:59
+  [10:57:54] epoch 2 step 287/1000 [W16_2000 emg2qwerty] loss 0.42215 lr 3.00e-04 15 win/s eta 1:07:18
+  [10:58:55] epoch 2 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.26981 lr 3.00e-04 15 win/s eta 1:05:15
+  [11:00:58] epoch 2 step 324/1000 [G64_2000 cemhsey_8x8] loss 0.27181 lr 3.00e-04 15 win/s eta 1:02:53
+  [11:03:00] epoch 2 step 349/1000 [W16_2000 emg2qwerty] loss 0.41455 lr 3.00e-04 16 win/s eta 1:00:03
+  [11:03:16] epoch 2 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.29767 lr 3.00e-04 16 win/s eta 59:59
+  [11:05:23] epoch 2 step 374/1000 [W16_2000 emg2qwerty] loss 0.43072 lr 3.00e-04 15 win/s eta 57:51
+  [11:07:28] epoch 2 step 394/1000 [W16_2000 emg2pose] loss 0.41400 lr 3.00e-04 15 win/s eta 56:22
+  [11:08:14] epoch 2 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.28604 lr 3.00e-04 15 win/s eta 55:53
+  [11:10:14] epoch 2 step 422/1000 [W16_2000 emg2qwerty] loss 0.42477 lr 3.00e-04 15 win/s eta 53:59
+  [11:12:18] epoch 2 step 443/1000 [W16_2000 emg2qwerty] loss 0.41683 lr 3.00e-04 15 win/s eta 52:09
+  [11:13:08] epoch 2 step 451/1000 [W16_2000 emg2pose] loss 0.43794 lr 3.00e-04 15 win/s eta 51:31
+  [11:15:18] epoch 2 step 469/1000 [W16_2000 emg2qwerty] loss 0.42600 lr 3.00e-04 15 win/s eta 50:21
+  [11:17:18] epoch 2 step 488/1000 [G64_2000 cemhsey_8x8] loss 0.24747 lr 3.00e-04 15 win/s eta 48:46
+  [11:18:57] epoch 2 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.28855 lr 3.00e-04 15 win/s eta 47:56
+  [11:20:59] epoch 2 step 525/1000 [W16_2000 emg2qwerty] loss 0.39680 lr 3.00e-04 15 win/s eta 45:23
+  [11:23:01] epoch 2 step 549/1000 [W16_2000 emg2pose] loss 0.43473 lr 3.00e-04 15 win/s eta 42:52
+  [11:23:33] epoch 2 step 551/1000 [W16_2000 emg2pose] loss 0.42907 lr 3.00e-04 15 win/s eta 42:58
+  [11:25:46] epoch 2 step 577/1000 [W16_2000 emg2pose] loss 0.42433 lr 3.00e-04 15 win/s eta 40:16
+  [11:27:55] epoch 2 step 599/1000 [W16_2000 emg2qwerty] loss 0.39179 lr 3.00e-04 15 win/s eta 38:13
+  [11:28:02] epoch 2 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.27244 lr 3.00e-04 15 win/s eta 37:59
+  [11:30:02] epoch 2 step 634/1000 [G64_2000 cemhsey_8x8] loss 0.25703 lr 3.00e-04 15 win/s eta 34:11
+  [11:30:42] epoch 2 step 651/1000 [G64_2000 hyser] loss 0.23863 lr 3.00e-04 16 win/s eta 32:06
+  [11:32:43] epoch 2 step 688/1000 [G64_2000 cemhsey_8x8] loss 0.24862 lr 3.00e-04 16 win/s eta 28:04
+  [11:34:14] epoch 2 step 701/1000 [W16_2000 emg2qwerty] loss 0.38591 lr 3.00e-04 16 win/s eta 27:02
+  [11:36:24] epoch 2 step 725/1000 [W16_2000 emg2pose] loss 0.40280 lr 3.00e-04 16 win/s eta 24:52
+  [11:38:32] epoch 2 step 743/1000 [A24_2000 putemg] loss 0.18729 lr 3.00e-04 16 win/s eta 23:25
+  [11:39:51] epoch 2 step 751/1000 [A24_2000 putemg] loss 0.18761 lr 3.00e-04 16 win/s eta 22:53
+  [11:42:01] epoch 2 step 773/1000 [W16_2000 emg2pose] loss 0.41440 lr 3.00e-04 16 win/s eta 20:54
+  [11:44:07] epoch 2 step 795/1000 [A24_2000 putemg] loss 0.19360 lr 3.00e-04 16 win/s eta 18:54
+  [11:44:40] epoch 2 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.28264 lr 3.00e-04 16 win/s eta 18:20
+  [11:46:41] epoch 2 step 824/1000 [G64_2000 cemhsey_8x8] loss 0.24632 lr 3.00e-04 16 win/s eta 16:12
+  [11:48:42] epoch 2 step 848/1000 [G64_2000 cemhsey_5x13] loss 0.25538 lr 3.00e-04 16 win/s eta 13:57
+  [11:48:55] epoch 2 step 851/1000 [W16_2000 emg2qwerty] loss 0.36082 lr 3.00e-04 16 win/s eta 13:40
+  [11:50:57] epoch 2 step 877/1000 [G64_2000 hyser] loss 0.20811 lr 3.00e-04 16 win/s eta 11:14
+  [11:52:59] epoch 2 step 897/1000 [G64_2000 hyser] loss 0.20858 lr 3.00e-04 16 win/s eta 9:26
+  [11:53:14] epoch 2 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.25739 lr 3.00e-04 16 win/s eta 9:03
+  [11:55:20] epoch 2 step 919/1000 [G64_2000 cemhsey_5x13] loss 0.27346 lr 3.00e-04 15 win/s eta 7:26
+  [11:57:25] epoch 2 step 941/1000 [W16_2000 emg2pose] loss 0.37396 lr 3.00e-04 16 win/s eta 5:25
+  [11:58:06] epoch 2 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.23751 lr 3.00e-04 16 win/s eta 4:29
+  [12:00:08] epoch 2 step 970/1000 [G64_2000 cemhsey_5x13] loss 0.26251 lr 3.00e-04 16 win/s eta 2:45
+  [12:02:16] epoch 2 step 993/1000 [W16_2000 emg2qwerty] loss 0.35699 lr 3.00e-04 15 win/s eta 0:38
+  [12:02:45] epoch 2 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.28831 lr 3.00e-04 15 win/s eta 0:00
+  [12:04:46] epoch 2 val 67/128 eta 1:50
+epoch 2 done (3/60): train total 0.29599  val total 0.29247 (spec 0.30275 r 0.832 nmse 0.303 | raw 0.28216 r 0.665 nmse 0.550 | macro 0.27389)  gate 0.1143  [1:31:56 train + 3:51 val, elapsed 5:12:26, run eta 98:56:31]
+  new best total: 0.29247 at epoch 2  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.30275 at epoch 2  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.28216 at epoch 2  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.27389 at epoch 2  (macro_route_loss_total -> best_macro_total.pth)
+  [12:06:40] epoch 3 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.25848 lr 3.00e-04 30 win/s eta 26:39
+  [12:08:44] epoch 3 step 43/1000 [W16_2000 emg2qwerty] loss 0.33573 lr 3.00e-04 32 win/s eta 46:39
+  [12:09:04] epoch 3 step 51/1000 [G64_2000 cemhsey_8x8] loss 0.23643 lr 3.00e-04 32 win/s eta 45:20
+  [12:11:05] epoch 3 step 86/1000 [A24_2000 putemg] loss 0.19591 lr 3.00e-04 29 win/s eta 47:20
+  [12:11:54] epoch 3 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.23582 lr 3.00e-04 30 win/s eta 46:51
+  [12:13:38] epoch 3 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.23543 lr 3.00e-04 30 win/s eta 39:21
+  [12:15:42] epoch 3 step 199/1000 [W16_2000 emg2pose] loss 0.37440 lr 3.00e-04 31 win/s eta 36:30
+  [12:15:52] epoch 3 step 201/1000 [W16_2000 emg2pose] loss 0.36831 lr 3.00e-04 31 win/s eta 36:40
+  [12:17:55] epoch 3 step 250/1000 [W16_2000 emg2qwerty] loss 0.32164 lr 3.00e-04 31 win/s eta 33:50
+  [12:17:56] epoch 3 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.26311 lr 3.00e-04 31 win/s eta 33:43
+  [12:19:58] epoch 3 step 297/1000 [G64_2000 cemhsey_8x8] loss 0.23537 lr 3.00e-04 32 win/s eta 31:32
+  [12:20:14] epoch 3 step 301/1000 [G64_2000 hyser] loss 0.20876 lr 3.00e-04 31 win/s eta 31:35
+  [12:22:15] epoch 3 step 330/1000 [G64_2000 hyser] loss 0.22799 lr 3.00e-04 30 win/s eta 31:42
+  [12:24:19] epoch 3 step 342/1000 [G64_2000 hyser] loss 0.20590 lr 3.00e-04 28 win/s eta 34:00
+  [12:25:12] epoch 3 step 351/1000 [G64_2000 hyser] loss 0.21417 lr 3.00e-04 27 win/s eta 34:20
+  [12:27:25] epoch 3 step 371/1000 [W16_2000 emg2pose] loss 0.37219 lr 3.00e-04 26 win/s eta 35:13
+  [12:29:25] epoch 3 step 399/1000 [A24_2000 putemg] loss 0.17827 lr 3.00e-04 25 win/s eta 34:19
+  [12:29:34] epoch 3 step 401/1000 [W16_2000 emg2qwerty] loss 0.34870 lr 3.00e-04 25 win/s eta 34:15
+  [12:31:40] epoch 3 step 443/1000 [W16_2000 emg2qwerty] loss 0.33734 lr 3.00e-04 25 win/s eta 31:28
+  [12:32:23] epoch 3 step 451/1000 [G64_2000 cemhsey_5x13] loss 0.25205 lr 3.00e-04 24 win/s eta 31:20
+  [12:34:39] epoch 3 step 464/1000 [W16_2000 emg2pose] loss 0.36509 lr 3.00e-04 23 win/s eta 32:21
+  [12:36:49] epoch 3 step 475/1000 [W16_2000 emg2pose] loss 0.36443 lr 3.00e-04 22 win/s eta 33:21
+  [12:38:53] epoch 3 step 490/1000 [W16_2000 emg2qwerty] loss 0.31485 lr 3.00e-04 21 win/s eta 33:34
+  [12:40:19] epoch 3 step 501/1000 [W16_2000 emg2qwerty] loss 0.32096 lr 3.00e-04 21 win/s eta 33:32
+  [12:42:25] epoch 3 step 522/1000 [W16_2000 emg2pose] loss 0.37144 lr 2.99e-04 20 win/s eta 32:46
+  [12:44:30] epoch 3 step 533/1000 [G64_2000 cemhsey_8x8] loss 0.25064 lr 2.99e-04 20 win/s eta 33:10
+  [12:46:06] epoch 3 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.25341 lr 2.99e-04 20 win/s eta 32:09
+  [12:48:24] epoch 3 step 564/1000 [W16_2000 emg2qwerty] loss 0.32382 lr 2.99e-04 19 win/s eta 32:17
+  [12:50:26] epoch 3 step 578/1000 [G64_2000 cemhsey_8x8] loss 0.24674 lr 2.99e-04 19 win/s eta 31:58
+  [12:52:58] epoch 3 step 589/1000 [W16_2000 emg2qwerty] loss 0.32019 lr 2.99e-04 18 win/s eta 32:19
+  [12:53:45] epoch 3 step 601/1000 [G64_2000 cemhsey_8x8] loss 0.25923 lr 2.99e-04 18 win/s eta 31:16
+  [12:55:47] epoch 3 step 619/1000 [G64_2000 hyser] loss 0.22983 lr 2.99e-04 18 win/s eta 30:15
+  [12:57:48] epoch 3 step 647/1000 [G64_2000 cemhsey_5x13] loss 0.28892 lr 2.99e-04 18 win/s eta 27:55
+  [12:58:04] epoch 3 step 651/1000 [G64_2000 hyser] loss 0.23541 lr 2.99e-04 18 win/s eta 27:34
+  [13:00:18] epoch 3 step 666/1000 [W16_2000 emg2qwerty] loss 0.31701 lr 2.99e-04 17 win/s eta 26:54
+  [13:02:25] epoch 3 step 691/1000 [W16_2000 emg2qwerty] loss 0.31397 lr 2.99e-04 17 win/s eta 24:56
+  [13:03:31] epoch 3 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.25428 lr 2.99e-04 17 win/s eta 24:15
+  [13:05:32] epoch 3 step 722/1000 [W16_2000 emg2qwerty] loss 0.30476 lr 2.99e-04 17 win/s eta 22:40
+  [13:07:51] epoch 3 step 731/1000 [W16_2000 emg2qwerty] loss 0.30523 lr 2.99e-04 17 win/s eta 22:31
+  [13:09:02] epoch 3 step 751/1000 [G64_2000 hyser] loss 0.22750 lr 2.99e-04 17 win/s eta 20:41
+  [13:11:15] epoch 3 step 762/1000 [W16_2000 emg2qwerty] loss 0.31689 lr 2.99e-04 17 win/s eta 20:10
+  [13:13:27] epoch 3 step 790/1000 [W16_2000 emg2qwerty] loss 0.32848 lr 2.99e-04 17 win/s eta 17:45
+  [13:14:33] epoch 3 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.27441 lr 2.99e-04 17 win/s eta 16:52
+  [13:16:34] epoch 3 step 835/1000 [G64_2000 cemhsey_5x13] loss 0.23087 lr 2.99e-04 17 win/s eta 13:49
+  [13:18:21] epoch 3 step 851/1000 [W16_2000 emg2qwerty] loss 0.30135 lr 2.99e-04 17 win/s eta 12:33
+  [13:20:23] epoch 3 step 879/1000 [G64_2000 hyser] loss 0.20495 lr 2.99e-04 17 win/s eta 10:09
+  [13:22:27] epoch 3 step 887/1000 [W16_2000 emg2pose] loss 0.32773 lr 2.99e-04 17 win/s eta 9:39
+  [13:23:45] epoch 3 step 901/1000 [A24_2000 putemg] loss 0.18535 lr 2.99e-04 17 win/s eta 8:28
+  [13:25:47] epoch 3 step 928/1000 [G64_2000 cemhsey_8x8] loss 0.26767 lr 2.99e-04 17 win/s eta 6:08
+  [13:27:48] epoch 3 step 949/1000 [G64_2000 hyser] loss 0.21724 lr 2.99e-04 17 win/s eta 4:21
+  [13:28:06] epoch 3 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.25715 lr 2.99e-04 17 win/s eta 4:11
+  [13:30:11] epoch 3 step 964/1000 [A24_2000 putemg] loss 0.16618 lr 2.99e-04 16 win/s eta 3:07
+  [13:32:11] epoch 3 step 982/1000 [G64_2000 cemhsey_5x13] loss 0.24666 lr 2.99e-04 16 win/s eta 1:34
+  [13:33:47] epoch 3 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.25666 lr 2.99e-04 16 win/s eta 0:00
+  [13:35:47] epoch 3 val 76/128 eta 1:22
+  [13:38:05] epoch 3 val 106/128 eta 0:53
+epoch 3 done (4/60): train total 0.26437  val total 0.27869 (spec 0.30269 r 0.834 nmse 0.303 | raw 0.25468 r 0.702 nmse 0.500 | macro 0.25384)  gate 0.1637  [1:27:09 train + 6:24 val, elapsed 6:46:01, run eta 94:44:19]
+  new best total: 0.27869 at epoch 3  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.30269 at epoch 3  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.25468 at epoch 3  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.25384 at epoch 3  (macro_route_loss_total -> best_macro_total.pth)
+  [13:40:28] epoch 4 step 1/1000 [W16_2000 emg2qwerty] loss 0.29810 lr 2.99e-04 12 win/s eta 4:21:13
+  [13:42:31] epoch 4 step 22/1000 [G64_2000 cemhsey_5x13] loss 0.23808 lr 2.99e-04 12 win/s eta 1:42:47
+  [13:44:35] epoch 4 step 38/1000 [G64_2000 cemhsey_8x8] loss 0.26069 lr 2.99e-04 12 win/s eta 1:50:47
+  [13:45:42] epoch 4 step 51/1000 [G64_2000 hyser] loss 0.21816 lr 2.99e-04 13 win/s eta 1:42:03
+  [13:48:02] epoch 4 step 68/1000 [W16_2000 emg2qwerty] loss 0.29945 lr 2.99e-04 12 win/s eta 1:47:08
+  [13:50:05] epoch 4 step 81/1000 [G64_2000 cemhsey_8x8] loss 0.24904 lr 2.99e-04 11 win/s eta 1:51:59
+  [13:52:11] epoch 4 step 90/1000 [W16_2000 emg2qwerty] loss 0.29275 lr 2.99e-04 11 win/s eta 2:01:08
+  [13:53:42] epoch 4 step 101/1000 [W16_2000 emg2pose] loss 0.34175 lr 2.99e-04 11 win/s eta 1:59:59
+  [13:55:42] epoch 4 step 120/1000 [G64_2000 hyser] loss 0.22840 lr 2.99e-04 11 win/s eta 1:53:32
+  [13:57:48] epoch 4 step 137/1000 [W16_2000 emg2pose] loss 0.36521 lr 2.99e-04 11 win/s eta 1:50:49
+  [13:59:44] epoch 4 step 151/1000 [G64_2000 cemhsey_5x13] loss 0.23901 lr 2.99e-04 11 win/s eta 1:49:44
+  [14:01:48] epoch 4 step 169/1000 [W16_2000 emg2pose] loss 0.33724 lr 2.99e-04 11 win/s eta 1:46:10
+  [14:03:50] epoch 4 step 193/1000 [G64_2000 hyser] loss 0.22842 lr 2.99e-04 12 win/s eta 1:38:44
+  [14:04:16] epoch 4 step 201/1000 [G64_2000 cemhsey_5x13] loss 0.24975 lr 2.99e-04 13 win/s eta 1:35:37
+  [14:06:16] epoch 4 step 225/1000 [W16_2000 emg2pose] loss 0.34126 lr 2.99e-04 13 win/s eta 1:29:45
+  [14:07:57] epoch 4 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.24290 lr 2.99e-04 13 win/s eta 1:22:47
+  [14:09:59] epoch 4 step 270/1000 [A24_2000 putemg] loss 0.16343 lr 2.99e-04 14 win/s eta 1:20:30
+  [14:12:02] epoch 4 step 290/1000 [W16_2000 emg2qwerty] loss 0.28225 lr 2.99e-04 14 win/s eta 1:17:55
+  [14:12:32] epoch 4 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.27785 lr 2.99e-04 14 win/s eta 1:15:04
+  [14:14:36] epoch 4 step 329/1000 [W16_2000 emg2qwerty] loss 0.29013 lr 2.99e-04 14 win/s eta 1:10:07
+  [14:16:02] epoch 4 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.28385 lr 2.99e-04 14 win/s eta 1:06:14
+  [14:18:02] epoch 4 step 377/1000 [G64_2000 cemhsey_5x13] loss 0.24414 lr 2.99e-04 14 win/s eta 1:02:30
+  [14:20:11] epoch 4 step 393/1000 [W16_2000 emg2qwerty] loss 0.29677 lr 2.99e-04 14 win/s eta 1:01:44
+  [14:20:40] epoch 4 step 401/1000 [G64_2000 cemhsey_8x8] loss 0.26247 lr 2.99e-04 14 win/s eta 1:00:26
+  [14:22:49] epoch 4 step 424/1000 [W16_2000 emg2pose] loss 0.34136 lr 2.99e-04 14 win/s eta 57:52
+  [14:24:53] epoch 4 step 445/1000 [G64_2000 hyser] loss 0.20443 lr 2.99e-04 14 win/s eta 55:43
+  [14:25:13] epoch 4 step 451/1000 [G64_2000 cemhsey_5x13] loss 0.25827 lr 2.99e-04 14 win/s eta 54:47
+  [14:27:15] epoch 4 step 474/1000 [G64_2000 cemhsey_8x8] loss 0.25649 lr 2.99e-04 14 win/s eta 52:12
+  [14:29:19] epoch 4 step 491/1000 [W16_2000 emg2qwerty] loss 0.28158 lr 2.99e-04 14 win/s eta 50:54
+  [14:30:19] epoch 4 step 501/1000 [A24_2000 putemg] loss 0.20194 lr 2.99e-04 14 win/s eta 49:54
+  [14:32:27] epoch 4 step 516/1000 [W16_2000 emg2qwerty] loss 0.28390 lr 2.99e-04 14 win/s eta 49:00
+  [14:34:30] epoch 4 step 535/1000 [G64_2000 hyser] loss 0.20967 lr 2.99e-04 14 win/s eta 47:11
+  [14:35:59] epoch 4 step 551/1000 [A24_2000 putemg] loss 0.17561 lr 2.99e-04 14 win/s eta 45:26
+  [14:38:01] epoch 4 step 568/1000 [G64_2000 cemhsey_8x8] loss 0.24278 lr 2.99e-04 14 win/s eta 43:57
+  [14:40:02] epoch 4 step 586/1000 [G64_2000 cemhsey_8x8] loss 0.26786 lr 2.99e-04 14 win/s eta 42:15
+  [14:41:14] epoch 4 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.25051 lr 2.99e-04 14 win/s eta 40:30
+  [14:43:15] epoch 4 step 633/1000 [W16_2000 emg2qwerty] loss 0.29951 lr 2.98e-04 15 win/s eta 36:33
+  [14:44:12] epoch 4 step 651/1000 [W16_2000 emg2qwerty] loss 0.29661 lr 2.98e-04 15 win/s eta 34:18
+  [14:46:20] epoch 4 step 677/1000 [A24_2000 putemg] loss 0.20066 lr 2.98e-04 15 win/s eta 31:32
+  [14:48:29] epoch 4 step 693/1000 [W16_2000 emg2pose] loss 0.31475 lr 2.98e-04 15 win/s eta 30:14
+  [14:49:30] epoch 4 step 701/1000 [A24_2000 putemg] loss 0.16451 lr 2.98e-04 15 win/s eta 29:33
+  [14:51:33] epoch 4 step 721/1000 [G64_2000 cemhsey_5x13] loss 0.23774 lr 2.98e-04 15 win/s eta 27:36
+  [14:53:36] epoch 4 step 747/1000 [G64_2000 hyser] loss 0.20490 lr 2.98e-04 15 win/s eta 24:51
+  [14:53:52] epoch 4 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.23566 lr 2.98e-04 15 win/s eta 24:25
+  [14:56:10] epoch 4 step 772/1000 [W16_2000 emg2pose] loss 0.34038 lr 2.98e-04 15 win/s eta 22:25
+  [14:58:13] epoch 4 step 789/1000 [W16_2000 emg2qwerty] loss 0.29152 lr 2.98e-04 15 win/s eta 20:51
+  [14:59:03] epoch 4 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.24546 lr 2.98e-04 15 win/s eta 19:35
+  [15:01:03] epoch 4 step 824/1000 [G64_2000 cemhsey_5x13] loss 0.24642 lr 2.98e-04 15 win/s eta 17:16
+  [15:03:06] epoch 4 step 841/1000 [G64_2000 cemhsey_8x8] loss 0.23189 lr 2.98e-04 15 win/s eta 15:40
+  [15:03:57] epoch 4 step 851/1000 [A24_2000 putemg] loss 0.14442 lr 2.98e-04 15 win/s eta 14:39
+  [15:06:10] epoch 4 step 877/1000 [W16_2000 emg2qwerty] loss 0.28694 lr 2.98e-04 15 win/s eta 12:03
+  [15:08:14] epoch 4 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.23880 lr 2.98e-04 15 win/s eta 9:40
+  [15:10:15] epoch 4 step 925/1000 [W16_2000 emg2qwerty] loss 0.28578 lr 2.98e-04 15 win/s eta 7:18
+  [15:12:17] epoch 4 step 946/1000 [G64_2000 cemhsey_5x13] loss 0.21427 lr 2.98e-04 15 win/s eta 5:15
+  [15:12:34] epoch 4 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.22244 lr 2.98e-04 15 win/s eta 4:45
+  [15:14:38] epoch 4 step 985/1000 [G64_2000 hyser] loss 0.18732 lr 2.98e-04 15 win/s eta 1:26
+  [15:16:07] epoch 4 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.21272 lr 2.98e-04 15 win/s eta 0:00
+  [15:18:07] epoch 4 val 81/128 eta 1:09
+epoch 4 done (5/60): train total 0.24930  val total 0.25681 (spec 0.26526 r 0.856 nmse 0.265 | raw 0.24836 r 0.715 nmse 0.485 | macro 0.23743)  gate 0.1840  [1:35:54 train + 5:06 val, elapsed 8:27:02, run eta 92:57:32]
+  new best total: 0.25681 at epoch 4  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.26526 at epoch 4  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.24836 at epoch 4  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.23743 at epoch 4  (macro_route_loss_total -> best_macro_total.pth)
+  [15:21:16] epoch 5 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.19693 lr 2.98e-04 23 win/s eta 35:08
+  [15:23:19] epoch 5 step 35/1000 [A24_2000 putemg] loss 0.16000 lr 2.98e-04 25 win/s eta 57:23
+  [15:24:16] epoch 5 step 51/1000 [G64_2000 hyser] loss 0.19679 lr 2.98e-04 24 win/s eta 56:16
+  [15:26:24] epoch 5 step 74/1000 [W16_2000 emg2pose] loss 0.33953 lr 2.98e-04 20 win/s eta 1:04:32
+  [15:28:36] epoch 5 step 95/1000 [W16_2000 emg2qwerty] loss 0.27602 lr 2.98e-04 18 win/s eta 1:10:04
+  [15:29:09] epoch 5 step 101/1000 [G64_2000 hyser] loss 0.18863 lr 2.98e-04 18 win/s eta 1:10:29
+  [15:31:17] epoch 5 step 116/1000 [W16_2000 emg2qwerty] loss 0.27018 lr 2.98e-04 17 win/s eta 1:16:31
+  [15:33:29] epoch 5 step 137/1000 [W16_2000 emg2qwerty] loss 0.28654 lr 2.98e-04 16 win/s eta 1:17:08
+  [15:35:08] epoch 5 step 151/1000 [W16_2000 emg2qwerty] loss 0.28375 lr 2.98e-04 16 win/s eta 1:18:06
+  [15:37:10] epoch 5 step 177/1000 [W16_2000 emg2qwerty] loss 0.29084 lr 2.98e-04 15 win/s eta 1:14:04
+  [15:39:12] epoch 5 step 197/1000 [G64_2000 cemhsey_5x13] loss 0.22501 lr 2.98e-04 15 win/s eta 1:13:11
+  [15:39:31] epoch 5 step 201/1000 [W16_2000 emg2qwerty] loss 0.29915 lr 2.98e-04 15 win/s eta 1:12:38
+  [15:41:33] epoch 5 step 221/1000 [W16_2000 emg2pose] loss 0.32116 lr 2.98e-04 15 win/s eta 1:11:36
+  [15:44:00] epoch 5 step 242/1000 [W16_2000 emg2qwerty] loss 0.28776 lr 2.98e-04 15 win/s eta 1:11:17
+  [15:44:55] epoch 5 step 251/1000 [A24_2000 putemg] loss 0.15930 lr 2.98e-04 15 win/s eta 1:10:39
+  [15:46:55] epoch 5 step 275/1000 [G64_2000 cemhsey_8x8] loss 0.23229 lr 2.98e-04 15 win/s eta 1:07:42
+  [15:48:59] epoch 5 step 288/1000 [W16_2000 emg2qwerty] loss 0.27942 lr 2.98e-04 14 win/s eta 1:08:35
+  [15:50:25] epoch 5 step 301/1000 [G64_2000 cemhsey_5x13] loss 0.20914 lr 2.98e-04 14 win/s eta 1:07:45
+  [15:52:25] epoch 5 step 323/1000 [W16_2000 emg2pose] loss 0.32177 lr 2.98e-04 14 win/s eta 1:05:21
+  [15:54:25] epoch 5 step 347/1000 [W16_2000 emg2pose] loss 0.33686 lr 2.98e-04 15 win/s eta 1:02:26
+  [15:54:36] epoch 5 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.24250 lr 2.98e-04 15 win/s eta 1:01:41
+  [15:56:36] epoch 5 step 384/1000 [G64_2000 cemhsey_8x8] loss 0.26025 lr 2.98e-04 15 win/s eta 56:44
+  [15:58:14] epoch 5 step 401/1000 [W16_2000 emg2qwerty] loss 0.27301 lr 2.97e-04 15 win/s eta 55:16
+  [16:00:14] epoch 5 step 442/1000 [G64_2000 cemhsey_8x8] loss 0.24017 lr 2.97e-04 16 win/s eta 49:14
+  [16:00:46] epoch 5 step 451/1000 [G64_2000 cemhsey_5x13] loss 0.24185 lr 2.97e-04 16 win/s eta 48:06
+  [16:02:45] epoch 5 step 501/1000 [G64_2000 hyser] loss 0.21328 lr 2.97e-04 17 win/s eta 41:21
+  [16:04:47] epoch 5 step 549/1000 [G64_2000 hyser] loss 0.19100 lr 2.97e-04 18 win/s eta 35:46
+  [16:04:50] epoch 5 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.22409 lr 2.97e-04 18 win/s eta 35:31
+  [16:06:52] epoch 5 step 599/1000 [W16_2000 emg2pose] loss 0.31363 lr 2.97e-04 18 win/s eta 30:32
+  [16:06:55] epoch 5 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.24123 lr 2.97e-04 18 win/s eta 30:19
+  [16:08:59] epoch 5 step 647/1000 [W16_2000 emg2pose] loss 0.31075 lr 2.97e-04 19 win/s eta 26:03
+  [16:09:06] epoch 5 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.21712 lr 2.97e-04 19 win/s eta 25:39
+  [16:11:10] epoch 5 step 692/1000 [W16_2000 emg2qwerty] loss 0.26361 lr 2.97e-04 20 win/s eta 22:13
+  [16:11:35] epoch 5 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.24879 lr 2.97e-04 20 win/s eta 21:28
+  [16:13:36] epoch 5 step 746/1000 [W16_2000 emg2pose] loss 0.29823 lr 2.97e-04 20 win/s eta 17:49
+  [16:13:49] epoch 5 step 751/1000 [W16_2000 emg2qwerty] loss 0.26655 lr 2.97e-04 20 win/s eta 17:26
+  [16:15:51] epoch 5 step 795/1000 [A24_2000 putemg] loss 0.15218 lr 2.97e-04 21 win/s eta 14:05
+  [16:16:01] epoch 5 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.21208 lr 2.97e-04 21 win/s eta 13:36
+  [16:18:07] epoch 5 step 843/1000 [W16_2000 emg2pose] loss 0.32383 lr 2.97e-04 21 win/s eta 10:35
+  [16:18:28] epoch 5 step 851/1000 [W16_2000 emg2qwerty] loss 0.26460 lr 2.97e-04 21 win/s eta 10:01
+  [16:20:34] epoch 5 step 899/1000 [W16_2000 emg2qwerty] loss 0.26367 lr 2.97e-04 22 win/s eta 6:39
+  [16:20:41] epoch 5 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.20002 lr 2.97e-04 22 win/s eta 6:31
+  [16:22:41] epoch 5 step 947/1000 [G64_2000 hyser] loss 0.18092 lr 2.97e-04 22 win/s eta 3:26
+  [16:22:47] epoch 5 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.21019 lr 2.97e-04 22 win/s eta 3:10
+  [16:24:49] epoch 5 step 997/1000 [G64_2000 hyser] loss 0.19701 lr 2.97e-04 22 win/s eta 0:11
+  [16:24:55] epoch 5 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.21203 lr 2.97e-04 22 win/s eta 0:00
+  [16:26:56] epoch 5 val 104/128 eta 0:28
+epoch 5 done (6/60): train total 0.23051  val total 0.25512 (spec 0.26461 r 0.857 nmse 0.265 | raw 0.24562 r 0.716 nmse 0.479 | macro 0.23507)  gate 0.1996  [1:03:40 train + 2:59 val, elapsed 9:33:44, run eta 86:03:36]
+  new best total: 0.25512 at epoch 5  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.26461 at epoch 5  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.24562 at epoch 5  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.23507 at epoch 5  (macro_route_loss_total -> best_macro_total.pth)
+  [16:27:57] epoch 6 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.24162 lr 2.97e-04 23 win/s eta 34:05
+  [16:29:58] epoch 6 step 46/1000 [W16_2000 emg2qwerty] loss 0.27318 lr 2.96e-04 35 win/s eta 42:15
+  [16:30:15] epoch 6 step 51/1000 [G64_2000 cemhsey_8x8] loss 0.20830 lr 2.96e-04 34 win/s eta 43:11
+  [16:32:11] epoch 6 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.21283 lr 2.96e-04 33 win/s eta 37:52
+  [16:34:13] epoch 6 step 150/1000 [W16_2000 emg2pose] loss 0.28875 lr 2.96e-04 34 win/s eta 35:41
+  [16:34:15] epoch 6 step 151/1000 [G64_2000 cemhsey_5x13] loss 0.24041 lr 2.96e-04 34 win/s eta 35:32
+  [16:36:16] epoch 6 step 197/1000 [A24_2000 putemg] loss 0.14677 lr 2.96e-04 34 win/s eta 33:59
+  [16:36:26] epoch 6 step 201/1000 [W16_2000 emg2qwerty] loss 0.28222 lr 2.96e-04 34 win/s eta 33:50
+  [16:38:28] epoch 6 step 250/1000 [G64_2000 cemhsey_8x8] loss 0.21350 lr 2.96e-04 34 win/s eta 31:37
+  [16:38:29] epoch 6 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.21716 lr 2.96e-04 34 win/s eta 31:31
+  [16:40:22] epoch 6 step 301/1000 [G64_2000 cemhsey_5x13] loss 0.21042 lr 2.96e-04 33 win/s eta 28:54
+  [16:42:23] epoch 6 step 348/1000 [G64_2000 cemhsey_5x13] loss 0.21539 lr 2.96e-04 33 win/s eta 27:04
+  [16:42:27] epoch 6 step 351/1000 [G64_2000 hyser] loss 0.17881 lr 2.96e-04 33 win/s eta 26:50
+  [16:44:24] epoch 6 step 401/1000 [G64_2000 hyser] loss 0.17944 lr 2.96e-04 33 win/s eta 24:37
+  [16:46:29] epoch 6 step 444/1000 [W16_2000 emg2qwerty] loss 0.26294 lr 2.96e-04 33 win/s eta 23:15
+  [16:46:46] epoch 6 step 451/1000 [W16_2000 emg2pose] loss 0.32732 lr 2.96e-04 33 win/s eta 22:56
+  [16:48:47] epoch 6 step 493/1000 [G64_2000 cemhsey_5x13] loss 0.22176 lr 2.96e-04 33 win/s eta 21:27
+  [16:49:10] epoch 6 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.21263 lr 2.96e-04 33 win/s eta 21:09
+  [16:51:11] epoch 6 step 543/1000 [W16_2000 emg2pose] loss 0.30504 lr 2.96e-04 33 win/s eta 19:34
+  [16:51:35] epoch 6 step 551/1000 [W16_2000 emg2pose] loss 0.31393 lr 2.96e-04 33 win/s eta 19:16
+  [16:53:37] epoch 6 step 599/1000 [W16_2000 emg2qwerty] loss 0.27188 lr 2.95e-04 33 win/s eta 17:12
+  [16:53:41] epoch 6 step 601/1000 [G64_2000 hyser] loss 0.19120 lr 2.95e-04 33 win/s eta 17:06
+  [16:55:40] epoch 6 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.19180 lr 2.95e-04 33 win/s eta 14:52
+  [16:57:41] epoch 6 step 696/1000 [W16_2000 emg2qwerty] loss 0.26770 lr 2.95e-04 33 win/s eta 12:59
+  [16:57:53] epoch 6 step 701/1000 [W16_2000 emg2qwerty] loss 0.27438 lr 2.95e-04 33 win/s eta 12:46
+  [16:59:58] epoch 6 step 751/1000 [W16_2000 emg2qwerty] loss 0.26072 lr 2.95e-04 33 win/s eta 10:37
+  [17:01:59] epoch 6 step 789/1000 [G64_2000 cemhsey_5x13] loss 0.20245 lr 2.95e-04 33 win/s eta 9:06
+  [17:02:33] epoch 6 step 801/1000 [W16_2000 emg2pose] loss 0.31314 lr 2.95e-04 33 win/s eta 8:36
+  [17:04:36] epoch 6 step 846/1000 [W16_2000 emg2qwerty] loss 0.27280 lr 2.95e-04 33 win/s eta 6:40
+  [17:04:44] epoch 6 step 851/1000 [G64_2000 cemhsey_5x13] loss 0.19835 lr 2.95e-04 33 win/s eta 6:26
+  [17:06:41] epoch 6 step 901/1000 [W16_2000 emg2qwerty] loss 0.25898 lr 2.95e-04 33 win/s eta 4:15
+  [17:08:42] epoch 6 step 941/1000 [W16_2000 emg2pose] loss 0.32286 lr 2.95e-04 33 win/s eta 2:33
+  [17:09:14] epoch 6 step 951/1000 [A24_2000 putemg] loss 0.14964 lr 2.95e-04 33 win/s eta 2:07
+  [17:11:18] epoch 6 step 992/1000 [W16_2000 emg2qwerty] loss 0.25617 lr 2.95e-04 33 win/s eta 0:20
+  [17:11:36] epoch 6 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.24084 lr 2.95e-04 33 win/s eta 0:00
+  [17:13:36] epoch 6 val 97/128 eta 0:38
+epoch 6 done (7/60): train total 0.22164  val total 0.24163 (spec 0.25477 r 0.862 nmse 0.255 | raw 0.22848 r 0.740 nmse 0.447 | macro 0.22218)  gate 0.2124  [43:40 train + 3:20 val, elapsed 10:20:47, run eta 78:20:13]
+  new best total: 0.24163 at epoch 6  (loss_total -> best_total.pth, best.pth)
+  new best spec: 0.25477 at epoch 6  (loss_masked_spec_mse -> best_spec.pth)
+  new best raw: 0.22848 at epoch 6  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.22218 at epoch 6  (macro_route_loss_total -> best_macro_total.pth)
+  [17:15:00] epoch 7 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.22658 lr 2.95e-04 24 win/s eta 33:17
+  [17:17:01] epoch 7 step 48/1000 [G64_2000 cemhsey_8x8] loss 0.22544 lr 2.94e-04 31 win/s eta 40:23
+  [17:17:08] epoch 7 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.19979 lr 2.94e-04 31 win/s eta 40:22
+  [17:19:11] epoch 7 step 91/1000 [W16_2000 emg2pose] loss 0.31318 lr 2.94e-04 31 win/s eta 42:07
+  [17:19:50] epoch 7 step 101/1000 [A24_2000 putemg] loss 0.13811 lr 2.94e-04 32 win/s eta 43:18
+  [17:21:52] epoch 7 step 142/1000 [G64_2000 hyser] loss 0.17684 lr 2.94e-04 32 win/s eta 41:42
+  [17:22:14] epoch 7 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.21257 lr 2.94e-04 31 win/s eta 40:47
+  [17:24:14] epoch 7 step 196/1000 [G64_2000 hyser] loss 0.18429 lr 2.94e-04 31 win/s eta 37:59
+  [17:24:23] epoch 7 step 201/1000 [G64_2000 cemhsey_5x13] loss 0.19245 lr 2.94e-04 31 win/s eta 37:25
+  [17:26:23] epoch 7 step 247/1000 [G64_2000 hyser] loss 0.18911 lr 2.94e-04 31 win/s eta 34:48
+  [17:26:35] epoch 7 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.22196 lr 2.94e-04 31 win/s eta 34:38
+  [17:28:35] epoch 7 step 292/1000 [G64_2000 hyser] loss 0.20289 lr 2.94e-04 31 win/s eta 33:00
+  [17:28:57] epoch 7 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.22215 lr 2.94e-04 31 win/s eta 32:28
+  [17:30:54] epoch 7 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.21576 lr 2.94e-04 31 win/s eta 29:27
+  [17:32:55] epoch 7 step 394/1000 [G64_2000 cemhsey_8x8] loss 0.21026 lr 2.94e-04 31 win/s eta 27:36
+  [17:33:20] epoch 7 step 401/1000 [W16_2000 emg2pose] loss 0.31371 lr 2.94e-04 31 win/s eta 27:25
+  [17:35:22] epoch 7 step 451/1000 [W16_2000 emg2pose] loss 0.31484 lr 2.94e-04 31 win/s eta 24:50
+  [17:37:24] epoch 7 step 497/1000 [G64_2000 hyser] loss 0.18823 lr 2.93e-04 32 win/s eta 22:41
+  [17:37:35] epoch 7 step 501/1000 [W16_2000 emg2pose] loss 0.29576 lr 2.93e-04 32 win/s eta 22:31
+  [17:39:37] epoch 7 step 551/1000 [W16_2000 emg2pose] loss 0.31824 lr 2.93e-04 31 win/s eta 20:05
+  [17:41:34] epoch 7 step 601/1000 [G64_2000 hyser] loss 0.17835 lr 2.93e-04 32 win/s eta 17:39
+  [17:43:39] epoch 7 step 651/1000 [A24_2000 putemg] loss 0.15766 lr 2.93e-04 32 win/s eta 15:22
+  [17:45:42] epoch 7 step 699/1000 [W16_2000 emg2pose] loss 0.29353 lr 2.93e-04 32 win/s eta 13:13
+  [17:45:45] epoch 7 step 701/1000 [G64_2000 hyser] loss 0.19572 lr 2.93e-04 32 win/s eta 13:07
+  [17:47:46] epoch 7 step 746/1000 [G64_2000 cemhsey_5x13] loss 0.21466 lr 2.93e-04 32 win/s eta 11:10
+  [17:48:01] epoch 7 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.22683 lr 2.93e-04 32 win/s eta 10:57
+  [17:50:01] epoch 7 step 798/1000 [A24_2000 putemg] loss 0.15763 lr 2.93e-04 32 win/s eta 8:52
+  [17:50:07] epoch 7 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.24193 lr 2.93e-04 32 win/s eta 8:43
+  [17:52:07] epoch 7 step 844/1000 [W16_2000 emg2qwerty] loss 0.25858 lr 2.93e-04 32 win/s eta 6:51
+  [17:52:27] epoch 7 step 851/1000 [G64_2000 hyser] loss 0.20156 lr 2.93e-04 32 win/s eta 6:33
+  [17:54:28] epoch 7 step 899/1000 [G64_2000 hyser] loss 0.21177 lr 2.92e-04 33 win/s eta 4:26
+  [17:54:31] epoch 7 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.22230 lr 2.92e-04 33 win/s eta 4:20
+  [17:56:28] epoch 7 step 951/1000 [A24_2000 putemg] loss 0.14962 lr 2.92e-04 33 win/s eta 2:08
+  [17:58:29] epoch 7 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.20447 lr 2.92e-04 33 win/s eta 0:00
+  [18:00:30] epoch 7 val 102/128 eta 0:30
+epoch 7 done (8/60): train total 0.22513  val total 0.25610 (spec 0.28470 r 0.845 nmse 0.285 | raw 0.22750 r 0.741 nmse 0.444 | macro 0.22558)  gate 0.2242  [43:30 train + 2:41 val, elapsed 11:07:00, run eta 72:15:31]
+  new best raw: 0.22750 at epoch 7  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [18:01:13] epoch 8 step 1/1000 [G64_2000 hyser] loss 0.20694 lr 2.92e-04 24 win/s eta 33:19
+  [18:03:17] epoch 8 step 45/1000 [W16_2000 emg2qwerty] loss 0.26368 lr 2.92e-04 34 win/s eta 44:30
+  [18:03:35] epoch 8 step 51/1000 [W16_2000 emg2pose] loss 0.31191 lr 2.92e-04 33 win/s eta 44:43
+  [18:05:29] epoch 8 step 101/1000 [W16_2000 emg2qwerty] loss 0.26645 lr 2.92e-04 34 win/s eta 38:21
+  [18:07:30] epoch 8 step 145/1000 [G64_2000 cemhsey_8x8] loss 0.25609 lr 2.92e-04 35 win/s eta 37:15
+  [18:07:46] epoch 8 step 151/1000 [G64_2000 cemhsey_5x13] loss 0.21388 lr 2.92e-04 35 win/s eta 36:59
+  [18:09:49] epoch 8 step 200/1000 [A24_2000 putemg] loss 0.13222 lr 2.92e-04 35 win/s eta 34:31
+  [18:09:50] epoch 8 step 201/1000 [G64_2000 cemhsey_8x8] loss 0.22034 lr 2.92e-04 35 win/s eta 34:24
+  [18:11:53] epoch 8 step 250/1000 [W16_2000 emg2pose] loss 0.30032 lr 2.92e-04 35 win/s eta 32:08
+  [18:11:57] epoch 8 step 251/1000 [A24_2000 putemg] loss 0.16339 lr 2.92e-04 35 win/s eta 32:08
+  [18:13:58] epoch 8 step 291/1000 [G64_2000 hyser] loss 0.20265 lr 2.91e-04 34 win/s eta 31:08
+  [18:14:17] epoch 8 step 301/1000 [G64_2000 hyser] loss 0.20536 lr 2.91e-04 34 win/s eta 30:25
+  [18:16:12] epoch 8 step 351/1000 [G64_2000 hyser] loss 0.21680 lr 2.91e-04 34 win/s eta 27:46
+  [18:18:08] epoch 8 step 401/1000 [G64_2000 hyser] loss 0.20400 lr 2.91e-04 34 win/s eta 25:19
+  [18:20:09] epoch 8 step 448/1000 [A24_2000 putemg] loss 0.15275 lr 2.91e-04 34 win/s eta 23:23
+  [18:20:15] epoch 8 step 451/1000 [G64_2000 cemhsey_8x8] loss 0.26267 lr 2.91e-04 34 win/s eta 23:12
+  [18:21:54] epoch 8 step 501/1000 [G64_2000 cemhsey_5x13] loss 0.21323 lr 2.91e-04 34 win/s eta 20:38
+  [18:23:54] epoch 8 step 542/1000 [G64_2000 cemhsey_5x13] loss 0.20110 lr 2.91e-04 33 win/s eta 19:12
+  [18:24:17] epoch 8 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.24304 lr 2.91e-04 33 win/s eta 18:49
+  [18:26:20] epoch 8 step 594/1000 [W16_2000 emg2qwerty] loss 0.25624 lr 2.91e-04 33 win/s eta 17:11
+  [18:26:34] epoch 8 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.20996 lr 2.91e-04 33 win/s eta 16:51
+  [18:28:38] epoch 8 step 646/1000 [G64_2000 hyser] loss 0.21316 lr 2.90e-04 33 win/s eta 15:02
+  [18:29:10] epoch 8 step 651/1000 [G64_2000 cemhsey_8x8] loss 0.24998 lr 2.90e-04 32 win/s eta 15:00
+  [18:31:11] epoch 8 step 682/1000 [G64_2000 cemhsey_5x13] loss 0.22582 lr 2.90e-04 32 win/s eta 13:59
+  [18:32:12] epoch 8 step 701/1000 [W16_2000 emg2qwerty] loss 0.27644 lr 2.90e-04 32 win/s eta 13:13
+  [18:34:02] epoch 8 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.25619 lr 2.90e-04 32 win/s eta 10:53
+  [18:36:03] epoch 8 step 788/1000 [G64_2000 cemhsey_8x8] loss 0.27662 lr 2.90e-04 32 win/s eta 9:22
+  [18:37:04] epoch 8 step 801/1000 [G64_2000 cemhsey_5x13] loss 0.20173 lr 2.90e-04 31 win/s eta 8:54
+  [18:39:00] epoch 8 step 851/1000 [A24_2000 putemg] loss 0.15049 lr 2.90e-04 31 win/s eta 6:37
+  [18:41:05] epoch 8 step 892/1000 [W16_2000 emg2qwerty] loss 0.25267 lr 2.90e-04 31 win/s eta 4:49
+  [18:41:28] epoch 8 step 901/1000 [G64_2000 hyser] loss 0.21193 lr 2.90e-04 31 win/s eta 4:25
+  [18:43:29] epoch 8 step 945/1000 [W16_2000 emg2pose] loss 0.29925 lr 2.90e-04 31 win/s eta 2:27
+  [18:43:43] epoch 8 step 951/1000 [G64_2000 cemhsey_5x13] loss 0.19698 lr 2.90e-04 31 win/s eta 2:11
+  [18:45:47] epoch 8 step 993/1000 [W16_2000 emg2qwerty] loss 0.25773 lr 2.89e-04 31 win/s eta 0:18
+  [18:46:00] epoch 8 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.26032 lr 2.89e-04 31 win/s eta 0:00
+  [18:48:01] epoch 8 val 100/128 eta 0:33
+epoch 8 done (9/60): train total 0.23372  val total 0.26196 (spec 0.30026 r 0.835 nmse 0.300 | raw 0.22365 r 0.746 nmse 0.435 | macro 0.23091)  gate 0.2338  [44:49 train + 2:40 val, elapsed 11:54:30, run eta 67:28:52]
+  new best raw: 0.22365 at epoch 8  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [18:48:43] epoch 9 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.27418 lr 2.89e-04 21 win/s eta 38:53
+  [18:50:47] epoch 9 step 36/1000 [W16_2000 emg2pose] loss 0.32141 lr 2.89e-04 26 win/s eta 56:16
+  [18:51:22] epoch 9 step 51/1000 [G64_2000 hyser] loss 0.22214 lr 2.89e-04 27 win/s eta 49:51
+  [18:53:20] epoch 9 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.28215 lr 2.89e-04 31 win/s eta 41:24
+  [18:55:21] epoch 9 step 150/1000 [G64_2000 cemhsey_8x8] loss 0.26027 lr 2.89e-04 32 win/s eta 37:45
+  [18:55:25] epoch 9 step 151/1000 [W16_2000 emg2pose] loss 0.31581 lr 2.89e-04 32 win/s eta 37:53
+  [18:57:26] epoch 9 step 198/1000 [G64_2000 hyser] loss 0.21156 lr 2.89e-04 32 win/s eta 35:26
+  [18:57:40] epoch 9 step 201/1000 [W16_2000 emg2qwerty] loss 0.24765 lr 2.89e-04 32 win/s eta 35:42
+  [18:59:41] epoch 9 step 248/1000 [G64_2000 cemhsey_8x8] loss 0.27520 lr 2.89e-04 33 win/s eta 33:21
+  [18:59:49] epoch 9 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.27288 lr 2.89e-04 33 win/s eta 33:13
+  [19:01:49] epoch 9 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.26835 lr 2.89e-04 33 win/s eta 30:29
+  [19:03:51] epoch 9 step 341/1000 [W16_2000 emg2qwerty] loss 0.25266 lr 2.88e-04 32 win/s eta 29:18
+  [19:04:17] epoch 9 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.19986 lr 2.88e-04 32 win/s eta 28:50
+  [19:06:18] epoch 9 step 397/1000 [G64_2000 cemhsey_5x13] loss 0.21300 lr 2.88e-04 33 win/s eta 26:45
+  [19:06:27] epoch 9 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.19720 lr 2.88e-04 33 win/s eta 26:32
+  [19:08:22] epoch 9 step 451/1000 [W16_2000 emg2pose] loss 0.29601 lr 2.88e-04 33 win/s eta 23:57
+  [19:10:22] epoch 9 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.27148 lr 2.88e-04 33 win/s eta 21:35
+  [19:12:22] epoch 9 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.21989 lr 2.88e-04 33 win/s eta 19:18
+  [19:14:23] epoch 9 step 595/1000 [A24_2000 putemg] loss 0.17696 lr 2.88e-04 33 win/s eta 17:29
+  [19:14:39] epoch 9 step 601/1000 [G64_2000 hyser] loss 0.24508 lr 2.88e-04 33 win/s eta 17:14
+  [19:16:40] epoch 9 step 639/1000 [W16_2000 emg2pose] loss 0.30821 lr 2.87e-04 32 win/s eta 15:48
+  [19:17:13] epoch 9 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.20397 lr 2.87e-04 32 win/s eta 15:17
+  [19:19:13] epoch 9 step 693/1000 [A24_2000 putemg] loss 0.15319 lr 2.87e-04 32 win/s eta 13:31
+  [19:19:29] epoch 9 step 701/1000 [G64_2000 hyser] loss 0.25140 lr 2.87e-04 32 win/s eta 13:08
+  [19:21:31] epoch 9 step 741/1000 [G64_2000 cemhsey_8x8] loss 0.29122 lr 2.87e-04 32 win/s eta 11:28
+  [19:22:12] epoch 9 step 751/1000 [G64_2000 hyser] loss 0.24754 lr 2.87e-04 32 win/s eta 11:06
+  [19:24:13] epoch 9 step 791/1000 [G64_2000 cemhsey_5x13] loss 0.21207 lr 2.87e-04 32 win/s eta 9:23
+  [19:24:49] epoch 9 step 801/1000 [W16_2000 emg2pose] loss 0.30622 lr 2.87e-04 32 win/s eta 8:58
+  [19:26:53] epoch 9 step 831/1000 [W16_2000 emg2pose] loss 0.32464 lr 2.87e-04 31 win/s eta 7:46
+  [19:27:49] epoch 9 step 851/1000 [G64_2000 hyser] loss 0.24036 lr 2.87e-04 31 win/s eta 6:51
+  [19:29:51] epoch 9 step 885/1000 [G64_2000 cemhsey_5x13] loss 0.22294 lr 2.87e-04 31 win/s eta 5:20
+  [19:30:51] epoch 9 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.29879 lr 2.87e-04 31 win/s eta 4:38
+  [19:32:52] epoch 9 step 945/1000 [G64_2000 cemhsey_8x8] loss 0.30776 lr 2.86e-04 31 win/s eta 2:34
+  [19:33:06] epoch 9 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.28081 lr 2.86e-04 31 win/s eta 2:17
+  [19:35:07] epoch 9 step 998/1000 [W16_2000 emg2qwerty] loss 0.24234 lr 2.86e-04 31 win/s eta 0:05
+  [19:35:14] epoch 9 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.18412 lr 2.86e-04 31 win/s eta 0:00
+  [19:37:14] epoch 9 val 116/128 eta 0:12
+epoch 9 done (10/60): train total 0.24628  val total 0.26681 (spec 0.31289 r 0.828 nmse 0.313 | raw 0.22072 r 0.752 nmse 0.427 | macro 0.23039)  gate 0.2405  [46:33 train + 2:52 val, elapsed 12:43:56, run eta 63:39:42]
+  new best raw: 0.22072 at epoch 9  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [19:38:09] epoch 10 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.28805 lr 2.86e-04 21 win/s eta 38:44
+  [19:40:10] epoch 10 step 44/1000 [W16_2000 emg2pose] loss 0.30560 lr 2.86e-04 31 win/s eta 44:35
+  [19:40:28] epoch 10 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.19023 lr 2.86e-04 31 win/s eta 43:36
+  [19:42:29] epoch 10 step 91/1000 [G64_2000 cemhsey_8x8] loss 0.28067 lr 2.86e-04 30 win/s eta 43:36
+  [19:42:48] epoch 10 step 101/1000 [G64_2000 hyser] loss 0.22110 lr 2.86e-04 30 win/s eta 41:42
+  [19:44:53] epoch 10 step 146/1000 [W16_2000 emg2qwerty] loss 0.26318 lr 2.86e-04 32 win/s eta 39:37
+  [19:45:01] epoch 10 step 151/1000 [G64_2000 cemhsey_5x13] loss 0.22688 lr 2.86e-04 32 win/s eta 38:50
+  [19:47:00] epoch 10 step 201/1000 [G64_2000 hyser] loss 0.24642 lr 2.86e-04 32 win/s eta 35:17
+  [19:49:02] epoch 10 step 249/1000 [W16_2000 emg2pose] loss 0.30305 lr 2.85e-04 32 win/s eta 32:55
+  [19:49:07] epoch 10 step 251/1000 [W16_2000 emg2qwerty] loss 0.24306 lr 2.85e-04 32 win/s eta 32:50
+  [19:51:08] epoch 10 step 294/1000 [G64_2000 cemhsey_5x13] loss 0.19566 lr 2.85e-04 32 win/s eta 31:15
+  [19:51:35] epoch 10 step 301/1000 [G64_2000 cemhsey_5x13] loss 0.21930 lr 2.85e-04 32 win/s eta 31:16
+  [19:53:36] epoch 10 step 349/1000 [W16_2000 emg2qwerty] loss 0.24923 lr 2.85e-04 32 win/s eta 28:53
+  [19:53:43] epoch 10 step 351/1000 [W16_2000 emg2qwerty] loss 0.24992 lr 2.85e-04 32 win/s eta 28:50
+  [19:55:44] epoch 10 step 393/1000 [A24_2000 putemg] loss 0.13891 lr 2.85e-04 32 win/s eta 27:12
+  [19:56:07] epoch 10 step 401/1000 [W16_2000 emg2qwerty] loss 0.25254 lr 2.85e-04 32 win/s eta 26:52
+  [19:58:07] epoch 10 step 443/1000 [G64_2000 cemhsey_8x8] loss 0.27286 lr 2.85e-04 32 win/s eta 25:08
+  [19:58:26] epoch 10 step 451/1000 [A24_2000 putemg] loss 0.14518 lr 2.85e-04 32 win/s eta 24:43
+  [20:00:28] epoch 10 step 494/1000 [W16_2000 emg2pose] loss 0.29138 lr 2.85e-04 32 win/s eta 22:53
+  [20:00:47] epoch 10 step 501/1000 [G64_2000 cemhsey_5x13] loss 0.19920 lr 2.85e-04 32 win/s eta 22:34
+  [20:02:48] epoch 10 step 536/1000 [W16_2000 emg2pose] loss 0.30272 lr 2.84e-04 32 win/s eta 21:21
+  [20:03:31] epoch 10 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.25832 lr 2.84e-04 32 win/s eta 20:41
+  [20:05:33] epoch 10 step 601/1000 [G64_2000 hyser] loss 0.22710 lr 2.84e-04 32 win/s eta 18:12
+  [20:07:34] epoch 10 step 646/1000 [G64_2000 cemhsey_8x8] loss 0.26142 lr 2.84e-04 32 win/s eta 16:08
+  [20:07:46] epoch 10 step 651/1000 [G64_2000 cemhsey_8x8] loss 0.28107 lr 2.84e-04 32 win/s eta 15:53
+  [20:09:50] epoch 10 step 691/1000 [W16_2000 emg2qwerty] loss 0.24351 lr 2.84e-04 32 win/s eta 14:10
+  [20:10:20] epoch 10 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.23945 lr 2.84e-04 32 win/s eta 13:44
+  [20:12:20] epoch 10 step 748/1000 [W16_2000 emg2pose] loss 0.28189 lr 2.84e-04 32 win/s eta 11:31
+  [20:12:30] epoch 10 step 751/1000 [G64_2000 hyser] loss 0.23541 lr 2.84e-04 32 win/s eta 11:23
+  [20:14:31] epoch 10 step 792/1000 [A24_2000 putemg] loss 0.14141 lr 2.83e-04 31 win/s eta 9:33
+  [20:15:10] epoch 10 step 801/1000 [A24_2000 putemg] loss 0.13763 lr 2.83e-04 31 win/s eta 9:12
+  [20:17:11] epoch 10 step 841/1000 [G64_2000 hyser] loss 0.21474 lr 2.83e-04 31 win/s eta 7:23
+  [20:17:41] epoch 10 step 851/1000 [W16_2000 emg2pose] loss 0.29426 lr 2.83e-04 31 win/s eta 6:55
+  [20:19:45] epoch 10 step 897/1000 [W16_2000 emg2pose] loss 0.29557 lr 2.83e-04 31 win/s eta 4:46
+  [20:19:58] epoch 10 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.25080 lr 2.83e-04 31 win/s eta 4:35
+  [20:21:59] epoch 10 step 943/1000 [A24_2000 putemg] loss 0.13998 lr 2.83e-04 31 win/s eta 2:39
+  [20:22:22] epoch 10 step 951/1000 [W16_2000 emg2qwerty] loss 0.22859 lr 2.83e-04 31 win/s eta 2:16
+  [20:24:22] epoch 10 step 1000/1000 [A24_2000 putemg] loss 0.14323 lr 2.83e-04 31 win/s eta 0:00
+  [20:26:23] epoch 10 val 122/128 eta 0:05
+epoch 10 done (11/60): train total 0.23940  val total 0.26550 (spec 0.31131 r 0.829 nmse 0.311 | raw 0.21968 r 0.752 nmse 0.428 | macro 0.22733)  gate 0.2485  [46:15 train + 2:20 val, elapsed 13:32:32, run eta 60:19:30]
+  new best raw: 0.21968 at epoch 10  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [20:26:46] epoch 11 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.22050 lr 2.83e-04 20 win/s eta 40:57
+  [20:28:47] epoch 11 step 46/1000 [W16_2000 emg2qwerty] loss 0.24919 lr 2.83e-04 34 win/s eta 42:49
+  [20:29:04] epoch 11 step 51/1000 [G64_2000 cemhsey_8x8] loss 0.26313 lr 2.83e-04 34 win/s eta 43:44
+  [20:31:02] epoch 11 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.26012 lr 2.82e-04 34 win/s eta 38:24
+  [20:33:06] epoch 11 step 148/1000 [W16_2000 emg2pose] loss 0.30444 lr 2.82e-04 33 win/s eta 36:41
+  [20:33:11] epoch 11 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.25260 lr 2.82e-04 33 win/s eta 36:18
+  [20:35:03] epoch 11 step 201/1000 [W16_2000 emg2qwerty] loss 0.24630 lr 2.82e-04 33 win/s eta 33:07
+  [20:37:03] epoch 11 step 245/1000 [A24_2000 putemg] loss 0.15025 lr 2.82e-04 33 win/s eta 31:50
+  [20:37:24] epoch 11 step 251/1000 [W16_2000 emg2qwerty] loss 0.24713 lr 2.82e-04 33 win/s eta 31:51
+  [20:39:24] epoch 11 step 287/1000 [G64_2000 cemhsey_8x8] loss 0.28043 lr 2.82e-04 33 win/s eta 31:30
+  [20:40:15] epoch 11 step 301/1000 [A24_2000 putemg] loss 0.12803 lr 2.82e-04 33 win/s eta 31:24
+  [20:42:18] epoch 11 step 346/1000 [W16_2000 emg2pose] loss 0.30407 lr 2.81e-04 33 win/s eta 29:27
+  [20:42:32] epoch 11 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.21408 lr 2.81e-04 33 win/s eta 29:14
+  [20:44:36] epoch 11 step 395/1000 [W16_2000 emg2qwerty] loss 0.26104 lr 2.81e-04 33 win/s eta 27:23
+  [20:44:55] epoch 11 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.21720 lr 2.81e-04 33 win/s eta 27:10
+  [20:46:58] epoch 11 step 445/1000 [A24_2000 putemg] loss 0.13796 lr 2.81e-04 32 win/s eta 25:15
+  [20:47:25] epoch 11 step 451/1000 [G64_2000 cemhsey_8x8] loss 0.25913 lr 2.81e-04 32 win/s eta 25:11
+  [20:49:25] epoch 11 step 491/1000 [G64_2000 cemhsey_5x13] loss 0.21969 lr 2.81e-04 32 win/s eta 23:32
+  [20:49:44] epoch 11 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.27257 lr 2.81e-04 32 win/s eta 22:55
+  [20:51:51] epoch 11 step 549/1000 [W16_2000 emg2pose] loss 0.28385 lr 2.81e-04 32 win/s eta 20:38
+  [20:51:54] epoch 11 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.28771 lr 2.81e-04 32 win/s eta 20:31
+  [20:53:55] epoch 11 step 599/1000 [G64_2000 cemhsey_5x13] loss 0.24517 lr 2.80e-04 31 win/s eta 18:12
+  [20:53:58] epoch 11 step 601/1000 [G64_2000 hyser] loss 0.26152 lr 2.80e-04 31 win/s eta 18:05
+  [20:56:00] epoch 11 step 647/1000 [G64_2000 cemhsey_8x8] loss 0.26868 lr 2.80e-04 31 win/s eta 15:58
+  [20:56:09] epoch 11 step 651/1000 [G64_2000 hyser] loss 0.23957 lr 2.80e-04 31 win/s eta 15:46
+  [20:58:10] epoch 11 step 698/1000 [G64_2000 cemhsey_5x13] loss 0.22501 lr 2.80e-04 31 win/s eta 13:36
+  [20:58:24] epoch 11 step 701/1000 [G64_2000 cemhsey_5x13] loss 0.22538 lr 2.80e-04 31 win/s eta 13:30
+  [21:00:29] epoch 11 step 750/1000 [W16_2000 emg2qwerty] loss 0.23721 lr 2.80e-04 31 win/s eta 11:15
+  [21:00:30] epoch 11 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.28817 lr 2.80e-04 31 win/s eta 11:12
+  [21:02:31] epoch 11 step 796/1000 [G64_2000 cemhsey_5x13] loss 0.21063 lr 2.80e-04 31 win/s eta 9:10
+  [21:02:46] epoch 11 step 801/1000 [G64_2000 hyser] loss 0.23562 lr 2.80e-04 31 win/s eta 8:57
+  [21:04:47] epoch 11 step 842/1000 [W16_2000 emg2qwerty] loss 0.24066 lr 2.79e-04 32 win/s eta 7:08
+  [21:05:16] epoch 11 step 851/1000 [W16_2000 emg2qwerty] loss 0.23607 lr 2.79e-04 32 win/s eta 6:45
+  [21:07:11] epoch 11 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.21283 lr 2.79e-04 32 win/s eta 4:26
+  [21:09:14] epoch 11 step 947/1000 [W16_2000 emg2pose] loss 0.30583 lr 2.79e-04 32 win/s eta 2:22
+  [21:09:23] epoch 11 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.29624 lr 2.79e-04 32 win/s eta 2:11
+  [21:11:26] epoch 11 step 999/1000 [W16_2000 emg2qwerty] loss 0.22923 lr 2.79e-04 32 win/s eta 0:02
+  [21:11:30] epoch 11 step 1000/1000 [W16_2000 emg2pose] loss 0.27373 lr 2.79e-04 32 win/s eta 0:00
+  [21:13:31] epoch 11 val 104/128 eta 0:27
+epoch 11 done (12/60): train total 0.24216  val total 0.27763 (spec 0.33585 r 0.814 nmse 0.336 | raw 0.21939 r 0.756 nmse 0.423 | macro 0.23471)  gate 0.2557  [44:47 train + 2:51 val, elapsed 14:20:11, run eta 57:20:47]
+  new best raw: 0.21939 at epoch 11  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [21:14:25] epoch 12 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.27727 lr 2.79e-04 21 win/s eta 38:08
+  [21:16:26] epoch 12 step 49/1000 [G64_2000 hyser] loss 0.23574 lr 2.79e-04 32 win/s eta 39:58
+  [21:16:34] epoch 12 step 51/1000 [W16_2000 emg2qwerty] loss 0.24906 lr 2.79e-04 32 win/s eta 40:42
+  [21:18:29] epoch 12 step 101/1000 [G64_2000 hyser] loss 0.25680 lr 2.78e-04 32 win/s eta 36:39
+  [21:20:32] epoch 12 step 143/1000 [W16_2000 emg2qwerty] loss 0.23719 lr 2.78e-04 32 win/s eta 36:55
+  [21:20:57] epoch 12 step 151/1000 [W16_2000 emg2qwerty] loss 0.23712 lr 2.78e-04 32 win/s eta 36:58
+  [21:23:00] epoch 12 step 194/1000 [W16_2000 emg2pose] loss 0.30258 lr 2.78e-04 32 win/s eta 35:49
+  [21:23:16] epoch 12 step 201/1000 [G64_2000 hyser] loss 0.23851 lr 2.78e-04 32 win/s eta 35:20
+  [21:25:20] epoch 12 step 240/1000 [W16_2000 emg2qwerty] loss 0.24357 lr 2.78e-04 31 win/s eta 34:41
+  [21:25:47] epoch 12 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.21059 lr 2.78e-04 31 win/s eta 34:02
+  [21:27:49] epoch 12 step 292/1000 [G64_2000 cemhsey_8x8] loss 0.29734 lr 2.78e-04 31 win/s eta 32:36
+  [21:28:11] epoch 12 step 301/1000 [G64_2000 cemhsey_5x13] loss 0.20973 lr 2.77e-04 31 win/s eta 32:03
+  [21:30:14] epoch 12 step 338/1000 [W16_2000 emg2pose] loss 0.29476 lr 2.77e-04 30 win/s eta 31:03
+  [21:30:58] epoch 12 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.27887 lr 2.77e-04 31 win/s eta 30:40
+  [21:32:59] epoch 12 step 393/1000 [G64_2000 cemhsey_8x8] loss 0.30743 lr 2.77e-04 31 win/s eta 28:43
+  [21:33:18] epoch 12 step 401/1000 [W16_2000 emg2qwerty] loss 0.23915 lr 2.77e-04 31 win/s eta 28:16
+  [21:35:23] epoch 12 step 446/1000 [W16_2000 emg2pose] loss 0.29577 lr 2.77e-04 31 win/s eta 26:05
+  [21:35:32] epoch 12 step 451/1000 [G64_2000 hyser] loss 0.24359 lr 2.77e-04 31 win/s eta 25:45
+  [21:37:34] epoch 12 step 494/1000 [W16_2000 emg2pose] loss 0.30869 lr 2.77e-04 31 win/s eta 23:45
+  [21:37:49] epoch 12 step 501/1000 [G64_2000 hyser] loss 0.23657 lr 2.77e-04 31 win/s eta 23:21
+  [21:39:50] epoch 12 step 535/1000 [G64_2000 cemhsey_8x8] loss 0.28983 lr 2.76e-04 30 win/s eta 22:07
+  [21:40:44] epoch 12 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.22817 lr 2.76e-04 30 win/s eta 21:29
+  [21:42:47] epoch 12 step 585/1000 [G64_2000 cemhsey_8x8] loss 0.31636 lr 2.76e-04 30 win/s eta 20:09
+  [21:43:52] epoch 12 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.24381 lr 2.76e-04 30 win/s eta 19:34
+  [21:45:57] epoch 12 step 625/1000 [W16_2000 emg2qwerty] loss 0.23988 lr 2.76e-04 28 win/s eta 18:56
+  [21:47:46] epoch 12 step 651/1000 [W16_2000 emg2qwerty] loss 0.23510 lr 2.76e-04 28 win/s eta 17:53
+  [21:49:52] epoch 12 step 689/1000 [W16_2000 emg2qwerty] loss 0.24613 lr 2.76e-04 28 win/s eta 16:01
+  [21:50:33] epoch 12 step 701/1000 [W16_2000 emg2qwerty] loss 0.24479 lr 2.76e-04 28 win/s eta 15:25
+  [21:52:39] epoch 12 step 733/1000 [W16_2000 emg2pose] loss 0.29735 lr 2.76e-04 27 win/s eta 13:56
+  [21:54:00] epoch 12 step 751/1000 [G64_2000 hyser] loss 0.21556 lr 2.76e-04 27 win/s eta 13:08
+  [21:56:03] epoch 12 step 778/1000 [W16_2000 emg2pose] loss 0.29870 lr 2.75e-04 27 win/s eta 11:53
+  [21:57:29] epoch 12 step 801/1000 [G64_2000 cemhsey_5x13] loss 0.19572 lr 2.75e-04 27 win/s eta 10:42
+  [21:59:29] epoch 12 step 832/1000 [G64_2000 cemhsey_8x8] loss 0.26126 lr 2.75e-04 27 win/s eta 9:06
+  [22:00:55] epoch 12 step 851/1000 [G64_2000 cemhsey_5x13] loss 0.22418 lr 2.75e-04 26 win/s eta 8:08
+  [22:02:56] epoch 12 step 880/1000 [W16_2000 emg2qwerty] loss 0.23382 lr 2.75e-04 26 win/s eta 6:37
+  [22:04:08] epoch 12 step 901/1000 [W16_2000 emg2pose] loss 0.29359 lr 2.75e-04 26 win/s eta 5:28
+  [22:06:14] epoch 12 step 939/1000 [W16_2000 emg2pose] loss 0.27388 lr 2.75e-04 26 win/s eta 3:22
+  [22:06:52] epoch 12 step 951/1000 [G64_2000 cemhsey_5x13] loss 0.19393 lr 2.75e-04 26 win/s eta 2:42
+  [22:08:53] epoch 12 step 985/1000 [G64_2000 cemhsey_5x13] loss 0.22424 lr 2.74e-04 26 win/s eta 0:49
+  [22:09:48] epoch 12 step 1000/1000 [W16_2000 emg2pose] loss 0.30398 lr 2.74e-04 26 win/s eta 0:00
+  [22:11:49] epoch 12 val 98/128 eta 0:36
+epoch 12 done (13/60): train total 0.24749  val total 0.25391 (spec 0.29654 r 0.838 nmse 0.297 | raw 0.21127 r 0.763 nmse 0.409 | macro 0.22181)  gate 0.2663  [55:25 train + 2:53 val, elapsed 15:18:31, run eta 55:20:49]
+  new best raw: 0.21127 at epoch 12  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  new best macro-route total: 0.22181 at epoch 12  (macro_route_loss_total -> best_macro_total.pth)
+  [22:12:46] epoch 13 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.18419 lr 2.74e-04 14 win/s eta 57:25
+  [22:14:46] epoch 13 step 36/1000 [G64_2000 cemhsey_5x13] loss 0.19554 lr 2.74e-04 25 win/s eta 55:12
+  [22:15:30] epoch 13 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.18994 lr 2.74e-04 25 win/s eta 52:10
+  [22:17:33] epoch 13 step 94/1000 [W16_2000 emg2qwerty] loss 0.25615 lr 2.74e-04 26 win/s eta 46:39
+  [22:17:51] epoch 13 step 101/1000 [G64_2000 hyser] loss 0.19887 lr 2.74e-04 26 win/s eta 45:46
+  [22:19:51] epoch 13 step 133/1000 [W16_2000 emg2pose] loss 0.29972 lr 2.74e-04 26 win/s eta 46:35
+  [22:20:51] epoch 13 step 151/1000 [W16_2000 emg2qwerty] loss 0.22810 lr 2.74e-04 26 win/s eta 45:47
+  [22:22:51] epoch 13 step 184/1000 [G64_2000 hyser] loss 0.22160 lr 2.74e-04 26 win/s eta 44:59
+  [22:23:51] epoch 13 step 201/1000 [G64_2000 hyser] loss 0.21925 lr 2.73e-04 27 win/s eta 44:19
+  [22:25:52] epoch 13 step 241/1000 [G64_2000 cemhsey_8x8] loss 0.26975 lr 2.73e-04 26 win/s eta 41:25
+  [22:26:22] epoch 13 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.25077 lr 2.73e-04 26 win/s eta 40:47
+  [22:28:25] epoch 13 step 283/1000 [W16_2000 emg2pose] loss 0.29776 lr 2.73e-04 26 win/s eta 39:49
+  [22:29:39] epoch 13 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.24431 lr 2.73e-04 26 win/s eta 39:20
+  [22:31:41] epoch 13 step 334/1000 [W16_2000 emg2qwerty] loss 0.24229 lr 2.73e-04 26 win/s eta 37:51
+  [22:32:51] epoch 13 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.19764 lr 2.73e-04 26 win/s eta 37:14
+  [22:34:52] epoch 13 step 382/1000 [G64_2000 cemhsey_8x8] loss 0.24984 lr 2.73e-04 25 win/s eta 35:51
+  [22:35:55] epoch 13 step 401/1000 [G64_2000 cemhsey_8x8] loss 0.25935 lr 2.73e-04 25 win/s eta 34:40
+  [22:37:56] epoch 13 step 437/1000 [W16_2000 emg2qwerty] loss 0.24554 lr 2.72e-04 25 win/s eta 32:30
+  [22:38:52] epoch 13 step 451/1000 [G64_2000 hyser] loss 0.20531 lr 2.72e-04 25 win/s eta 31:51
+  [22:40:53] epoch 13 step 489/1000 [G64_2000 cemhsey_5x13] loss 0.18504 lr 2.72e-04 25 win/s eta 29:26
+  [22:41:28] epoch 13 step 501/1000 [G64_2000 hyser] loss 0.22145 lr 2.72e-04 25 win/s eta 28:38
+  [22:43:31] epoch 13 step 536/1000 [W16_2000 emg2pose] loss 0.29878 lr 2.72e-04 25 win/s eta 26:40
+  [22:44:04] epoch 13 step 551/1000 [G64_2000 hyser] loss 0.21917 lr 2.72e-04 25 win/s eta 25:33
+  [22:46:04] epoch 13 step 586/1000 [G64_2000 cemhsey_5x13] loss 0.21864 lr 2.72e-04 25 win/s eta 23:34
+  [22:47:00] epoch 13 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.17890 lr 2.72e-04 25 win/s eta 22:46
+  [22:49:01] epoch 13 step 629/1000 [W16_2000 emg2pose] loss 0.30100 lr 2.72e-04 25 win/s eta 21:24
+  [22:50:08] epoch 13 step 651/1000 [G64_2000 cemhsey_8x8] loss 0.27468 lr 2.71e-04 25 win/s eta 20:04
+  [22:52:10] epoch 13 step 689/1000 [G64_2000 cemhsey_8x8] loss 0.27894 lr 2.71e-04 25 win/s eta 17:48
+  [22:52:56] epoch 13 step 701/1000 [G64_2000 hyser] loss 0.22423 lr 2.71e-04 25 win/s eta 17:09
+  [22:54:59] epoch 13 step 734/1000 [W16_2000 emg2pose] loss 0.29298 lr 2.71e-04 25 win/s eta 15:19
+  [22:56:06] epoch 13 step 751/1000 [W16_2000 emg2pose] loss 0.30170 lr 2.71e-04 25 win/s eta 14:23
+  [22:58:08] epoch 13 step 781/1000 [W16_2000 emg2pose] loss 0.30880 lr 2.71e-04 25 win/s eta 12:44
+  [22:59:29] epoch 13 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.29379 lr 2.71e-04 25 win/s eta 11:37
+  [23:01:34] epoch 13 step 829/1000 [W16_2000 emg2pose] loss 0.29561 lr 2.71e-04 25 win/s eta 10:04
+  [23:03:22] epoch 13 step 851/1000 [W16_2000 emg2pose] loss 0.28271 lr 2.70e-04 25 win/s eta 8:52
+  [23:05:24] epoch 13 step 880/1000 [G64_2000 cemhsey_8x8] loss 0.30009 lr 2.70e-04 25 win/s eta 7:11
+  [23:06:52] epoch 13 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.17719 lr 2.70e-04 25 win/s eta 5:57
+  [23:08:57] epoch 13 step 925/1000 [W16_2000 emg2pose] loss 0.30852 lr 2.70e-04 24 win/s eta 4:33
+  [23:10:41] epoch 13 step 951/1000 [G64_2000 hyser] loss 0.23461 lr 2.70e-04 24 win/s eta 2:59
+  [23:12:42] epoch 13 step 986/1000 [G64_2000 cemhsey_8x8] loss 0.27806 lr 2.70e-04 24 win/s eta 0:51
+  [23:13:22] epoch 13 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.29583 lr 2.70e-04 25 win/s eta 0:00
+  [23:15:22] epoch 13 val 91/128 eta 0:48
+epoch 13 done (14/60): train total 0.23519  val total 0.27242 (spec 0.33365 r 0.815 nmse 0.334 | raw 0.21119 r 0.763 nmse 0.409 | macro 0.23288)  gate 0.2720  [1:00:39 train + 3:00 val, elapsed 16:22:12, run eta 53:47:13]
+  new best raw: 0.21119 at epoch 13  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [23:16:26] epoch 14 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.28363 lr 2.70e-04 15 win/s eta 52:37
+  [23:18:31] epoch 14 step 38/1000 [W16_2000 emg2pose] loss 0.29887 lr 2.70e-04 24 win/s eta 54:10
+  [23:19:16] epoch 14 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.18468 lr 2.69e-04 23 win/s eta 53:52
+  [23:21:17] epoch 14 step 85/1000 [A24_2000 putemg] loss 0.13454 lr 2.69e-04 24 win/s eta 52:44
+  [23:22:08] epoch 14 step 101/1000 [G64_2000 hyser] loss 0.24095 lr 2.69e-04 24 win/s eta 51:16
+  [23:24:11] epoch 14 step 139/1000 [G64_2000 cemhsey_8x8] loss 0.28169 lr 2.69e-04 25 win/s eta 48:20
+  [23:24:50] epoch 14 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.26571 lr 2.69e-04 25 win/s eta 47:34
+  [23:26:55] epoch 14 step 196/1000 [W16_2000 emg2pose] loss 0.29554 lr 2.69e-04 25 win/s eta 43:13
+  [23:27:09] epoch 14 step 201/1000 [G64_2000 hyser] loss 0.21692 lr 2.69e-04 26 win/s eta 42:51
+  [23:29:11] epoch 14 step 246/1000 [G64_2000 cemhsey_8x8] loss 0.26965 lr 2.69e-04 26 win/s eta 39:15
+  [23:29:25] epoch 14 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.27104 lr 2.68e-04 26 win/s eta 38:55
+  [23:31:26] epoch 14 step 293/1000 [W16_2000 emg2qwerty] loss 0.25302 lr 2.68e-04 27 win/s eta 36:21
+  [23:31:48] epoch 14 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.29506 lr 2.68e-04 28 win/s eta 35:49
+  [23:33:49] epoch 14 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.27438 lr 2.68e-04 28 win/s eta 32:14
+  [23:35:38] epoch 14 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.20747 lr 2.68e-04 29 win/s eta 28:45
+  [23:37:43] epoch 14 step 449/1000 [W16_2000 emg2qwerty] loss 0.24281 lr 2.67e-04 29 win/s eta 26:11
+  [23:37:50] epoch 14 step 451/1000 [W16_2000 emg2qwerty] loss 0.24980 lr 2.67e-04 29 win/s eta 26:06
+  [23:39:51] epoch 14 step 499/1000 [G64_2000 cemhsey_5x13] loss 0.20830 lr 2.67e-04 30 win/s eta 23:33
+  [23:39:56] epoch 14 step 501/1000 [G64_2000 hyser] loss 0.24644 lr 2.67e-04 30 win/s eta 23:28
+  [23:41:57] epoch 14 step 541/1000 [W16_2000 emg2pose] loss 0.26015 lr 2.67e-04 30 win/s eta 21:42
+  [23:42:27] epoch 14 step 551/1000 [W16_2000 emg2pose] loss 0.31165 lr 2.67e-04 30 win/s eta 21:15
+  [23:44:26] epoch 14 step 601/1000 [G64_2000 cemhsey_8x8] loss 0.24471 lr 2.67e-04 31 win/s eta 18:37
+  [23:46:17] epoch 14 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.21685 lr 2.66e-04 31 win/s eta 16:02
+  [23:48:11] epoch 14 step 701/1000 [G64_2000 cemhsey_5x13] loss 0.25004 lr 2.66e-04 31 win/s eta 13:33
+  [23:50:11] epoch 14 step 750/1000 [W16_2000 emg2qwerty] loss 0.25004 lr 2.66e-04 31 win/s eta 11:16
+  [23:50:14] epoch 14 step 751/1000 [G64_2000 cemhsey_5x13] loss 0.20745 lr 2.66e-04 31 win/s eta 11:13
+  [23:52:18] epoch 14 step 793/1000 [W16_2000 emg2qwerty] loss 0.24432 lr 2.66e-04 31 win/s eta 9:22
+  [23:52:42] epoch 14 step 801/1000 [W16_2000 emg2pose] loss 0.29272 lr 2.66e-04 31 win/s eta 9:01
+  [23:54:44] epoch 14 step 846/1000 [W16_2000 emg2qwerty] loss 0.25244 lr 2.65e-04 31 win/s eta 6:58
+  [23:54:52] epoch 14 step 851/1000 [G64_2000 hyser] loss 0.24313 lr 2.65e-04 31 win/s eta 6:44
+  [23:56:53] epoch 14 step 899/1000 [G64_2000 cemhsey_8x8] loss 0.25920 lr 2.65e-04 31 win/s eta 4:33
+  [23:56:59] epoch 14 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.24229 lr 2.65e-04 31 win/s eta 4:27
+  [23:58:59] epoch 14 step 947/1000 [G64_2000 cemhsey_5x13] loss 0.25037 lr 2.65e-04 31 win/s eta 2:23
+  [23:59:09] epoch 14 step 951/1000 [G64_2000 hyser] loss 0.23792 lr 2.65e-04 31 win/s eta 2:12
+  [00:01:11] epoch 14 step 991/1000 [G64_2000 hyser] loss 0.23337 lr 2.65e-04 31 win/s eta 0:24
+  [00:01:47] epoch 14 step 1000/1000 [G64_2000 hyser] loss 0.21981 lr 2.65e-04 31 win/s eta 0:00
+  [00:03:48] epoch 14 val 104/128 eta 0:27
+epoch 14 done (15/60): train total 0.24884  val total 0.26455 (spec 0.32094 r 0.823 nmse 0.321 | raw 0.20816 r 0.767 nmse 0.402 | macro 0.23117)  gate 0.2776  [45:24 train + 3:42 val, elapsed 17:11:20, run eta 51:34:00]
+  new best raw: 0.20816 at epoch 14  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [00:05:35] epoch 15 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.26437 lr 2.65e-04 12 win/s eta 1:07:19
+  [00:07:37] epoch 15 step 37/1000 [W16_2000 emg2qwerty] loss 0.25657 lr 2.64e-04 22 win/s eta 54:41
+  [00:08:28] epoch 15 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.20709 lr 2.64e-04 22 win/s eta 55:10
+  [00:10:30] epoch 15 step 80/1000 [G64_2000 cemhsey_8x8] loss 0.24598 lr 2.64e-04 21 win/s eta 57:20
+  [00:11:51] epoch 15 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.26644 lr 2.64e-04 21 win/s eta 56:26
+  [00:13:52] epoch 15 step 128/1000 [G64_2000 cemhsey_8x8] loss 0.25950 lr 2.64e-04 20 win/s eta 56:54
+  [00:15:16] epoch 15 step 151/1000 [G64_2000 cemhsey_5x13] loss 0.21487 lr 2.64e-04 20 win/s eta 54:49
+  [00:17:17] epoch 15 step 179/1000 [W16_2000 emg2pose] loss 0.29765 lr 2.64e-04 20 win/s eta 53:58
+  [00:18:25] epoch 15 step 201/1000 [G64_2000 cemhsey_5x13] loss 0.21162 lr 2.64e-04 21 win/s eta 51:17
+  [00:20:25] epoch 15 step 236/1000 [G64_2000 cemhsey_5x13] loss 0.21021 lr 2.63e-04 21 win/s eta 48:16
+  [00:21:05] epoch 15 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.20845 lr 2.63e-04 21 win/s eta 46:27
+  [00:23:05] epoch 15 step 280/1000 [W16_2000 emg2qwerty] loss 0.25131 lr 2.63e-04 21 win/s eta 45:11
+  [00:24:41] epoch 15 step 301/1000 [W16_2000 emg2pose] loss 0.30430 lr 2.63e-04 21 win/s eta 44:31
+  [00:26:41] epoch 15 step 333/1000 [G64_2000 cemhsey_8x8] loss 0.28752 lr 2.63e-04 22 win/s eta 42:25
+  [00:27:50] epoch 15 step 351/1000 [W16_2000 emg2qwerty] loss 0.25476 lr 2.63e-04 22 win/s eta 41:16
+  [00:29:51] epoch 15 step 381/1000 [W16_2000 emg2qwerty] loss 0.25034 lr 2.63e-04 22 win/s eta 39:32
+  [00:30:47] epoch 15 step 401/1000 [G64_2000 cemhsey_5x13] loss 0.24615 lr 2.63e-04 22 win/s eta 37:44
+  [00:32:50] epoch 15 step 435/1000 [W16_2000 emg2qwerty] loss 0.25157 lr 2.62e-04 22 win/s eta 35:28
+  [00:34:14] epoch 15 step 451/1000 [W16_2000 emg2qwerty] loss 0.25131 lr 2.62e-04 22 win/s eta 34:58
+  [00:36:15] epoch 15 step 481/1000 [G64_2000 hyser] loss 0.23119 lr 2.62e-04 22 win/s eta 33:09
+  [00:37:22] epoch 15 step 501/1000 [G64_2000 hyser] loss 0.21939 lr 2.62e-04 22 win/s eta 31:43
+  [00:39:22] epoch 15 step 538/1000 [W16_2000 emg2qwerty] loss 0.24967 lr 2.62e-04 22 win/s eta 29:04
+  [00:40:14] epoch 15 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.22962 lr 2.62e-04 22 win/s eta 28:17
+  [00:42:16] epoch 15 step 583/1000 [G64_2000 cemhsey_8x8] loss 0.26949 lr 2.62e-04 22 win/s eta 26:17
+  [00:43:21] epoch 15 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.22650 lr 2.61e-04 22 win/s eta 25:07
+  [00:45:23] epoch 15 step 639/1000 [G64_2000 hyser] loss 0.22348 lr 2.61e-04 22 win/s eta 22:31
+  [00:46:09] epoch 15 step 651/1000 [G64_2000 hyser] loss 0.19624 lr 2.61e-04 22 win/s eta 21:47
+  [00:48:14] epoch 15 step 681/1000 [W16_2000 emg2pose] loss 0.29264 lr 2.61e-04 23 win/s eta 20:00
+  [00:49:03] epoch 15 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.27421 lr 2.61e-04 23 win/s eta 18:34
+  [00:51:04] epoch 15 step 737/1000 [W16_2000 emg2pose] loss 0.30565 lr 2.61e-04 23 win/s eta 16:15
+  [00:51:52] epoch 15 step 751/1000 [W16_2000 emg2qwerty] loss 0.27307 lr 2.61e-04 23 win/s eta 15:22
+  [00:53:56] epoch 15 step 788/1000 [A24_2000 putemg] loss 0.12223 lr 2.60e-04 23 win/s eta 13:01
+  [00:54:39] epoch 15 step 801/1000 [G64_2000 hyser] loss 0.21489 lr 2.60e-04 23 win/s eta 12:12
+  [00:56:40] epoch 15 step 831/1000 [G64_2000 hyser] loss 0.23333 lr 2.60e-04 23 win/s eta 10:24
+  [00:57:45] epoch 15 step 851/1000 [A24_2000 putemg] loss 0.13780 lr 2.60e-04 23 win/s eta 9:08
+  [00:59:50] epoch 15 step 885/1000 [W16_2000 emg2pose] loss 0.33275 lr 2.60e-04 23 win/s eta 7:03
+  [01:00:51] epoch 15 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.28029 lr 2.60e-04 23 win/s eta 6:04
+  [01:02:51] epoch 15 step 931/1000 [G64_2000 hyser] loss 0.21541 lr 2.60e-04 23 win/s eta 4:15
+  [01:04:08] epoch 15 step 951/1000 [W16_2000 emg2qwerty] loss 0.26070 lr 2.60e-04 23 win/s eta 3:01
+  [01:06:09] epoch 15 step 987/1000 [G64_2000 cemhsey_5x13] loss 0.23399 lr 2.59e-04 23 win/s eta 0:47
+  [01:06:52] epoch 15 step 1000/1000 [W16_2000 emg2qwerty] loss 0.25831 lr 2.59e-04 23 win/s eta 0:00
+  [01:08:54] epoch 15 val 89/128 eta 0:53
+epoch 15 done (16/60): train total 0.24291  val total 0.26336 (spec 0.31726 r 0.825 nmse 0.317 | raw 0.20946 r 0.766 nmse 0.406 | macro 0.22937)  gate 0.2822  [1:01:21 train + 3:12 val, elapsed 18:15:54, run eta 50:13:44]
+  [01:10:08] epoch 16 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.23483 lr 2.59e-04 14 win/s eta 56:09
+  [01:12:12] epoch 16 step 33/1000 [W16_2000 emg2pose] loss 0.32969 lr 2.59e-04 22 win/s eta 1:02:11
+  [01:13:05] epoch 16 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.19998 lr 2.59e-04 22 win/s eta 55:47
+  [01:15:07] epoch 16 step 86/1000 [A24_2000 putemg] loss 0.14727 lr 2.59e-04 22 win/s eta 53:29
+  [01:16:04] epoch 16 step 101/1000 [G64_2000 hyser] loss 0.22699 lr 2.59e-04 22 win/s eta 53:21
+  [01:18:07] epoch 16 step 130/1000 [W16_2000 emg2qwerty] loss 0.26441 lr 2.59e-04 22 win/s eta 53:48
+  [01:19:11] epoch 16 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.25992 lr 2.58e-04 22 win/s eta 51:10
+  [01:21:12] epoch 16 step 180/1000 [W16_2000 emg2pose] loss 0.31797 lr 2.58e-04 22 win/s eta 50:40
+  [01:22:33] epoch 16 step 201/1000 [W16_2000 emg2qwerty] loss 0.26841 lr 2.58e-04 23 win/s eta 49:34
+  [01:24:35] epoch 16 step 236/1000 [G64_2000 cemhsey_5x13] loss 0.19401 lr 2.58e-04 23 win/s eta 46:57
+  [01:25:22] epoch 16 step 251/1000 [G64_2000 cemhsey_5x13] loss 0.22318 lr 2.58e-04 23 win/s eta 45:36
+  [01:27:22] epoch 16 step 284/1000 [G64_2000 cemhsey_8x8] loss 0.26935 lr 2.58e-04 23 win/s eta 43:35
+  [01:28:28] epoch 16 step 301/1000 [W16_2000 emg2pose] loss 0.29964 lr 2.58e-04 23 win/s eta 42:42
+  [01:30:30] epoch 16 step 334/1000 [A24_2000 putemg] loss 0.13250 lr 2.57e-04 23 win/s eta 40:43
+  [01:31:17] epoch 16 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.25438 lr 2.57e-04 23 win/s eta 39:13
+  [01:33:23] epoch 16 step 381/1000 [W16_2000 emg2pose] loss 0.31149 lr 2.57e-04 23 win/s eta 37:52
+  [01:34:38] epoch 16 step 401/1000 [A24_2000 putemg] loss 0.13667 lr 2.57e-04 23 win/s eta 36:41
+  [01:36:57] epoch 16 step 419/1000 [W16_2000 emg2pose] loss 0.31610 lr 2.57e-04 22 win/s eta 37:15
+  [01:38:59] epoch 16 step 446/1000 [G64_2000 cemhsey_8x8] loss 0.26645 lr 2.57e-04 22 win/s eta 35:54
+  [01:39:19] epoch 16 step 451/1000 [G64_2000 hyser] loss 0.21459 lr 2.57e-04 22 win/s eta 35:34
+  [01:41:19] epoch 16 step 483/1000 [G64_2000 cemhsey_8x8] loss 0.27422 lr 2.57e-04 22 win/s eta 33:26
+  [01:42:23] epoch 16 step 501/1000 [G64_2000 cemhsey_8x8] loss 0.24588 lr 2.56e-04 22 win/s eta 32:10
+  [01:44:27] epoch 16 step 530/1000 [A24_2000 putemg] loss 0.12701 lr 2.56e-04 22 win/s eta 30:28
+  [01:46:02] epoch 16 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.21784 lr 2.56e-04 22 win/s eta 29:17
+  [01:48:02] epoch 16 step 586/1000 [W16_2000 emg2pose] loss 0.32174 lr 2.56e-04 22 win/s eta 26:49
+  [01:49:19] epoch 16 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.21064 lr 2.56e-04 21 win/s eta 26:02
+  [01:51:21] epoch 16 step 619/1000 [A24_2000 putemg] loss 0.14741 lr 2.56e-04 21 win/s eta 25:24
+  [01:53:22] epoch 16 step 641/1000 [G64_2000 hyser] loss 0.23329 lr 2.56e-04 21 win/s eta 24:14
+  [01:54:08] epoch 16 step 651/1000 [G64_2000 hyser] loss 0.21222 lr 2.56e-04 21 win/s eta 23:37
+  [01:56:09] epoch 16 step 683/1000 [W16_2000 emg2qwerty] loss 0.26448 lr 2.55e-04 21 win/s eta 21:23
+  [01:56:57] epoch 16 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.27813 lr 2.55e-04 21 win/s eta 19:59
+  [01:58:59] epoch 16 step 738/1000 [G64_2000 cemhsey_8x8] loss 0.25858 lr 2.55e-04 21 win/s eta 17:21
+  [01:59:48] epoch 16 step 751/1000 [G64_2000 cemhsey_8x8] loss 0.26577 lr 2.55e-04 22 win/s eta 16:29
+  [02:01:48] epoch 16 step 791/1000 [G64_2000 hyser] loss 0.21936 lr 2.55e-04 22 win/s eta 13:40
+  [02:02:18] epoch 16 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.25416 lr 2.55e-04 22 win/s eta 12:58
+  [02:04:18] epoch 16 step 836/1000 [G64_2000 cemhsey_8x8] loss 0.24360 lr 2.55e-04 22 win/s eta 10:38
+  [02:04:58] epoch 16 step 851/1000 [W16_2000 emg2qwerty] loss 0.26515 lr 2.54e-04 22 win/s eta 9:36
+  [02:06:59] epoch 16 step 891/1000 [G64_2000 cemhsey_8x8] loss 0.26227 lr 2.54e-04 22 win/s eta 6:57
+  [02:07:27] epoch 16 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.26980 lr 2.54e-04 22 win/s eta 6:18
+  [02:09:28] epoch 16 step 944/1000 [G64_2000 cemhsey_5x13] loss 0.20522 lr 2.54e-04 22 win/s eta 3:31
+  [02:09:46] epoch 16 step 951/1000 [A24_2000 putemg] loss 0.16237 lr 2.54e-04 22 win/s eta 3:04
+  [02:11:50] epoch 16 step 993/1000 [W16_2000 emg2qwerty] loss 0.26232 lr 2.54e-04 23 win/s eta 0:26
+  [02:12:12] epoch 16 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.18215 lr 2.54e-04 23 win/s eta 0:00
+  [02:14:12] epoch 16 val 111/128 eta 0:18
+epoch 16 done (17/60): train total 0.24151  val total 0.26880 (spec 0.32910 r 0.818 nmse 0.329 | raw 0.20850 r 0.768 nmse 0.402 | macro 0.23166)  gate 0.2865  [1:02:06 train + 2:34 val, elapsed 19:20:35, run eta 48:55:36]
+  [02:14:49] epoch 17 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.18152 lr 2.54e-04 16 win/s eta 50:34
+  [02:16:54] epoch 17 step 39/1000 [W16_2000 emg2qwerty] loss 0.26410 lr 2.53e-04 31 win/s eta 52:26
+  [02:17:34] epoch 17 step 51/1000 [G64_2000 cemhsey_8x8] loss 0.27879 lr 2.53e-04 31 win/s eta 52:11
+  [02:19:36] epoch 17 step 91/1000 [G64_2000 cemhsey_5x13] loss 0.19795 lr 2.53e-04 31 win/s eta 48:18
+  [02:20:05] epoch 17 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.25186 lr 2.53e-04 30 win/s eta 47:16
+  [02:22:08] epoch 17 step 143/1000 [W16_2000 emg2pose] loss 0.31067 lr 2.53e-04 29 win/s eta 44:08
+  [02:22:34] epoch 17 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.26574 lr 2.53e-04 29 win/s eta 43:54
+  [02:24:36] epoch 17 step 194/1000 [G64_2000 hyser] loss 0.23765 lr 2.52e-04 29 win/s eta 40:51
+  [02:24:49] epoch 17 step 201/1000 [G64_2000 cemhsey_5x13] loss 0.19856 lr 2.52e-04 29 win/s eta 39:56
+  [02:26:40] epoch 17 step 251/1000 [A24_2000 putemg] loss 0.13223 lr 2.52e-04 29 win/s eta 35:32
+  [02:28:45] epoch 17 step 295/1000 [W16_2000 emg2pose] loss 0.32749 lr 2.52e-04 29 win/s eta 33:26
+  [02:29:04] epoch 17 step 301/1000 [W16_2000 emg2pose] loss 0.32557 lr 2.52e-04 29 win/s eta 33:13
+  [02:31:08] epoch 17 step 346/1000 [W16_2000 emg2pose] loss 0.34040 lr 2.52e-04 30 win/s eta 30:55
+  [02:31:18] epoch 17 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.24397 lr 2.52e-04 30 win/s eta 30:33
+  [02:33:22] epoch 17 step 396/1000 [W16_2000 emg2qwerty] loss 0.27001 lr 2.51e-04 29 win/s eta 28:22
+  [02:33:38] epoch 17 step 401/1000 [W16_2000 emg2qwerty] loss 0.26163 lr 2.51e-04 29 win/s eta 28:10
+  [02:35:39] epoch 17 step 447/1000 [G64_2000 hyser] loss 0.21422 lr 2.51e-04 29 win/s eta 25:50
+  [02:35:57] epoch 17 step 451/1000 [W16_2000 emg2qwerty] loss 0.25407 lr 2.51e-04 29 win/s eta 25:47
+  [02:38:01] epoch 17 step 501/1000 [W16_2000 emg2qwerty] loss 0.27700 lr 2.51e-04 29 win/s eta 23:09
+  [02:40:01] epoch 17 step 547/1000 [G64_2000 cemhsey_5x13] loss 0.21697 lr 2.50e-04 30 win/s eta 20:54
+  [02:40:12] epoch 17 step 551/1000 [G64_2000 cemhsey_5x13] loss 0.18867 lr 2.50e-04 30 win/s eta 20:43
+  [02:42:13] epoch 17 step 594/1000 [G64_2000 cemhsey_5x13] loss 0.18371 lr 2.50e-04 30 win/s eta 18:46
+  [02:42:31] epoch 17 step 601/1000 [G64_2000 cemhsey_8x8] loss 0.26667 lr 2.50e-04 30 win/s eta 18:25
+  [02:44:32] epoch 17 step 645/1000 [A24_2000 putemg] loss 0.13145 lr 2.50e-04 30 win/s eta 16:23
+  [02:44:48] epoch 17 step 651/1000 [G64_2000 hyser] loss 0.21282 lr 2.50e-04 30 win/s eta 16:06
+  [02:46:49] epoch 17 step 699/1000 [G64_2000 cemhsey_8x8] loss 0.23610 lr 2.49e-04 30 win/s eta 13:47
+  [02:46:52] epoch 17 step 701/1000 [G64_2000 cemhsey_8x8] loss 0.25480 lr 2.49e-04 30 win/s eta 13:41
+  [02:48:52] epoch 17 step 745/1000 [W16_2000 emg2pose] loss 0.32679 lr 2.49e-04 30 win/s eta 11:40
+  [02:49:08] epoch 17 step 751/1000 [G64_2000 hyser] loss 0.21974 lr 2.49e-04 30 win/s eta 11:23
+  [02:51:10] epoch 17 step 797/1000 [W16_2000 emg2qwerty] loss 0.26593 lr 2.49e-04 30 win/s eta 9:16
+  [02:51:20] epoch 17 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.27774 lr 2.49e-04 30 win/s eta 9:05
+  [02:53:21] epoch 17 step 845/1000 [G64_2000 cemhsey_8x8] loss 0.25195 lr 2.49e-04 30 win/s eta 7:04
+  [02:53:33] epoch 17 step 851/1000 [G64_2000 cemhsey_8x8] loss 0.23713 lr 2.49e-04 30 win/s eta 6:47
+  [02:55:38] epoch 17 step 893/1000 [W16_2000 emg2qwerty] loss 0.26471 lr 2.48e-04 30 win/s eta 4:53
+  [02:55:51] epoch 17 step 901/1000 [G64_2000 cemhsey_8x8] loss 0.24742 lr 2.48e-04 30 win/s eta 4:30
+  [02:57:53] epoch 17 step 945/1000 [G64_2000 cemhsey_5x13] loss 0.20170 lr 2.48e-04 30 win/s eta 2:30
+  [02:58:04] epoch 17 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.25558 lr 2.48e-04 30 win/s eta 2:13
+  [03:00:05] epoch 17 step 991/1000 [W16_2000 emg2pose] loss 0.30688 lr 2.48e-04 30 win/s eta 0:24
+  [03:00:40] epoch 17 step 1000/1000 [W16_2000 emg2qwerty] loss 0.25992 lr 2.48e-04 30 win/s eta 0:00
+  [03:02:42] epoch 17 val 96/128 eta 0:40
+epoch 17 done (18/60): train total 0.23426  val total 0.27186 (spec 0.33426 r 0.816 nmse 0.334 | raw 0.20946 r 0.768 nmse 0.404 | macro 0.23313)  gate 0.2922  [45:54 train + 3:07 val, elapsed 20:09:37, run eta 47:02:27]
+  [03:03:50] epoch 18 step 1/1000 [G64_2000 cemhsey_5x13] loss 0.17898 lr 2.48e-04 18 win/s eta 44:47
+  [03:05:51] epoch 18 step 35/1000 [G64_2000 cemhsey_8x8] loss 0.27607 lr 2.47e-04 29 win/s eta 56:29
+  [03:06:54] epoch 18 step 51/1000 [G64_2000 hyser] loss 0.20319 lr 2.47e-04 28 win/s eta 57:51
+  [03:08:55] epoch 18 step 88/1000 [W16_2000 emg2pose] loss 0.33066 lr 2.47e-04 26 win/s eta 53:07
+  [03:09:45] epoch 18 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.23465 lr 2.47e-04 25 win/s eta 52:56
+  [03:11:47] epoch 18 step 128/1000 [W16_2000 emg2pose] loss 0.31714 lr 2.47e-04 24 win/s eta 54:24
+  [03:13:34] epoch 18 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.25882 lr 2.47e-04 23 win/s eta 54:57
+  [03:15:36] epoch 18 step 178/1000 [W16_2000 emg2qwerty] loss 0.27389 lr 2.47e-04 22 win/s eta 54:30
+  [03:17:39] epoch 18 step 201/1000 [G64_2000 hyser] loss 0.22060 lr 2.46e-04 21 win/s eta 55:04
+  [03:19:42] epoch 18 step 225/1000 [W16_2000 emg2pose] loss 0.31283 lr 2.46e-04 21 win/s eta 54:46
+  [03:21:47] epoch 18 step 245/1000 [W16_2000 emg2pose] loss 0.31145 lr 2.46e-04 20 win/s eta 55:24
+  [03:22:15] epoch 18 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.25520 lr 2.46e-04 20 win/s eta 55:05
+  [03:24:16] epoch 18 step 278/1000 [G64_2000 cemhsey_5x13] loss 0.20992 lr 2.46e-04 20 win/s eta 53:08
+  [03:26:17] epoch 18 step 295/1000 [G64_2000 hyser] loss 0.20887 lr 2.46e-04 19 win/s eta 53:43
+  [03:26:52] epoch 18 step 301/1000 [G64_2000 cemhsey_5x13] loss 0.17799 lr 2.46e-04 19 win/s eta 53:35
+  [03:29:00] epoch 18 step 324/1000 [W16_2000 emg2qwerty] loss 0.25709 lr 2.46e-04 19 win/s eta 52:35
+  [03:31:04] epoch 18 step 348/1000 [W16_2000 emg2pose] loss 0.31279 lr 2.45e-04 19 win/s eta 51:06
+  [03:31:14] epoch 18 step 351/1000 [G64_2000 cemhsey_5x13] loss 0.19763 lr 2.45e-04 19 win/s eta 50:43
+  [03:33:14] epoch 18 step 369/1000 [G64_2000 hyser] loss 0.24283 lr 2.45e-04 18 win/s eta 50:21
+  [03:35:17] epoch 18 step 395/1000 [G64_2000 cemhsey_5x13] loss 0.21456 lr 2.45e-04 18 win/s eta 48:13
+  [03:35:46] epoch 18 step 401/1000 [G64_2000 cemhsey_8x8] loss 0.26322 lr 2.45e-04 18 win/s eta 47:45
+  [03:37:50] epoch 18 step 425/1000 [G64_2000 cemhsey_5x13] loss 0.22373 lr 2.45e-04 18 win/s eta 46:03
+  [03:39:52] epoch 18 step 446/1000 [G64_2000 cemhsey_8x8] loss 0.25516 lr 2.45e-04 18 win/s eta 44:48
+  [03:40:19] epoch 18 step 451/1000 [W16_2000 emg2qwerty] loss 0.26672 lr 2.45e-04 18 win/s eta 44:27
+  [03:42:28] epoch 18 step 463/1000 [W16_2000 emg2qwerty] loss 0.26394 lr 2.45e-04 17 win/s eta 44:50
+  [03:44:32] epoch 18 step 483/1000 [G64_2000 cemhsey_5x13] loss 0.20380 lr 2.45e-04 17 win/s eta 43:36
+  [03:46:01] epoch 18 step 501/1000 [G64_2000 cemhsey_5x13] loss 0.21360 lr 2.45e-04 17 win/s eta 42:03
+  [03:48:02] epoch 18 step 524/1000 [G64_2000 cemhsey_5x13] loss 0.20638 lr 2.44e-04 17 win/s eta 40:10
+  [03:50:06] epoch 18 step 547/1000 [G64_2000 cemhsey_8x8] loss 0.29070 lr 2.44e-04 17 win/s eta 38:20
+  [03:50:28] epoch 18 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.25372 lr 2.44e-04 17 win/s eta 38:01
+  [03:52:29] epoch 18 step 568/1000 [G64_2000 cemhsey_8x8] loss 0.26404 lr 2.44e-04 17 win/s eta 37:01
+  [03:54:32] epoch 18 step 593/1000 [G64_2000 cemhsey_5x13] loss 0.22594 lr 2.44e-04 17 win/s eta 34:49
+  [03:55:28] epoch 18 step 601/1000 [G64_2000 cemhsey_5x13] loss 0.19510 lr 2.44e-04 17 win/s eta 34:18
+  [03:57:31] epoch 18 step 627/1000 [G64_2000 cemhsey_5x13] loss 0.16947 lr 2.44e-04 17 win/s eta 31:57
+  [03:59:34] epoch 18 step 647/1000 [G64_2000 cemhsey_8x8] loss 0.24938 lr 2.44e-04 16 win/s eta 30:25
+  [03:59:57] epoch 18 step 651/1000 [G64_2000 cemhsey_5x13] loss 0.18625 lr 2.44e-04 16 win/s eta 30:06
+  [04:02:07] epoch 18 step 672/1000 [W16_2000 emg2qwerty] loss 0.26076 lr 2.43e-04 16 win/s eta 28:27
+  [04:04:26] epoch 18 step 691/1000 [W16_2000 emg2qwerty] loss 0.25281 lr 2.43e-04 16 win/s eta 27:06
+  [04:05:56] epoch 18 step 701/1000 [G64_2000 cemhsey_5x13] loss 0.19021 lr 2.43e-04 16 win/s eta 26:30
+  [04:07:59] epoch 18 step 726/1000 [G64_2000 cemhsey_8x8] loss 0.26669 lr 2.43e-04 16 win/s eta 24:13
+  [04:10:15] epoch 18 step 748/1000 [G64_2000 cemhsey_8x8] loss 0.23120 lr 2.43e-04 16 win/s eta 22:23
+  [04:10:38] epoch 18 step 751/1000 [W16_2000 emg2qwerty] loss 0.27801 lr 2.43e-04 16 win/s eta 22:09
+  [04:12:40] epoch 18 step 770/1000 [G64_2000 cemhsey_8x8] loss 0.25031 lr 2.43e-04 16 win/s eta 20:34
+  [04:14:42] epoch 18 step 791/1000 [G64_2000 cemhsey_8x8] loss 0.24920 lr 2.43e-04 16 win/s eta 18:44
+  [04:15:32] epoch 18 step 801/1000 [A24_2000 putemg] loss 0.13812 lr 2.43e-04 16 win/s eta 17:49
+  [04:17:33] epoch 18 step 823/1000 [G64_2000 cemhsey_5x13] loss 0.19937 lr 2.42e-04 16 win/s eta 15:51
+  [04:19:35] epoch 18 step 845/1000 [G64_2000 cemhsey_5x13] loss 0.20581 lr 2.42e-04 16 win/s eta 13:54
+  [04:20:10] epoch 18 step 851/1000 [W16_2000 emg2qwerty] loss 0.25556 lr 2.42e-04 16 win/s eta 13:22
+  [04:22:15] epoch 18 step 871/1000 [W16_2000 emg2qwerty] loss 0.26107 lr 2.42e-04 16 win/s eta 11:37
+  [04:24:19] epoch 18 step 901/1000 [G64_2000 hyser] loss 0.22668 lr 2.42e-04 16 win/s eta 8:50
+  [04:26:21] epoch 18 step 927/1000 [G64_2000 cemhsey_8x8] loss 0.26728 lr 2.42e-04 16 win/s eta 6:30
+  [04:28:24] epoch 18 step 945/1000 [G64_2000 cemhsey_5x13] loss 0.19456 lr 2.42e-04 16 win/s eta 4:55
+  [04:28:58] epoch 18 step 951/1000 [G64_2000 cemhsey_8x8] loss 0.24425 lr 2.42e-04 16 win/s eta 4:23
+  [04:31:02] epoch 18 step 967/1000 [W16_2000 emg2qwerty] loss 0.26037 lr 2.42e-04 16 win/s eta 2:58
+  [04:33:04] epoch 18 step 997/1000 [G64_2000 cemhsey_5x13] loss 0.22310 lr 2.41e-04 16 win/s eta 0:16
+  [04:33:30] epoch 18 step 1000/1000 [G64_2000 cemhsey_5x13] loss 0.19464 lr 2.41e-04 16 win/s eta 0:00
+  [04:35:41] epoch 18 val 66/128 eta 2:02
+  [04:37:42] epoch 18 val 105/128 eta 0:55
+epoch 18 done (19/60): train total 0.24032  val total 0.26705 (spec 0.32801 r 0.819 nmse 0.328 | raw 0.20607 r 0.770 nmse 0.399 | macro 0.23034)  gate 0.2964  [1:29:42 train + 5:44 val, elapsed 21:45:05, run eta 46:56:14]
+  new best raw: 0.20607 at epoch 18  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [04:39:21] epoch 19 step 1/1000 [G64_2000 cemhsey_8x8] loss 0.27225 lr 2.41e-04 8 win/s eta 1:35:07
+  [04:41:22] epoch 19 step 28/1000 [G64_2000 cemhsey_5x13] loss 0.24252 lr 2.41e-04 15 win/s eta 1:13:09
+  [04:43:16] epoch 19 step 51/1000 [G64_2000 cemhsey_5x13] loss 0.20215 lr 2.41e-04 16 win/s eta 1:14:25
+  [04:45:28] epoch 19 step 73/1000 [W16_2000 emg2qwerty] loss 0.26845 lr 2.41e-04 15 win/s eta 1:18:43
+  [04:47:30] epoch 19 step 93/1000 [G64_2000 cemhsey_8x8] loss 0.28463 lr 2.41e-04 15 win/s eta 1:20:21
+  [04:48:20] epoch 19 step 101/1000 [W16_2000 emg2qwerty] loss 0.26498 lr 2.41e-04 15 win/s eta 1:20:46
+  [04:50:23] epoch 19 step 127/1000 [W16_2000 emg2pose] loss 0.32173 lr 2.41e-04 16 win/s eta 1:16:30
+  [04:52:20] epoch 19 step 151/1000 [G64_2000 cemhsey_8x8] loss 0.26506 lr 2.40e-04 16 win/s eta 1:13:27
+  [04:54:23] epoch 19 step 173/1000 [W16_2000 emg2qwerty] loss 0.25104 lr 2.40e-04 16 win/s eta 1:12:16
+  [04:56:25] epoch 19 step 198/1000 [W16_2000 emg2qwerty] loss 0.26750 lr 2.40e-04 16 win/s eta 1:09:28
+  [04:56:42] epoch 19 step 201/1000 [W16_2000 emg2qwerty] loss 0.26601 lr 2.40e-04 16 win/s eta 1:09:18
+  [04:58:43] epoch 19 step 233/1000 [W16_2000 emg2pose] loss 0.30959 lr 2.40e-04 16 win/s eta 1:04:03
+  [04:59:52] epoch 19 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.24947 lr 2.40e-04 17 win/s eta 1:01:30
+  [05:01:56] epoch 19 step 288/1000 [W16_2000 emg2qwerty] loss 0.27096 lr 2.40e-04 17 win/s eta 56:02
+  [05:02:42] epoch 19 step 301/1000 [G64_2000 cemhsey_8x8] loss 0.23779 lr 2.39e-04 18 win/s eta 54:25
+  [05:04:49] epoch 19 step 334/1000 [W16_2000 emg2qwerty] loss 0.26477 lr 2.39e-04 18 win/s eta 50:57
+  [05:05:53] epoch 19 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.29444 lr 2.39e-04 18 win/s eta 49:13
+  [05:07:55] epoch 19 step 382/1000 [G64_2000 cemhsey_8x8] loss 0.25357 lr 2.39e-04 18 win/s eta 46:20
+  [05:09:07] epoch 19 step 401/1000 [A24_2000 putemg] loss 0.14300 lr 2.39e-04 18 win/s eta 44:36
+  [05:11:08] epoch 19 step 435/1000 [G64_2000 cemhsey_8x8] loss 0.26005 lr 2.39e-04 19 win/s eta 41:23
+  [05:11:48] epoch 19 step 451/1000 [G64_2000 cemhsey_5x13] loss 0.17964 lr 2.38e-04 19 win/s eta 39:37
+  [05:13:55] epoch 19 step 483/1000 [W16_2000 emg2qwerty] loss 0.26594 lr 2.38e-04 19 win/s eta 37:05
+  [05:15:20] epoch 19 step 501/1000 [G64_2000 cemhsey_5x13] loss 0.19160 lr 2.38e-04 19 win/s eta 35:55
+  [05:17:27] epoch 19 step 529/1000 [W16_2000 emg2pose] loss 0.31651 lr 2.38e-04 19 win/s eta 34:00
+  [05:18:58] epoch 19 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.25275 lr 2.38e-04 19 win/s eta 32:21
+  [05:21:04] epoch 19 step 579/1000 [W16_2000 emg2qwerty] loss 0.25808 lr 2.38e-04 20 win/s eta 30:23
+  [05:22:22] epoch 19 step 601/1000 [G64_2000 cemhsey_8x8] loss 0.27622 lr 2.37e-04 20 win/s eta 28:37
+  [05:24:22] epoch 19 step 629/1000 [G64_2000 hyser] loss 0.23072 lr 2.37e-04 20 win/s eta 26:36
+  [05:25:42] epoch 19 step 651/1000 [A24_2000 putemg] loss 0.14179 lr 2.37e-04 20 win/s eta 24:53
+  [05:27:46] epoch 19 step 679/1000 [W16_2000 emg2pose] loss 0.31848 lr 2.37e-04 20 win/s eta 22:55
+  [05:29:16] epoch 19 step 701/1000 [G64_2000 cemhsey_5x13] loss 0.18035 lr 2.37e-04 20 win/s eta 21:19
+  [05:31:19] epoch 19 step 724/1000 [G64_2000 cemhsey_5x13] loss 0.16691 lr 2.37e-04 20 win/s eta 19:50
+  [05:33:21] epoch 19 step 751/1000 [G64_2000 hyser] loss 0.21892 lr 2.36e-04 20 win/s eta 17:56
+  [05:35:40] epoch 19 step 770/1000 [W16_2000 emg2qwerty] loss 0.26808 lr 2.36e-04 19 win/s eta 16:50
+  [05:37:52] epoch 19 step 789/1000 [W16_2000 emg2pose] loss 0.31924 lr 2.36e-04 19 win/s eta 15:40
+  [05:39:13] epoch 19 step 801/1000 [G64_2000 cemhsey_8x8] loss 0.27895 lr 2.36e-04 19 win/s eta 14:53
+  [05:41:16] epoch 19 step 822/1000 [G64_2000 cemhsey_5x13] loss 0.18721 lr 2.36e-04 19 win/s eta 13:25
+  [05:43:19] epoch 19 step 843/1000 [W16_2000 emg2pose] loss 0.32019 lr 2.36e-04 19 win/s eta 11:55
+  [05:44:05] epoch 19 step 851/1000 [G64_2000 hyser] loss 0.23009 lr 2.36e-04 19 win/s eta 11:20
+  [05:46:07] epoch 19 step 873/1000 [G64_2000 hyser] loss 0.23463 lr 2.36e-04 19 win/s eta 9:43
+  [05:48:07] epoch 19 step 898/1000 [G64_2000 cemhsey_8x8] loss 0.27065 lr 2.36e-04 19 win/s eta 7:49
+  [05:48:16] epoch 19 step 901/1000 [G64_2000 cemhsey_5x13] loss 0.18733 lr 2.35e-04 19 win/s eta 7:34
+  [05:50:19] epoch 19 step 923/1000 [W16_2000 emg2qwerty] loss 0.27323 lr 2.35e-04 19 win/s eta 5:55
+  [05:52:21] epoch 19 step 944/1000 [G64_2000 cemhsey_5x13] loss 0.18876 lr 2.35e-04 18 win/s eta 4:20
+  [05:52:57] epoch 19 step 951/1000 [G64_2000 hyser] loss 0.22956 lr 2.35e-04 18 win/s eta 3:47
+  [05:54:58] epoch 19 step 972/1000 [G64_2000 cemhsey_8x8] loss 0.26458 lr 2.35e-04 19 win/s eta 2:10
+  [05:57:00] epoch 19 step 996/1000 [G64_2000 cemhsey_5x13] loss 0.20212 lr 2.35e-04 19 win/s eta 0:18
+  [05:57:18] epoch 19 step 1000/1000 [G64_2000 cemhsey_8x8] loss 0.32086 lr 2.35e-04 19 win/s eta 0:00
+  [05:59:19] epoch 19 val 75/128 eta 1:25
+epoch 19 done (20/60): train total 0.24152  val total 0.26378 (spec 0.32282 r 0.822 nmse 0.323 | raw 0.20473 r 0.771 nmse 0.397 | macro 0.22902)  gate 0.3012  [1:18:02 train + 3:54 val, elapsed 23:07:01, run eta 46:14:03]
+  new best raw: 0.20473 at epoch 19  (loss_masked_raw_smoothl1 -> best_raw.pth)
+  [06:01:21] epoch 20 step 1/1000 [W16_2000 emg2qwerty] loss 0.27294 lr 2.35e-04 21 win/s eta 2:30:48
+  [06:03:24] epoch 20 step 32/1000 [G64_2000 cemhsey_8x8] loss 0.25853 lr 2.35e-04 22 win/s eta 1:06:11
+  [06:05:27] epoch 20 step 50/1000 [A24_2000 putemg] loss 0.14656 lr 2.35e-04 18 win/s eta 1:20:38
+  [06:05:32] epoch 20 step 51/1000 [G64_2000 hyser] loss 0.22500 lr 2.34e-04 18 win/s eta 1:20:26
+  [06:07:33] epoch 20 step 75/1000 [W16_2000 emg2qwerty] loss 0.25890 lr 2.34e-04 18 win/s eta 1:18:10
+  [06:08:57] epoch 20 step 101/1000 [G64_2000 cemhsey_8x8] loss 0.26060 lr 2.34e-04 19 win/s eta 1:08:53
+  [06:11:00] epoch 20 step 123/1000 [G64_2000 cemhsey_5x13] loss 0.19118 lr 2.34e-04 18 win/s eta 1:09:48
+  [06:12:59] epoch 20 step 151/1000 [G64_2000 hyser] loss 0.23745 lr 2.34e-04 19 win/s eta 1:06:14
+  [06:15:00] epoch 20 step 179/1000 [G64_2000 hyser] loss 0.23966 lr 2.34e-04 19 win/s eta 1:03:13
+  [06:16:38] epoch 20 step 201/1000 [W16_2000 emg2pose] loss 0.33247 lr 2.33e-04 19 win/s eta 1:01:20
+  [06:18:40] epoch 20 step 223/1000 [W16_2000 emg2pose] loss 0.30746 lr 2.33e-04 19 win/s eta 1:00:51
+  [06:20:33] epoch 20 step 251/1000 [G64_2000 cemhsey_8x8] loss 0.25328 lr 2.33e-04 19 win/s eta 57:43
+  [06:22:39] epoch 20 step 279/1000 [A24_2000 putemg] loss 0.13113 lr 2.33e-04 19 win/s eta 55:25
+  [06:24:34] epoch 20 step 301/1000 [A24_2000 putemg] loss 0.13040 lr 2.33e-04 19 win/s eta 54:14
+  [06:26:40] epoch 20 step 327/1000 [W16_2000 emg2pose] loss 0.31544 lr 2.33e-04 19 win/s eta 52:23
+  [06:28:40] epoch 20 step 347/1000 [W16_2000 emg2pose] loss 0.30301 lr 2.33e-04 19 win/s eta 51:41
+  [06:28:57] epoch 20 step 351/1000 [G64_2000 cemhsey_8x8] loss 0.25252 lr 2.32e-04 19 win/s eta 51:17
+  [06:30:59] epoch 20 step 371/1000 [A24_2000 putemg] loss 0.13505 lr 2.32e-04 18 win/s eta 50:28
+  [06:33:01] epoch 20 step 385/1000 [W16_2000 emg2pose] loss 0.30941 lr 2.32e-04 18 win/s eta 50:49
+  [06:34:43] epoch 20 step 401/1000 [G64_2000 cemhsey_8x8] loss 0.27282 lr 2.32e-04 18 win/s eta 50:04
+  [06:36:47] epoch 20 step 423/1000 [G64_2000 cemhsey_5x13] loss 0.18120 lr 2.32e-04 18 win/s eta 48:32
+  [06:38:48] epoch 20 step 446/1000 [G64_2000 cemhsey_8x8] loss 0.26607 lr 2.32e-04 17 win/s eta 46:41
+  [06:39:05] epoch 20 step 451/1000 [G64_2000 cemhsey_8x8] loss 0.27329 lr 2.32e-04 17 win/s eta 46:06
+  [06:41:10] epoch 20 step 472/1000 [A24_2000 putemg] loss 0.13211 lr 2.32e-04 17 win/s eta 44:42
+  [06:43:13] epoch 20 step 493/1000 [W16_2000 emg2qwerty] loss 0.25627 lr 2.32e-04 17 win/s eta 43:12
+  [06:44:12] epoch 20 step 501/1000 [G64_2000 hyser] loss 0.21287 lr 2.31e-04 17 win/s eta 42:49
+  [06:46:14] epoch 20 step 525/1000 [G64_2000 hyser] loss 0.22217 lr 2.31e-04 17 win/s eta 40:44
+  [06:48:16] epoch 20 step 548/1000 [A24_2000 putemg] loss 0.13650 lr 2.31e-04 17 win/s eta 38:48
+  [06:48:27] epoch 20 step 551/1000 [G64_2000 cemhsey_8x8] loss 0.33155 lr 2.31e-04 17 win/s eta 38:30
+  [06:50:28] epoch 20 step 576/1000 [G64_2000 hyser] loss 0.22633 lr 2.31e-04 17 win/s eta 36:15

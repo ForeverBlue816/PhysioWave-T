@@ -4,6 +4,6 @@
   "torch": "2.2.0a0+git6c8c5ad",
   "numpy": "1.26.4",
   "cuda": "12.1",
-  "git_commit": "c8a80bee1c0413917c2cb7ea1b67d471c725e85b",
+  "git_commit": "e7bfa4f7c96fac88b23484e8e8afedad10e00f70",
   "pywt": "1.8.0"
 }

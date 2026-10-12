@@ -48,15 +48,14 @@ train:
     G64_2000: 48
     W16_2000: 192
   clip_grad_norm: 1.0
-  corpus_passes_per_run: 1.0
-  epochs: 40
+  epochs: 60
   grad_accumulation_steps: 1
   lr: 0.0003
   min_lr_ratio: 0.01
   precision: bf16
-  steps_per_epoch: null
+  steps_per_epoch: 1000
   val_mask_seed: 1234
-  val_max_batches_per_dataset: 20
+  val_max_batches_per_dataset: 50
   warmup_epochs: 2
   weight_decay: 0.05
 trainer: emg_c1_moe

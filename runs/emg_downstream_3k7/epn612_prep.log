@@ -1,0 +1,12 @@
+epn612: 612 unit(s) under /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/raw/epn612
+  150 windows so far
+  20,100 windows so far
+  40,050 windows so far
+  60,000 windows so far
+  80,100 windows so far
+  120,000 windows so far
+  train   64,260 windows   612 subjects   64,260 segments
+  val     45,900 windows   306 subjects   45,900 segments
+  test    27,540 windows   306 subjects   27,540 segments
+  subject overlap {'train/val': 306, 'train/test': 306, 'val/test': 0}; segment overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}; 0 unit(s) failed
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/c1/epn612/{train,val,test}.h5 and split.json in 105s
