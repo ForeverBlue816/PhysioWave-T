@@ -69,3 +69,6 @@
 2026-10-12 06:55:41.583501: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: AVX2 AVX512F AVX512_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
 2026-10-12 06:56:18.325312: W tensorflow/compiler/tf2tensorrt/utils/py_utils.cc:38] TF-TRT Warning: Could not find TensorRT
+srun: Job step aborted: Waiting up to 182 seconds for job step to finish.
+[2026-10-13T06:30:37.995] error: *** JOB 59954589 ON lrdn0005 CANCELLED AT 2026-10-13T06:30:37 DUE to SIGNAL Terminated ***
+[2026-10-13T06:30:37.995] error: *** STEP 59954589.0 ON lrdn0005 CANCELLED AT 2026-10-13T06:30:37 DUE to SIGNAL Terminated ***

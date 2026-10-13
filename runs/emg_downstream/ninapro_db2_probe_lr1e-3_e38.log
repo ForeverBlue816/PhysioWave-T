@@ -1,0 +1,65 @@
+exported encoder (no route) from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/epoch38.pth
+  73 tensors, 10,671,873 parameters -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_probe_lr1e-3_e38/encoder.pth
+  frontend     excluded -- downstream builds its own; pass --route to include one
+  vocab sha    5b4444a9bd5f7c5d
+  decoder      excluded (pretraining head)
+============================================================
+  sEMG C1 downstream  ninapro_db2  mode probe  (50 classes)
+  data     /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/c1/ninapro_db2
+  encoder  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_probe_lr1e-3_e38/encoder.pth
+  output   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_probe_lr1e-3_e38
+============================================================
+2026-10-13 08:41:29,945 INFO hyper-parameters (cli > config train: > builtin):
+2026-10-13 08:41:29,945 INFO     epochs           30          [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     batch_size       64          [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     lr               0.001       [cli]
+2026-10-13 08:41:29,945 INFO     weight_decay     0.05        [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     warmup_epochs    5           [builtin]
+2026-10-13 08:41:29,945 INFO     warmup_ratio     0.1         [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     grad_clip        1.0         [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     label_smoothing  0.0         [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     min_lr_ratio     0.01        [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,945 INFO     precision        bf16        [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,946 INFO     select_by        acc         [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,946 INFO     patience         10          [config:finetune/emg_c1_ninapro_db2]
+2026-10-13 08:41:29,946 INFO     min_delta        0.0         [builtin]
+2026-10-13 08:41:29,946 INFO     encoder_lr_scale 1.0         [builtin]
+2026-10-13 08:41:29,946 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/c1/ninapro_db2 into memory on each of 1 rank(s): train.h5 5.31 GiB val.h5 0.58 GiB test.h5 2.93 GiB
+2026-10-13 08:41:32,540 INFO train 59352 windows, 12 channels, 2000 samples/window
+2026-10-13 08:41:32,540 INFO class counts: [3512, 1552, 1281, 1077, 1062, 1060, 887, 1363, 995, 1140, 1102, 1256, 991, 727, 692, 1000, 933, 745, 1225, 1084, 1136, 940, 1185, 1156, 1436, 1176, 1320, 1091, 1169, 1289, 1261, 1361, 1470, 1347, 1406, 1333, 1274, 1084, 1362, 935, 1103, 1229, 1127, 1227, 1031, 914, 1261, 1019, 1132, 894]
+2026-10-13 08:41:32,540 INFO EMG C1 downstream: 12 channels at 2000.0 Hz, 2000-sample windows, 250-sample patches, route <its own frontend>
+2026-10-13 08:41:32,572 INFO Building the EMG C1 downstream model with {'patch_samples': 250, 'pool': 'mean', 'head_dropout': 0.1, 'freeze_scope': 'pretrained', 'freeze_encoder': True, 'in_channels': 12, 'window_samples': 2000, 'channel_names': ['db2_e1', 'db2_e2', 'db2_e3', 'db2_e4', 'db2_e5', 'db2_e6', 'db2_e7', 'db2_e8', 'db2_e9', 'db2_e10', 'db2_e11', 'db2_e12'], 'sampling_rate': 2000.0, 'num_classes': 50, 'embed_dim': 384, 'depth': 6, 'num_heads': 6, 'mlp_ratio': 4.0, 'dropout': 0.1, 'norm': 'rmsnorm', 'ffn': 'swiglu', 'qk_norm': True, 'channel_encoding': 'id', 'channel_embed_dim': 64, 'max_level': 3, 'wave_kernel_size': 16, 'wavelet_names': ['db2', 'db4', 'db7', 'sym4', 'sym5'], 'wave_init_mode': 'pad', 'use_separate_channel': True, 'fold_synthesis': 3, 'fold_gamma': 0.1}
+2026-10-13 08:41:32,688 INFO loaded: transformer 67, channel encoder 5, gate yes, frontend 0, patcher 0 <- /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_probe_lr1e-3_e38/encoder.pth
+2026-10-13 08:41:32,811 INFO model 10.82 M parameters (147,017 trainable, 1.4%)
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
+  _torch_pytree._register_pytree_node(
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+2026-10-13 08:41:35,555 INFO schedule: 928 steps/epoch, 27840 total, 2784 warmup (10%), lr 1.00e-03 -> 1.00e-05
+2026-10-13 08:41:35,555 INFO selection: best.pth follows val acc; early stop after 10 epochs without an improvement of >0
+2026-10-13 08:41:36,830 INFO epoch 0 step 0/928 (  0%) loss 3.9501 acc 0.0312 lr 7.18e-07 eta 19:40
+2026-10-13 08:41:40,340 INFO epoch 0 step 50/928 (  5%) loss 4.0428 acc 0.0211 lr 1.87e-05 eta 1:22
+2026-10-13 08:41:43,850 INFO epoch 0 step 100/928 ( 11%) loss 4.0196 acc 0.0323 lr 3.66e-05 eta 1:07
+2026-10-13 08:41:47,366 INFO epoch 0 step 150/928 ( 16%) loss 3.9883 acc 0.0414 lr 5.46e-05 eta 1:00
+2026-10-13 08:41:50,889 INFO epoch 0 step 200/928 ( 22%) loss 3.9681 acc 0.0440 lr 7.26e-05 eta 0:55
+2026-10-13 08:41:54,399 INFO epoch 0 step 250/928 ( 27%) loss 3.9529 acc 0.0448 lr 9.05e-05 eta 0:50
+2026-10-13 08:41:57,905 INFO epoch 0 step 300/928 ( 32%) loss 3.9410 acc 0.0472 lr 1.08e-04 eta 0:46
+2026-10-13 08:42:01,411 INFO epoch 0 step 350/928 ( 38%) loss 3.9330 acc 0.0490 lr 1.26e-04 eta 0:42
+2026-10-13 08:42:04,924 INFO epoch 0 step 400/928 ( 43%) loss 3.9258 acc 0.0498 lr 1.44e-04 eta 0:38
+2026-10-13 08:42:08,439 INFO epoch 0 step 450/928 ( 49%) loss 3.9177 acc 0.0511 lr 1.62e-04 eta 0:34
+2026-10-13 08:42:11,955 INFO epoch 0 step 500/928 ( 54%) loss 3.9087 acc 0.0527 lr 1.80e-04 eta 0:31
+2026-10-13 08:42:15,455 INFO epoch 0 step 550/928 ( 59%) loss 3.9011 acc 0.0543 lr 1.98e-04 eta 0:27
+2026-10-13 08:42:18,961 INFO epoch 0 step 600/928 ( 65%) loss 3.8945 acc 0.0550 lr 2.16e-04 eta 0:23
+2026-10-13 08:42:22,463 INFO epoch 0 step 650/928 ( 70%) loss 3.8872 acc 0.0559 lr 2.34e-04 eta 0:19
+2026-10-13 08:42:25,961 INFO epoch 0 step 700/928 ( 76%) loss 3.8773 acc 0.0575 lr 2.52e-04 eta 0:16
+2026-10-13 08:42:29,460 INFO epoch 0 step 750/928 ( 81%) loss 3.8646 acc 0.0587 lr 2.70e-04 eta 0:12
+2026-10-13 08:42:32,960 INFO epoch 0 step 800/928 ( 86%) loss 3.8498 acc 0.0604 lr 2.88e-04 eta 0:09
+2026-10-13 08:42:36,482 INFO epoch 0 step 850/928 ( 92%) loss 3.8327 acc 0.0625 lr 3.06e-04 eta 0:05
+2026-10-13 08:42:40,019 INFO epoch 0 step 900/928 ( 97%) loss 3.8162 acc 0.0636 lr 3.24e-04 eta 0:01
+2026-10-13 08:42:45,966 INFO epoch   0/29  train_loss 3.8075  val_loss 3.5118  acc 0.0866  bal 0.0675  kappa 0.0633  auroc 0.7394  eta 34:01  *best
+2026-10-13 08:42:46,464 INFO epoch 1 step 0/928 (  0%) loss 3.6098 acc 0.1094 lr 3.34e-04 eta 7:38
+2026-10-13 08:42:50,032 INFO epoch 1 step 50/928 (  5%) loss 3.4737 acc 0.0959 lr 3.52e-04 eta 1:09
+2026-10-13 08:42:53,595 INFO epoch 1 step 100/928 ( 11%) loss 3.4581 acc 0.1007 lr 3.70e-04 eta 1:02
+2026-10-13 08:42:57,154 INFO epoch 1 step 150/928 ( 16%) loss 3.4478 acc 0.1031 lr 3.88e-04 eta 0:57
+2026-10-13 08:43:00,714 INFO epoch 1 step 200/928 ( 22%) loss 3.4301 acc 0.1040 lr 4.06e-04 eta 0:53
+2026-10-13 08:43:04,279 INFO epoch 1 step 250/928 ( 27%) loss 3.4235 acc 0.1036 lr 4.24e-04 eta 0:49

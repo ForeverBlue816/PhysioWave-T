@@ -1179,3 +1179,7 @@ epoch 44 done (45/60): train total nan  val total nan (spec nan r nan nmse nan |
   [06:18:18] epoch 45 step 743/1000 [G64_2000 cemhsey_5x13] loss nan lr 4.51e-05 22 win/s eta 16:48
   [06:19:40] epoch 45 step 751/1000 [G64_2000 cemhsey_5x13] loss nan lr 4.51e-05 21 win/s eta 16:33
   [06:21:42] epoch 45 step 765/1000 [W16_2000 emg2qwerty] loss nan lr 4.50e-05 21 win/s eta 15:58
+  [06:23:42] epoch 45 step 781/1000 [G64_2000 cemhsey_8x8] loss nan lr 4.49e-05 21 win/s eta 15:08
+  [06:25:47] epoch 45 step 795/1000 [G64_2000 hyser] loss nan lr 4.48e-05 20 win/s eta 14:27
+  [06:26:30] epoch 45 step 801/1000 [A24_2000 putemg] loss nan lr 4.48e-05 20 win/s eta 14:06
+  [06:28:40] epoch 45 step 822/1000 [W16_2000 emg2pose] loss nan lr 4.47e-05 20 win/s eta 12:46

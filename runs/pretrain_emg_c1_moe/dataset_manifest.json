@@ -67,20 +67,20 @@
   },
   "realised_mixture": {
     "by_step": {
-      "cemhsey_5x13": 0.245,
-      "cemhsey_8x8": 0.305,
-      "emg2pose": 0.097,
-      "emg2qwerty": 0.148,
-      "hyser": 0.163,
-      "putemg": 0.042
+      "cemhsey_5x13": 0.244,
+      "cemhsey_8x8": 0.282,
+      "emg2pose": 0.105,
+      "emg2qwerty": 0.125,
+      "hyser": 0.183,
+      "putemg": 0.061
     },
     "by_window": {
-      "cemhsey_5x13": 0.13573407202216067,
-      "cemhsey_8x8": 0.16897506925207756,
-      "emg2pose": 0.2149584487534626,
-      "emg2qwerty": 0.32797783933518004,
-      "hyser": 0.09030470914127424,
-      "putemg": 0.06204986149584488
+      "cemhsey_5x13": 0.1361860465116279,
+      "cemhsey_8x8": 0.1573953488372093,
+      "emg2pose": 0.2344186046511628,
+      "emg2qwerty": 0.27906976744186046,
+      "hyser": 0.10213953488372093,
+      "putemg": 0.09079069767441861
     }
   },
   "batch_size_by_route": {

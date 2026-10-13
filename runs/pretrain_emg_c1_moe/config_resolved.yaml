@@ -51,8 +51,10 @@ train:
   epochs: 60
   grad_accumulation_steps: 1
   lr: 0.0003
+  max_skipped_steps_per_epoch: 50
   min_lr_ratio: 0.01
   precision: bf16
+  skip_step_grad_norm_above: 100.0
   steps_per_epoch: 1000
   val_mask_seed: 1234
   val_max_batches_per_dataset: 50
