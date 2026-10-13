@@ -94,6 +94,13 @@ train:
   min_lr_ratio: 0.01
   weight_decay: 0.05
   clip_grad_norm: 1.0
+  # A step whose pre-clip gradient norm is above this, or not finite, is
+  # skipped (weights unchanged, schedule advanced). Epochs 0-38 of the 60k-step
+  # run never exceeded 0.5; at epoch 39 one hyser batch came in at 4e4, the
+  # next at inf, and the weights were NaN from there. More than
+  # max_skipped_steps_per_epoch skips in one epoch stops the run.
+  skip_step_grad_norm_above: 100.0
+  max_skipped_steps_per_epoch: 50
   precision: bf16
   grad_accumulation_steps: 1
   # Explicit, as on ECG. STEPS_PER_EPOCH= at submission overrides it; null

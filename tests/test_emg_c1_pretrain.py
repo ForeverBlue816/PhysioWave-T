@@ -106,6 +106,31 @@ def test_trainer_smoke_end_to_end(tmp_path):
     assert any(k.startswith("val/route/G64_2000/") for k in row)
 
 
+@pytest.mark.slow
+def test_nonfinite_step_is_skipped_and_nan_resume_refused(tmp_path, monkeypatch,
+                                                          capsys):
+    from physiowave.train.pretrain_main import main
+    out = str(tmp_path / "run")
+    monkeypatch.setenv("PW_DEBUG_NONFINITE_STEP", "2")      # rank 0's loss -> inf
+    assert main(["--config", "pretrain/emg_c1_moe", "--smoke-test",
+                 "--max-steps", "6", "--output-dir", out]) == 0
+    assert "SKIPPED step 2" in capsys.readouterr().out
+    ck = torch.load(os.path.join(out, "latest.pth"), map_location="cpu",
+                    weights_only=False)
+    assert all(torch.isfinite(v).all() for v in ck["model"].values())
+    row = json.loads(open(os.path.join(out, "metrics_epoch.jsonl")).readline())
+    assert row["train/skipped_steps"] == 1.0 and row["train/max_grad_norm"] > 0
+    assert ck["global_step"] == 6                           # the schedule advanced
+    # a checkpoint whose weights already went NaN is refused as a resume
+    k = next(k for k, v in ck["model"].items() if v.dtype.is_floating_point)
+    ck["model"][k] = torch.full_like(ck["model"][k], float("nan"))
+    torch.save(ck, os.path.join(out, "latest.pth"))
+    monkeypatch.delenv("PW_DEBUG_NONFINITE_STEP")
+    with pytest.raises(SystemExit, match="non-finite weights"):
+        main(["--config", "pretrain/emg_c1_moe", "--smoke-test", "--max-steps",
+              "6", "--output-dir", out, "--resume", "auto"])
+
+
 def test_downstream_sets_are_refused():
     r = subprocess.run([PY, PREP, "--dataset", "db5", "--smoke-test",
                         "--out-dir", "/nonexistent"], capture_output=True,

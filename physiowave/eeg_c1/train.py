@@ -432,6 +432,26 @@ class EEGC1Trainer:
         _vcap = tcfg.get("val_max_batches_per_dataset")
         self.val_max_batches = int(_vcap) if _vcap else None
         self.clip_grad = float(tcfg.get("clip_grad_norm", 1.0))
+        # NUMERICAL GUARD. A step whose gradient norm is not finite, or is
+        # absurdly large, is skipped: the weights are left alone and the
+        # schedule advances. Without it one bad batch ends the run. The sEMG
+        # 60k-step run went 38 epochs at a norm of 0.1-0.5; at epoch 39 one
+        # hyser batch came in at 4e4, a later one at inf, and clip_grad_norm_
+        # with an inf norm scales every gradient by NaN. Under bf16 there is
+        # no GradScaler to refuse the step, so the weights became NaN and five
+        # more epochs trained on them. The norm compared here is the pre-clip
+        # one, which DDP has already averaged across ranks, so every rank
+        # reaches the same decision without another collective. null turns
+        # the threshold off; the non-finite check stays.
+        _skip = tcfg.get("skip_step_grad_norm_above", 100.0)
+        self.skip_grad_norm_above = float(_skip) if _skip else None
+        # An epoch with this many skipped steps is not training; stop it.
+        self.max_skipped_steps_per_epoch = int(
+            tcfg.get("max_skipped_steps_per_epoch", 50))
+        # Test hook: at this global step rank 0's loss is made infinite, so a
+        # test can see the guard skip one step on EVERY rank and carry on.
+        _dbg = os.environ.get("PW_DEBUG_NONFINITE_STEP")
+        self._debug_nonfinite_step = int(_dbg) if _dbg else None
         # How many passes over one dataset per epoch is worth a line in the
         # banner. Configurable rather than hard-coded: `balanced` on a corpus
         # with a 30x size spread reaches 20x on the small ones by design.
@@ -912,6 +932,16 @@ class EEGC1Trainer:
                     f"  ({len(raw_missing)} missing key(s), e.g. "
                     f"{raw_missing[0]})") from exc
             raise
+        if not self._weights_finite():
+            others = sorted(n for n in os.listdir(os.path.dirname(path) or ".")
+                            if n.startswith("best") and n.endswith(".pth"))
+            raise SystemExit(
+                f"{path} holds non-finite weights: the run that wrote it had "
+                f"already diverged, and resuming it would train NaN on NaN. "
+                f"Resume from the last checkpoint written before the "
+                f"divergence instead, e.g. RESUME=<out_dir>/best_raw.pth "
+                f"(the best_*.pth files here: {', '.join(others) or 'none'}; "
+                f"each one's epoch is in its 'epoch' field).")
         self.optimizer.load_state_dict(ck["optimizer"])
         self.scheduler.load_state_dict(ck["scheduler"])
         if ck.get("scaler"):
@@ -935,6 +965,57 @@ class EEGC1Trainer:
             for k in BEST_KEYS if math.isfinite(self.best_scores[k]))
         print(f"resumed from {path}: epoch {self.epoch}, step "
               f"{self.global_step}" + (f"  best: {bars}" if bars else ""))
+        self._retire_metrics_from(self.epoch)
+
+    def _weights_finite(self) -> bool:
+        return all(bool(torch.isfinite(p).all())
+                   for p in self.raw_model.parameters())
+
+    def _step_is_bad(self, grad_norm: float) -> bool:
+        if not math.isfinite(grad_norm):
+            return True
+        return (self.skip_grad_norm_above is not None
+                and grad_norm > self.skip_grad_norm_above)
+
+    def _retire_metrics_from(self, epoch: int) -> None:
+        """Drop the metric rows of epochs this resume is about to redo.
+
+        Resuming from best_raw.pth after latest.pth went NaN restarts at the
+        epoch after best_raw's, and the rows the diverged continuation wrote
+        for those epochs are still in the files. Left there, the curve has
+        two rows per epoch and the figure draws both. Only rank 0 writes.
+        """
+        if not self.is_main:
+            return
+        moved = 0
+        for name in ("metrics_epoch.jsonl", "metrics_step.jsonl"):
+            path = os.path.join(self.out_dir, name)
+            if not os.path.isfile(path):
+                continue
+            with open(path) as f:
+                rows = f.readlines()
+            keep, drop = [], []
+            for line in rows:
+                try:
+                    e = json.loads(line).get("epoch")
+                except ValueError:
+                    keep.append(line)
+                    continue
+                (drop if e is not None and int(e) >= epoch else keep).append(line)
+            if not drop:
+                continue
+            dest = os.path.join(self.out_dir, "superseded", "resumed")
+            os.makedirs(dest, exist_ok=True)
+            with open(os.path.join(dest, name), "a") as f:
+                f.writelines(drop)
+            with open(path + ".tmp", "w") as f:
+                f.writelines(keep)
+            os.replace(path + ".tmp", path)
+            moved += len(drop)
+        if moved:
+            print(f"  moved {moved} metric row(s) of epoch >= {epoch} to "
+                  f"superseded/resumed/: this resume redoes those epochs",
+                  flush=True)
 
     # -- one epoch --------------------------------------------------------- #
     def train_epoch(self) -> Dict[str, float]:
@@ -943,6 +1024,8 @@ class EEGC1Trainer:
         acc = Accumulator()
         t0 = time.time()
         windows = 0
+        skipped = 0                    # steps the numerical guard withheld
+        max_norm = 0.0                 # largest finite pre-clip gradient norm
         # Captured before the loop. len(self.loader) is the schedule's REMAINING
         # steps -- it has to be, so a resumed epoch iterates only what is left --
         # and self.schedule.start_step advances every iteration, so reading
@@ -972,6 +1055,9 @@ class EEGC1Trainer:
                     out, spec_weight=self.spec_weight,
                     raw_weight=self.raw_weight, fold_kl=self.fold_kl,
                     raw_beta=self.raw_beta)
+            if (self._debug_nonfinite_step is not None and self.is_main
+                    and self.global_step == self._debug_nonfinite_step):
+                loss = loss * float("inf")
 
             self.scaler.scale(loss / self.grad_accum).backward()
             grad_norm = float("nan")
@@ -984,17 +1070,47 @@ class EEGC1Trainer:
                 i % 50 == 0
                 or first_step + i + 1 == epoch_steps
                 or time.time() - last_log_t >= self.log_seconds)
+            skipped_this = 0.0
             if not is_accum:
                 self.scaler.unscale_(self.optimizer)
                 grad_norm = float(torch.nn.utils.clip_grad_norm_(
                     self.raw_model.parameters(), self.clip_grad))
-                # HERE, not after the step: zero_grad(set_to_none=True) is two
-                # lines below and every gradient is None by then. Only on the
+                # HERE, not after the step: zero_grad(set_to_none=True) is
+                # below and every gradient is None by then. Only on the
                 # logged steps, because walking every parameter is nothing at
                 # every fiftieth step and not nothing at every one.
                 if want_log:
                     branch_norms = module_grad_norms(self.raw_model)
-                self.scaler.step(self.optimizer)
+                if self._step_is_bad(grad_norm):
+                    # The update is what is withheld; the schedule still
+                    # advances, because it is a function of time and a skipped
+                    # step took time. clip_grad_norm_ has already scaled the
+                    # gradients by NaN when the norm was inf, which is why
+                    # they must not reach the optimizer.
+                    skipped_this = 1.0
+                    skipped += 1
+                    if self.is_main and skipped <= 20:
+                        print(f"  SKIPPED step {self.global_step} "
+                              f"[{batch['route_id']} {batch['dataset_id']}]: "
+                              f"pre-clip grad norm {grad_norm:.3g}, loss "
+                              f"{float(loss.detach()):.4g}; weights unchanged",
+                              flush=True)
+                    if skipped > self.max_skipped_steps_per_epoch:
+                        raise SystemExit(
+                            f"{skipped} steps skipped in epoch {self.epoch}: "
+                            f"the gradient is not finite (or is above "
+                            f"train.skip_step_grad_norm_above="
+                            f"{self.skip_grad_norm_above}) on most batches, "
+                            f"so this is not one bad batch but a model that "
+                            f"has gone bad. Resume from the last best_*.pth "
+                            f"with a lower learning rate: "
+                            f"RESUME=<out_dir>/best_raw.pth LR=...")
+                else:
+                    self.scaler.step(self.optimizer)
+                    if math.isfinite(grad_norm):
+                        max_norm = max(max_norm, grad_norm)
+                # Also on a skipped step: for an fp16 scaler this closes the
+                # unscale_ it opened; disabled (bf16, fp32) it is a no-op.
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
                 self.scheduler.step()
@@ -1011,8 +1127,12 @@ class EEGC1Trainer:
                 batch["route_id"], 0) + x.shape[0]
 
             metrics["lr"] = self.optimizer.param_groups[0]["lr"]
-            if math.isfinite(grad_norm):
+            # Of the steps taken: a skipped step's norm is the reason it was
+            # skipped, and in the epoch mean it would bury the other 999.
+            if math.isfinite(grad_norm) and not skipped_this:
                 metrics["grad_norm"] = grad_norm
+            if not is_accum:
+                metrics["skipped_step"] = skipped_this
             gate = self.raw_model.channel_gate_value()
             if gate is not None:
                 metrics["channel_token_gate_tanh"] = gate
@@ -1069,6 +1189,8 @@ class EEGC1Trainer:
         for rid, n in route_windows.items():
             out[f"route_windows/{rid}"] = float(n)
         out["epoch_seconds"] = elapsed
+        out["skipped_steps"] = float(skipped)
+        out["max_grad_norm"] = max_norm
         if self.device.type == "cuda":
             out["peak_gpu_mem_mb"] = torch.cuda.max_memory_allocated(
                 self.device) / 1e6
@@ -1221,6 +1343,13 @@ class EEGC1Trainer:
             # and a resume from it then believes the best is worse than it is --
             # letting the next epoch overwrite a best checkpoint with a worse
             # one.
+            if not self._weights_finite():
+                # Belt to the step guard's braces: never write NaN weights
+                # over the last good latest.pth.
+                raise SystemExit(
+                    f"the weights are not finite after epoch {epoch}; "
+                    f"latest.pth is left as it was. Resume from it or from "
+                    f"the last best_*.pth with a lower learning rate.")
             improved = self._update_best_records(epoch, val_metrics)
             self.save("latest.pth")
             self._save_best(improved)

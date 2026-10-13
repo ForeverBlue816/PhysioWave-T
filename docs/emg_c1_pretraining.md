@@ -130,6 +130,41 @@ its own hash:
 CEMHSEY's rows are mapped to positions with the channel maps in the dataset's
 own `PreProcess.m`.
 
+## The numerical guard, and resuming after a divergence
+
+The first 60k-step run diverged at epoch 39: one hyser batch produced a
+gradient norm of 4e4, a later one inf, and `clip_grad_norm_` with an inf
+norm scales every gradient by NaN. Under bf16 there is no GradScaler to
+refuse such a step, so the weights became NaN and the job trained on them
+for five more epochs.
+
+The trainer (`physiowave/eeg_c1/train.py`) now
+
+- skips a step whose pre-clip gradient norm is not finite or is above
+  `train.skip_step_grad_norm_above` (100 here; `null` keeps only the
+  non-finite check). The weights are untouched and the schedule advances. DDP
+  has already averaged the gradients, so every rank skips the same steps.
+  `train/skipped_steps` and `train/max_grad_norm` are in
+  `metrics_epoch.jsonl`, and each skip is a `SKIPPED step` line in the log;
+- stops the run after `train.max_skipped_steps_per_epoch` (50) skips in one
+  epoch, which is a model gone bad rather than a bad batch;
+- refuses to resume from a checkpoint whose weights are not finite, and never
+  overwrites `latest.pth` with such weights.
+
+To continue a run that diverged before this guard existed, resume from the
+last checkpoint written before the divergence. `best_raw.pth`,
+`best_total.pth` and `best_macro_total.pth` are full trainer states, and each
+one's `epoch` field says where it stands:
+
+```bash
+sbatch --export=ALL,RESUME=$PW_CKPT_ROOT/pretrain_emg_c1_moe/best_raw.pth \
+    scripts/slurm/cineca_emg_c1_moe_pretrain.sbatch
+```
+
+The resume starts at the epoch after that checkpoint's, replays its sampler
+state, and moves the metric rows the diverged continuation wrote for those
+epochs to `superseded/resumed/`, so the curve keeps one row per epoch.
+
 ## Corpora
 
 | id | route | source | notes |
