@@ -141,8 +141,10 @@ def main(argv=None, spec=None) -> int:
                "|---|---|" + "---|" * len(cols) + "---|---|"]
         for r in rows:
             mark = "\u2713" if pick.get(r["mode"]) is r else " "
-            name = f"{mark} {MODE_NAME[r['mode']]}" + (f" [{r['tag']}]" if r["tag"]
-                                                     and not r["tag"].startswith("lr") else "")
+            # The lr is its own column; what is left of the tag (an encoder
+            # checkpoint, a seed) labels the row: "ft_lr1e-3_e38" -> [e38].
+            label = re.sub(r"^lr[^_]*_?", "", r["tag"])
+            name = f"{mark} {MODE_NAME[r['mode']]}" + (f" [{label}]" if label else "")
             vals = [r["test"].get(k) for k, _ in cols]
             lr = f"{r['lr']:.0e}" if r["lr"] else "-"
             print(f"  {name:26s}{lr:>8s}" + "".join(f"{fmt(v):>11s}" for v in vals)
