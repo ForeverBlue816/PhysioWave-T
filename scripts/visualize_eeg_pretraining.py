@@ -53,6 +53,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -1060,7 +1061,10 @@ def _filter_bank(frontend) -> Optional[np.ndarray]:
 
 def fig_wavelet_frequency_response(w: FigureWriter, model,
                                    init_model: Optional[object]):
-    fig, axes = plt.subplots(1, 4, figsize=(14, 3.1))
+    # One panel per route of THIS modality: EEG has four, ECG two, sEMG three,
+    # and a fixed four left an empty axes beside sEMG's.
+    fig, axes = plt.subplots(1, len(ROUTES), figsize=(3.5 * len(ROUTES), 3.1))
+    axes = np.atleast_1d(axes)
     data = {}
     for ax, (rid, route) in zip(axes, ROUTES.items()):
         for label, m, color, alpha in (
@@ -1223,6 +1227,21 @@ def use_emg_registry():
     SIGNAL = "EMG"
 
 
+def _slot_name(dsid: str, route, ch: int) -> str:
+    """The dataset's own electrode name for slot ``ch``.
+
+    A route's slots are named after one of its corpora (G64_2000's after
+    Hyser), and a CEMHSEY window captioned ``hyser_r3c8`` names an electrode
+    it was not recorded with. Registries whose datasets carry no names of
+    their own (EEG) fall back to the route's.
+    """
+    spec = PRETRAIN_DATASETS.get(dsid)
+    names = tuple(getattr(spec, "lead_slots", None) or ()) if spec else ()
+    if len(names) == route.n_channels:
+        return names[ch]
+    return route.slots[ch]
+
+
 def _lobe(name: str) -> str:
     u = name.upper()
     for lobe, prefixes in LOBE_RULES:
@@ -1249,11 +1268,26 @@ def fig_channel_embedding(w: FigureWriter, model, datasets):
     norms = np.linalg.norm(E, axis=1)
     axes[0].bar(range(len(names)), norms,
                 color=[palette[l] for l in lobes])
-    # Every name while they can be read; past ~80 (the sEMG grids put 232
-    # bars here) every k-th, or the labels merge into a black band.
-    step = max(1, -(-len(names) // 80))
-    axes[0].set_xticks(range(0, len(names), step))
-    axes[0].set_xticklabels(names[::step], rotation=90, fontsize=4)
+    if len(names) <= 80:
+        axes[0].set_xticks(range(len(names)))
+        axes[0].set_xticklabels(names, rotation=90, fontsize=4)
+    else:
+        # The sEMG vocabulary puts 232 bars here, and 232 names -- or every
+        # third of them -- merge into a black band. Label each run of one
+        # electrode family (band, putemg, hyser, cemhsey, cemhsey13) once,
+        # with its count, and separate the runs.
+        fam = [re.sub(r"[_\d].*$", "", n) if "_" in n else re.sub(r"\d+$", "", n)
+               for n in names]
+        runs, start = [], 0
+        for i in range(1, len(fam) + 1):
+            if i == len(fam) or fam[i] != fam[start]:
+                runs.append((start, i - 1, fam[start]))
+                start = i
+        axes[0].set_xticks([(a + b) / 2 for a, b, _ in runs])
+        axes[0].set_xticklabels([f"{f}\n({b - a + 1})" for a, b, f in runs],
+                                fontsize=7)
+        for a, _, _ in runs[1:]:
+            axes[0].axvline(a - 0.5, color="0.5", lw=0.5)
     axes[0].set_ylabel("embedding L2 norm")
     axes[0].set_title("C1 channel-name embedding norm")
 
@@ -1605,6 +1639,7 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
                     continue
                 ch = int(fallback[np.argmax(n_masked[fallback])])
 
+            ch_name = _slot_name(dsid, route, ch)
             target = ex["target_raw"][ch]
             pred = ex["pred_raw"][ch]
             m = _expand(mask[ch:ch + 1], pt)[0]
@@ -1646,11 +1681,17 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
                                color=OKABE_ITO[4], alpha=0.16, lw=0)
             ax.set_ylabel(_sig("amplitude\n(z-scored)"))
             ax.set_title(
-                f"{rid}  {dsid}  channel {route.slots[ch]}  "
+                f"{rid}  {dsid}  channel {ch_name}  "
                 f"window {ex['window_index']}   "
                 f"r {corr:.3f}   NMSE {nmse:.3f}   MAE {mae:.3f}   "
                 f"RMSE {rmse:.3f}   masked {mask[ch].sum()}/{n_patches} "
                 f"patches", loc="left")
+            # The same limits on both panels, explicitly. fill_between
+            # autoscales the error panel to the MASKED stretches it filled,
+            # so when the last patch was visible the error panel ended early
+            # and the one time axis at the bottom of the figure (that panel's)
+            # was wrong for every trace above it.
+            ax.set_xlim(float(t[0]), float(t[-1]))
             ax.grid(alpha=0.2, lw=0.5)
             ax.set_xticklabels([])
             if i_row == 0:
@@ -1661,6 +1702,7 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
             err[~m] = np.nan
             ax_err.fill_between(t, 0, np.nan_to_num(err), where=m,
                                 color=OKABE_ITO[3], lw=0)
+            ax_err.set_xlim(float(t[0]), float(t[-1]))
             ax_err.set_ylabel("|error|\nmasked")
             ax_err.grid(alpha=0.2, lw=0.5)
             if i_row == len(present) - 1:
@@ -1676,7 +1718,7 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
             data[f"{rid}_mask"] = mask[ch]
             data[f"{rid}_masked_error"] = err
             meta_rows.append({"route_id": rid, "dataset_id": dsid,
-                              "channel": route.slots[ch], "channel_slot": ch,
+                              "channel": ch_name, "channel_slot": ch,
                               "subject_id": ex["subject_id"],
                               "recording_id": ex["recording_id"],
                               "window_index": ex["window_index"],
