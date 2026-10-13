@@ -1090,10 +1090,16 @@ class EEGC1Trainer:
                     skipped_this = 1.0
                     skipped += 1
                     if self.is_main and skipped <= 20:
+                        # Which branch blew up is the whole diagnosis, and a
+                        # skipped step is rare enough to afford the walk.
+                        worst = sorted(module_grad_norms(self.raw_model).items(),
+                                       key=lambda kv: -kv[1])[:3]
                         print(f"  SKIPPED step {self.global_step} "
                               f"[{batch['route_id']} {batch['dataset_id']}]: "
                               f"pre-clip grad norm {grad_norm:.3g}, loss "
-                              f"{float(loss.detach()):.4g}; weights unchanged",
+                              f"{float(loss.detach()):.4g}; weights unchanged. "
+                              f"Largest: " + ", ".join(
+                                  f"{k.split('/', 1)[-1]} {v:.3g}" for k, v in worst),
                               flush=True)
                     if skipped > self.max_skipped_steps_per_epoch:
                         raise SystemExit(
