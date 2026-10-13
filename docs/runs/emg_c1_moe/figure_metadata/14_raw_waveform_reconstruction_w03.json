@@ -5,7 +5,7 @@
   "global_step": 39000,
   "channel_vocab_sha256": "5b4444a9bd5f7c5d48aa893e2ce0dd264fb9dce7bbea00a8401b9a641b57c356",
   "modality": "emg",
-  "plotting_script_git_commit": "386d5bb7e7db9c04779d9147bb2a6182c34becff",
+  "plotting_script_git_commit": "616e601a8ba44113d36e3f188bd639ed8a128b40",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,7 +20,7 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 38,
   "figure": "14_raw_waveform_reconstruction_w03",
-  "generated_utc": "2026-10-13T06:26:16.927000+00:00",
+  "generated_utc": "2026-10-13T06:59:12.425460+00:00",
   "figure_text": [
     "Raw-head reconstruction, one row per route. The trace is PREPROCESSED, window-normalised EMG -- not raw mV values, and not the folded wavelet representation. Shaded = masked before the frontend; the prediction is drawn only there, because visible patches are unsupervised.  Window 4 of 4 surveyed per route.",
     "Raw-head reconstruction, one row per route. The trace is PREPROCESSED, window-normalised EMG -- not raw mV values, and not the folded wavelet representation. Shaded = masked before the frontend; the prediction is drawn only there, because visible patches are unsupervised.  Window 4 of 4 surveyed per route."
@@ -62,16 +62,16 @@
     {
       "route_id": "G64_2000",
       "dataset_id": "cemhsey_5x13",
-      "channel": "hyser_r4c6",
+      "channel": "cemhsey13_r3c4",
       "channel_slot": 29,
       "subject_id": "gesture_S5",
       "recording_id": "gesture_S5/S5_Day6_Trial4#g5",
       "window_index": 18842,
       "mask_seed": 1234,
-      "raw_corr": 0.6067386906154083,
-      "raw_nmse": 0.6337879146857044,
-      "raw_mae": 0.5368477994849284,
-      "raw_rmse": 0.6659191296167506,
+      "raw_corr": 0.6069810854847794,
+      "raw_nmse": 0.6337796191256363,
+      "raw_mae": 0.5369140077232538,
+      "raw_rmse": 0.6659147715419999,
       "window_raw_nmse_rank": 4,
       "n_windows_surveyed": 4
     }

@@ -5,7 +5,7 @@
   "global_step": 39000,
   "channel_vocab_sha256": "5b4444a9bd5f7c5d48aa893e2ce0dd264fb9dce7bbea00a8401b9a641b57c356",
   "modality": "emg",
-  "plotting_script_git_commit": "386d5bb7e7db9c04779d9147bb2a6182c34becff",
+  "plotting_script_git_commit": "616e601a8ba44113d36e3f188bd639ed8a128b40",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/emg/emg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,7 +20,7 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 38,
   "figure": "10_dual_objective",
-  "generated_utc": "2026-10-13T06:25:51.363140+00:00",
+  "generated_utc": "2026-10-13T06:58:47.079962+00:00",
   "figure_text": [
     "The two reconstruction targets:  spec x0.5   raw x0.5   fold KL x0.001",
     "The two reconstruction targets:  spec x0.5   raw x0.5   fold KL x0.001"
