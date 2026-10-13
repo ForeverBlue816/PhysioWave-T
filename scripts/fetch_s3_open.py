@@ -106,7 +106,11 @@ def main(argv=None) -> int:
     p.add_argument("--jobs", type=int, default=16)
     args = p.parse_args(argv)
 
-    base = f"https://{args.bucket}.s3.amazonaws.com"
+    # A bucket with a dot in its name (openneuro.org) cannot be virtual-hosted
+    # over TLS -- the wildcard certificate does not cover it -- so it is
+    # addressed path-style.
+    base = (f"https://s3.amazonaws.com/{args.bucket}" if "." in args.bucket
+            else f"https://{args.bucket}.s3.amazonaws.com")
     inc = re.compile(args.include) if args.include else None
     t0 = time.time()
     # One level of sub-prefixes first, then those listed in parallel: a single

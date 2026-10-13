@@ -132,10 +132,12 @@ register(DatasetSpec("seizeit2", modality="eeg", task="classification", num_clas
                      montage="standard_1020_19", sampling_rate=256.0,
                      requires_agreement=True,
                      notes="SeizeIT2 multimodal (EEG + ECG/EMG wearable) seizure data."))
-register(DatasetSpec("mpdb", modality="eeg", task="classification", num_classes=3,
+register(DatasetSpec("mpdb", modality="eeg", task="classification", num_classes=5,
                      montage="standard_1020_19", sampling_rate=256.0,
-                     notes="Multimodal physiological driving/behaviour corpus; "
-                           "EEG + ECG + sEMG streams."))
+                     url="https://doi.org/10.6084/m9.figshare.22192831",
+                     notes="MPDB (Tao et al., Sci. Data 2024): 59-ch EEG, chest ECG, four "
+                           "limb sEMG channels; FIVE driving behaviours (smooth, "
+                           "acceleration, deceleration, lane change, turning)."))
 
 register(DatasetSpec("mimic_iv_ecg", modality="ecg", task="pretrain", sampling_rate=500.0,
                      num_channels=12, has_coordinates=False, derivation_type="ecg_12lead",

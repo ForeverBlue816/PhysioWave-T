@@ -1,0 +1,232 @@
+"""Multimodal fusion on the C1 encoders: the two preparations, the cores, a run."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+
+import numpy as np
+import pytest
+import torch
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for p in (ROOT, os.path.join(ROOT, "Fusion")):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+from physiowave.fusion.prep_common import read_edf, write_edf  # noqa: E402
+
+EEG8 = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "O1", "O2"]        # inside E19_256
+
+
+# --------------------------------------------------------------------------- #
+# EDF and SeizeIT2
+# --------------------------------------------------------------------------- #
+
+def test_edf_round_trip(tmp_path):
+    t = np.arange(256 * 10) / 256.0
+    sig = {"BTEleft SD": 100 * np.sin(2 * np.pi * 3 * t), "CROSStop SD": 50 * np.cos(2 * np.pi * 7 * t)}
+    write_edf(tmp_path / "a.edf", sig, 256.0)
+    out, rates, dur = read_edf(str(tmp_path / "a.edf"))
+    assert dur == 10.0 and rates["BTEleft SD"] == 256.0
+    for k in sig:
+        assert np.abs(out[k] - sig[k]).max() < 0.3           # 16-bit over +-5 mV
+
+
+def _bids(root, subjects=("sub-001", "sub-002", "sub-003"), seconds=600, fs=256):
+    rng = np.random.default_rng(0)
+    for si, sub in enumerate(subjects):
+        for run in (1, 2):
+            d = root / sub / "ses-01"
+            for m in ("eeg", "ecg", "emg"):
+                (d / m).mkdir(parents=True, exist_ok=True)
+            stem = f"{sub}_ses-01_task-szMonitoring_run-{run:02d}"
+            T = seconds * fs
+            write_edf(d / "eeg" / f"{stem}_eeg.edf",
+                      {"BTEleft SD": rng.normal(0, 20, T), "CROSStop SD": rng.normal(0, 20, T)}, fs)
+            if not (si == 2 and run == 1):                       # one run without ECG/EMG
+                write_edf(d / "ecg" / f"{stem}_ecg.edf", {"ECG SD": rng.normal(0, 200, T)}, fs)
+                write_edf(d / "emg" / f"{stem}_emg.edf", {"EMG SD": rng.normal(0, 30, T)}, fs)
+            with open(d / "eeg" / f"{stem}_events.tsv", "w") as f:
+                f.write("onset\tduration\teventType\n")
+                f.write(f"0.00\t{seconds:.2f}\tbckg\n200.00\t30.00\tsz_foc_a\n500.00\t10.00\timpd\n")
+
+
+def test_seizeit2_prep_windows_labels_presence_and_split(tmp_path):
+    from seizeit2_prep import main
+    raw = tmp_path / "raw"
+    _bids(raw)
+    out = tmp_path / "out"
+    assert main(["--raw-dir", str(raw), "--out-dir", str(out), "--jobs", "1",
+                 "--bg-per-hour", "60", "--val-subjects", "1", "--test-subjects", "1"]) == 0
+    import h5py
+    f = {s: h5py.File(out / f"{s}.h5", "r") for s in ("train", "val", "test")}
+    info = json.load(open(out / "split.json"))
+    tr = f["train"]
+    assert tr["eeg"].shape[1:] == (2, 1024) and tr["ecg"].shape[1:] == (1, 1000)
+    assert tr["emg"].shape[1:] == (1, 8000)
+    subs = {s: {x.decode() for x in f[s]["subject"][:]} for s in f}
+    assert not (subs["train"] & subs["test"]) and not (subs["val"] & subs["test"])
+    allf = [f[s] for s in f]
+    labels = np.concatenate([g["label"][:] for g in allf])
+    assert set(labels.tolist()) == {0, 1}
+    # each run: seizure of 30 s, 4 s windows every 1 s with >= 2 s overlap -> 31 windows
+    assert int((labels == 1).sum()) == 31 * 6
+    # background: 600 s at 60/h -> 10 per run, none inside the guard band
+    assert int((labels == 0).sum()) == 10 * 6
+    for g in allf:
+        for seg, y in zip(g["segment"][:], g["label"][:]):
+            start = float(seg.decode().rsplit("/", 1)[1])
+            if y == 0:
+                assert not (170 - 4 < start < 260) and not (500 - 4 < start < 510)
+    present = np.concatenate([g["present_ecg"][:] for g in allf])
+    assert present.sum() == len(present) - 41               # the one run without ECG
+    assert info["splits"]["train"]["present"]["eeg"] == info["splits"]["train"]["windows"]
+    # the stored windows are normalised the way each encoder expects
+    assert abs(float(tr["eeg"][:8].std()) - 1.0) < 0.1
+    for g in f.values():
+        g.close()
+
+
+# --------------------------------------------------------------------------- #
+# MPDB (the EEGLAB reader is swapped for synthetic epochs)
+# --------------------------------------------------------------------------- #
+
+def _fake_eeglab(tmp_path):
+    """subjects 1 and 4 aligned, 2 aligned by k-th occurrence, 3 refused."""
+    import mpdb_prep
+    rng = np.random.default_rng(1)
+    seq = np.array([133, 135, 139, 129, 125, 143, 141, 131, 127, 145] * 2)
+    plan = {1: {"eeg": seq, "ecg": seq, "emg": seq},
+            2: {"eeg": seq, "ecg": seq[::-1].copy(), "emg": seq},
+            3: {"eeg": seq, "ecg": np.append(seq[:-1], 999), "emg": seq},
+            4: {"eeg": seq, "ecg": seq, "emg": seq}}
+    names = {"eeg": EEG8, "ecg": ["ECG"], "emg": ["ch1", "ch2", "ch3", "ch4"]}
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    for s in plan:
+        for m in names:
+            (tmp_path / f"{m.upper()}_{s}.set").write_bytes(b"")
+
+    def fake(path):
+        base = os.path.basename(path)
+        m = base.split("_")[0].lower()
+        s = int(base.split("_")[1].split(".")[0])
+        codes = plan[s][m]
+        data = rng.normal(0, 1, (len(codes), len(names[m]), 2000))
+        return data, codes, names[m], 1000.0
+    return mpdb_prep, fake
+
+
+def test_mpdb_prep_aligns_epochs_and_splits_by_subject(tmp_path, monkeypatch):
+    mpdb_prep, fake = _fake_eeglab(tmp_path)
+    monkeypatch.setattr(mpdb_prep, "load_eeglab_epochs", fake)
+    out = tmp_path / "out"
+    assert mpdb_prep.main(["--raw-dir", str(tmp_path), "--out-dir", str(out),
+                           "--val-subjects", "1", "--test-subjects", "1"]) == 0
+    import h5py
+    info = json.load(open(out / "split.json"))
+    dropped = [n for n in info["subjects"] if n.get("dropped")]
+    assert [n["subject"] for n in dropped] == [3]
+    tot = sum(v["windows"] for v in info["splits"].values())
+    assert tot == 60                                          # subjects 1, 2 and 4, 20 epochs each
+    with h5py.File(out / "train.h5", "r") as f:
+        assert f["eeg"].shape[1:] == (8, 512) and f["ecg"].shape[1:] == (1, 500)
+        assert f["emg"].shape[1:] == (4, 4000)
+        assert set(np.unique(f["label"][:]).tolist()) <= {0, 1, 2, 3, 4}
+        assert json.loads(f.attrs["eeg_channel_names"]) == EEG8
+        assert json.loads(f.attrs["ecg_channel_names"]) == ["patch1"]
+
+
+# --------------------------------------------------------------------------- #
+# The cores
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("fusion", ["ralf", "concat", "weighted_logit"])
+def test_cores_handle_two_tasks_and_missing_modalities(fusion):
+    from physiowave.fusion.model import CORES
+    torch.manual_seed(0)
+    dims = {"eeg": 96, "ecg": 96, "emg": 64}
+    core = CORES[fusion](["eeg", "ecg", "emg"], dims, {"a": 5, "b": 2}, embed_dim=32,
+                         num_fusion_tokens=4, num_heads=4, depth=1, dropout=0.0).eval()
+    feats = {m: torch.randn(3, 4, d) for m, d in dims.items()}
+    out = core(feats, "a")
+    assert out["logits"].shape == (3, 5) and torch.isfinite(out["logits"]).all()
+    assert core(feats, "b")["logits"].shape == (3, 2)
+    # a modality absent from the batch, and one absent per item
+    assert core({k: v for k, v in feats.items() if k != "ecg"}, "a")["logits"].shape == (3, 5)
+    mask = {"eeg": torch.tensor([True, False, True]), "ecg": torch.tensor([False, True, True]),
+            "emg": torch.tensor([True, True, False])}
+    o = core(feats, "a", mask)
+    assert torch.isfinite(o["logits"]).all()
+    if fusion == "ralf":
+        assert float(o["reliability"]["eeg"][1]) == 0.0
+        l = core.reliability_loss(o["reliability"], {m: torch.ones(3) for m in dims},
+                                  o["present"])
+        assert torch.isfinite(l)
+    with pytest.raises(ValueError, match="no available modality"):
+        core(feats, "a", {m: torch.zeros(3, dtype=torch.bool) for m in dims})
+    assert core.consistency_loss(o["logits"], o["logits"].clone()).abs() < 1e-6
+
+
+# --------------------------------------------------------------------------- #
+# End to end on smoke encoders
+# --------------------------------------------------------------------------- #
+
+def _smoke_encoders(tmp_path):
+    from physiowave.train.pretrain_main import main as pretrain
+    paths = {}
+    for m, cfg in (("eeg", "pretrain/eeg_c1_moe"), ("ecg", "pretrain/ecg_c1_moe"),
+                   ("emg", "pretrain/emg_c1_moe")):
+        out = tmp_path / f"pre_{m}"
+        assert pretrain(["--config", cfg, "--smoke-test", "--max-steps", "2",
+                         "--output-dir", str(out)]) == 0
+        paths[m] = str(out / "latest.pth")
+    return paths
+
+
+@pytest.mark.slow
+def test_fusion_trains_evaluates_and_tabulates(tmp_path, monkeypatch):
+    import subprocess
+    from seizeit2_prep import main as sz_main
+    mpdb_prep, fake = _fake_eeglab(tmp_path / "mpdb_raw")
+    monkeypatch.setattr(mpdb_prep, "load_eeglab_epochs", fake)
+    mp = tmp_path / "c1" / "mpdb"
+    assert mpdb_prep.main(["--raw-dir", str(tmp_path / "mpdb_raw"), "--out-dir", str(mp),
+                           "--val-subjects", "1", "--test-subjects", "1"]) == 0
+    raw = tmp_path / "sz_raw"
+    _bids(raw, seconds=300)
+    sz = tmp_path / "c1" / "seizeit2"
+    assert sz_main(["--raw-dir", str(raw), "--out-dir", str(sz), "--jobs", "1",
+                    "--bg-per-hour", "120", "--val-subjects", "1", "--test-subjects", "1"]) == 0
+    enc = _smoke_encoders(tmp_path)
+
+    from physiowave.fusion.train import main as train
+    common = ["--config", "fusion/c1_ralf", "--device", "cpu", "--num-workers", "0",
+              "--progress", "none", "--epochs", "1", "--max-steps", "2"]
+    sets = [f"data.tasks.mpdb.dir={mp}", f"data.tasks.seizeit2.dir={sz}",
+            f"encoders.eeg={enc['eeg']}", f"encoders.ecg={enc['ecg']}",
+            f"encoders.emg={enc['emg']}", "train.batch_size=4", "train.precision=fp32",
+            "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4"]
+    runs = tmp_path / "runs"
+    for fusion, mode in (("ralf", "frozen"), ("concat", "frozen"), ("weighted_logit", "frozen"),
+                         ("ralf", "finetune"), ("ralf", "scratch")):
+        out = runs / f"{fusion}_{mode}"
+        assert train(common + ["--output-dir", str(out), "--set", *sets,
+                               f"model.fusion={fusion}", f"model.encoder_mode={mode}"]) == 0
+        res = json.load(open(out / "results.json"))
+        assert set(res["tasks"]) == {"mpdb", "seizeit2"}
+        for t in res["tasks"]:
+            assert "complete" in res["tasks"][t]["test"] and "eeg_only" in res["tasks"][t]["test"]
+            assert "balanced_acc" in res["tasks"][t]["test"]["complete"]
+        assert "auprc" in res["tasks"]["seizeit2"]["test"]["complete"]
+        rep = json.load(open(out / "encoders.json"))
+        if mode != "scratch":
+            assert rep["mpdb"]["eeg"]["route"] == "E19_256"          # 8 of the 19 slots
+            assert rep["seizeit2"]["eeg"]["route"] is None            # bte names: no route
+            assert rep["mpdb"]["ecg"]["route"] == "L1_250"            # the chest patch
+            assert rep["seizeit2"]["eeg"]["shares_core_with"] == "mpdb"
+            assert any(k.startswith("shared_transformer.") for k in rep["mpdb"]["emg"]["taken"])
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "collect_fusion.py"),
+                        "--root", str(runs)], capture_output=True, text=True)
+    assert r.returncode == 0 and "ralf/frozen" in r.stdout and "seizeit2" in r.stdout

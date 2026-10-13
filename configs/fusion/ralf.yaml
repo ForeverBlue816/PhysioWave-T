@@ -29,7 +29,7 @@ model:
     num_fusion_tokens: 8
     num_heads: 8
     depth: 2
-    num_classes: 4
+    num_classes: 5              # MPDB's five behaviours; the C1 path (fusion/c1_ralf) has a head per task
     modality_dropout: 0.2
     residual_weight: 0.5
     consistency_weight: 1.0
