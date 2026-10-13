@@ -1,0 +1,44 @@
+{
+  "best_epoch": 29,
+  "select_by": "acc",
+  "best_val": 0.9288453159041394,
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 64,
+    "lr": 0.0001,
+    "weight_decay": 0.05,
+    "warmup_epochs": 5,
+    "warmup_ratio": 0.1,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.0,
+    "min_lr_ratio": 0.01,
+    "precision": "bf16",
+    "select_by": "acc",
+    "patience": 10,
+    "min_delta": 0.0,
+    "encoder_lr_scale": 1.0,
+    "layer_decay": 0.75
+  },
+  "frozen_encoder": false,
+  "total_params": 10701258,
+  "trainable_params": 10701258,
+  "multilabel": false,
+  "class_names": [
+    "noGesture",
+    "waveIn",
+    "waveOut",
+    "pinch",
+    "open",
+    "fist"
+  ],
+  "pretrained": true,
+  "test": {
+    "loss": 0.7441393304798016,
+    "acc": 0.9151053013798112,
+    "balanced_acc": 0.9151053013798113,
+    "kappa": 0.8981263616557734,
+    "weighted_f1": 0.9150507912149495,
+    "macro_f1": 0.9150507912149495,
+    "auroc": 0.9874904096714938
+  }
+}
