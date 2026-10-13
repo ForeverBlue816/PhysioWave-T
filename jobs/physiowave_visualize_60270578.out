@@ -1,0 +1,72 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+visualising /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe (epoch38.pth) -> docs/runs/emg_c1_moe
+  font: Times New Roman (bold)
+  modality: emg
+  metrics: 39 epochs (through epoch 38), 1755 step rows
+figures for /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe (checkpoint epoch38.pth)
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_dataset_routes.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_dataset_routes.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_pretraining_convergence.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_pretraining_convergence.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_route_convergence.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_route_convergence.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/10_dual_objective.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/10_dual_objective.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/11_masked_vs_visible_error.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/11_masked_vs_visible_error.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/12_gradient_flow.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/12_gradient_flow.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/13_route_cost.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/13_route_cost.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w01.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w01.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w02.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w02.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w03.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_reconstruction_w03.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w01.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w01.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w02.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w02.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w03.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/14_raw_waveform_reconstruction_w03.pdf
+
+  reconstruction survey: 4 window(s) per route (rank 1 = lowest masked NMSE for that route)
+  fig  route      dataset        win    raw r  raw NMSE  spec r  spec NMSE  rank raw/spec
+    0  W16_2000   emg2pose         0    0.404     0.838   0.586      0.656            2/3
+    0  A24_2000   putemg           0    0.937     0.122   0.952      0.094            2/2
+    0  G64_2000   cemhsey_5x13       0    0.629     0.604   0.857      0.265            2/2
+    1  W16_2000   emg2pose     11043    0.814     0.339   0.857      0.266            1/1
+    1  A24_2000   putemg        1185    0.939     0.120   0.953      0.093            1/1
+    1  G64_2000   cemhsey_5x13    6281    0.950     0.098   0.890      0.208            1/1
+    2  W16_2000   emg2pose     22085    0.080     0.994   0.292      0.915            4/4
+    2  A24_2000   putemg        2369    0.838     0.300   0.886      0.216            4/4
+    2  G64_2000   cemhsey_5x13   12561    0.580     0.664   0.831      0.310            3/3
+    3  W16_2000   emg2pose     33128    0.319     0.907   0.699      0.517            3/2
+    3  A24_2000   putemg        3554    0.863     0.256   0.894      0.201            3/3
+    3  G64_2000   cemhsey_5x13   18842    0.468     0.784   0.760      0.423            4/4
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figure_metadata/reconstruction_survey.json
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_examples_by_dataset.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_examples_by_dataset.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_statistics.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_mask_statistics.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_scale_fold_weights.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_scale_fold_weights.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_wavelet_frequency_response.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_wavelet_frequency_response.pdf
+  wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_channel_embedding.svg, /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures/fig_channel_embedding.pdf
+
+20 figure(s) in /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/figures
+collected into docs/runs/emg_c1_moe:
+6.1M	docs/runs/emg_c1_moe
+channel_vocab.json
+config_resolved.yaml
+dataset_manifest.json
+environment.json
+error_histogram.json
+figure_metadata
+figures
+history.json
+metrics_epoch.jsonl
+progress_by_dataset.txt
+progress_by_route.txt
+README.md
+train_command.txt
+
+Review, then push from a login node:
+  git add docs/runs/emg_c1_moe && git commit -m 'emg_c1_moe: pretraining figures and curves' && git push

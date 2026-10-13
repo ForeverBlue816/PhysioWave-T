@@ -22,3 +22,26 @@ Loading cineca-ai/4.3.0
 [gpu 1] grabmyo ft: start 08:18 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_e38.log
 [gpu 2] ninapro_db2 ft: done 08:41
 [gpu 2] ninapro_db2 probe@1e-3: start 08:41 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_probe_lr1e-3_e38.log
+[gpu 2] ninapro_db2 probe@1e-3: done 09:00
+[gpu 2] ninapro_db2 scratch: start 09:00 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db2_scratch_e38.log
+[gpu 3] epn612_xuser ft: done 09:14
+[gpu 3] epn612_xuser probe@1e-3: start 09:14 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_probe_lr1e-3_e38.log
+[gpu 0] epn612 ft: done 09:16
+[gpu 0] epn612 probe@1e-3: start 09:16 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_probe_lr1e-3_e38.log
+[gpu 1] grabmyo ft: done 09:36
+[gpu 1] grabmyo probe@1e-3: start 09:36 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_probe_lr1e-3_e38.log
+[gpu 2] ninapro_db2 scratch: done 09:38
+[gpu 0] epn612 probe@1e-3: done 10:08
+[gpu 0] epn612 scratch: start 10:08 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_scratch_e38.log
+[gpu 3] epn612_xuser probe@1e-3: done 10:10
+[gpu 3] epn612_xuser scratch: start 10:10 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_scratch_e38.log
+[gpu 1] grabmyo probe@1e-3: done 10:50
+[gpu 1] grabmyo scratch: start 10:50 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_scratch_e38.log
+[gpu 0] epn612 scratch: done 11:05
+[gpu 0] grabmyo_xsubj ft: start 11:05 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_e38.log
+[gpu 3] epn612_xuser scratch: done 11:10
+[gpu 1] grabmyo scratch: done 12:08
+[gpu 0] grabmyo_xsubj ft: done 12:33
+[gpu 0] grabmyo_xsubj probe@1e-3: start 12:33 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_probe_lr1e-3_e38.log
+[gpu 0] grabmyo_xsubj probe@1e-3: done 13:51
+[gpu 0] grabmyo_xsubj scratch: start 13:51 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_scratch_e38.log
