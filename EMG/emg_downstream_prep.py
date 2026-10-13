@@ -37,7 +37,14 @@ TASKS
                  segments, so no window overlaps one in training -- validate.
                  Rest is subsampled per subject and exercise to the mean
                  window count of one movement, so it does not outnumber them
-                 50 to 1. --db2-exercises picks a subset (B, C, D).
+                 50 to 1. --exercises picks a subset (B, C, D).
+  ninapro_db5    NinaPro DB5 (Zenodo 1000116): 10 subjects, two Myo armbands
+                 (16 ch) at 200 Hz, exercises A (12 finger movements, labels
+                 1-12), B (17 hand/wrist, 13-29) and C (23 grasps, 30-52) +
+                 rest: 53 classes, refined labels, the same repetition split
+                 and rest subsampling as DB2. The Myo is EPN-612's sensor, so
+                 the two tasks differ in the number of classes (6 vs 53) and
+                 not in the signal. --exercises picks a subset (A, B, C).
 
 PREPROCESSING IS THE PRETRAINING CORPUS'S (EMG/preprocess_emg_corpus.py):
 to mV -> DC removal -> mains notch with harmonics below Nyquist -> 20 Hz
@@ -46,7 +53,8 @@ across the channels (window_shared) -> clip. No window is dropped for
 quality. EPN stays at its 200 Hz (resampling it to 2000 Hz would add samples,
 not information): one 5 s window per sample, 40 patches of 0.125 s.
 GRABMyo and DB2 are at 2000 Hz in 1 s windows with a 0.5 s stride, the
-pretraining window; a window must lie inside one label.
+pretraining window; a window must lie inside one label. DB5 stays at its
+200 Hz like EPN, in 1 s windows (8 patches of 0.125 s) with a 0.25 s stride.
 
 None of these montages is a pretraining route, so the downstream model builds
 its own wavelet frontend and patch embedding and takes the pretrained channel
@@ -95,7 +103,19 @@ GRAB_CLASSES = ["lateral_prehension", "thumb_adduction", "thumb_little_oppositio
                 "forearm_pronation", "hand_open", "hand_close", "rest"]
 GRAB_CHANNELS = [f"F{k}" for k in range(1, 17)] + [f"W{k}" for k in range(1, 13)]
 DB2_CHANNELS = [f"db2_e{k}" for k in range(1, 13)]
+DB5_CHANNELS = [f"db5_e{k}" for k in range(1, 17)]
+#: exercise letter -> (E index in the file name, its global label range)
 DB2_EXERCISES = {"B": (1, range(1, 18)), "C": (2, range(18, 41)), "D": (3, range(41, 50))}
+DB5_EXERCISES = {"A": (1, range(1, 13)), "B": (2, range(13, 30)), "C": (3, range(30, 53))}
+#: The NinaPro databases read by ninapro_unit. `scale` takes the file's emg
+#: to mV: DB2 is in V; DB5 is the Myo's own units, which no scale makes mV,
+#: and the per-window normalisation does not care.
+NINAPRO = {
+    "ninapro_db2": {"zip": r"^DB2_s\d+\.zip$", "fs": 2000.0, "scale": 1000.0,
+                    "exercises": DB2_EXERCISES, "channels": DB2_CHANNELS, "prefix": "db2"},
+    "ninapro_db5": {"zip": r"^s\d+\.zip$", "fs": 200.0, "scale": 1.0,
+                    "exercises": DB5_EXERCISES, "channels": DB5_CHANNELS, "prefix": "db5"},
+}
 
 TASKS = {
     "epn612":        {"fs": 200,  "window": 5.0, "stride": None, "mains": 60.0},
@@ -103,20 +123,22 @@ TASKS = {
     "grabmyo":       {"fs": 2000, "window": 1.0, "stride": 0.5,  "mains": 60.0},
     "grabmyo_xsubj": {"fs": 2000, "window": 1.0, "stride": 0.5,  "mains": 60.0},
     "ninapro_db2":   {"fs": 2000, "window": 1.0, "stride": 0.5,  "mains": 50.0},
+    "ninapro_db5":   {"fs": 200,  "window": 1.0, "stride": 0.25, "mains": 50.0},
 }
 
 
-def classes_for(task: str, exercises="BCD") -> List[str]:
+def classes_for(task: str) -> List[str]:
     if task.startswith("epn"):
         return EPN_CLASSES
     if task.startswith("grabmyo"):
         return GRAB_CLASSES
-    return ["rest"] + [f"m{k}" for k in range(1, 50)]
+    n = max(r.stop for _, r in NINAPRO[task]["exercises"].values()) - 1
+    return ["rest"] + [f"m{k}" for k in range(1, n + 1)]
 
 
 def channels_for(task: str) -> List[str]:
     return EPN_CHANNELS if task.startswith("epn") else \
-        GRAB_CHANNELS if task.startswith("grabmyo") else DB2_CHANNELS
+        GRAB_CHANNELS if task.startswith("grabmyo") else NINAPRO[task]["channels"]
 
 
 def config_for(task: str) -> ECGPreprocessConfig:
@@ -240,10 +262,13 @@ def grab_unit(args):
 # NinaPro DB2
 # --------------------------------------------------------------------------- #
 
-def db2_units(raw: str, exercises: str) -> List[Tuple[str, str]]:
-    want = {DB2_EXERCISES[e][0] for e in exercises}
+def ninapro_units(raw: str, task: str, exercises: str) -> List[Tuple[str, str]]:
+    db = NINAPRO[task]
+    want = {db["exercises"][e][0] for e in exercises}
     out = []
-    for z in sorted(glob.glob(os.path.join(raw, "**", "DB2_s*.zip"), recursive=True)):
+    for z in sorted(glob.glob(os.path.join(raw, "**", "*.zip"), recursive=True)):
+        if not re.match(db["zip"], os.path.basename(z)):
+            continue
         with zipfile.ZipFile(z) as zf:
             for n in zf.namelist():
                 m = re.search(r"S(\d+)_E(\d)_A1\.mat$", n)
@@ -256,15 +281,34 @@ def db2_units(raw: str, exercises: str) -> List[Tuple[str, str]]:
     return sorted(set(out))
 
 
-def db2_unit(args):
+def _global_labels(lab: np.ndarray, e: int, exercises) -> np.ndarray:
+    """Labels numbered across the database, whichever way the file counts.
+
+    NinaPro numbers a movement across the database (DB2's E2 file holds 18-40)
+    but some releases and mirrors count within the exercise (1-23). A file
+    that counts within the exercise starts at 1, below the exercise's global
+    minimum, so the smallest moving label says which it is. Labels above the
+    exercise's range are left alone and dropped later by the class list.
+    """
+    rng = next(r for k, r in exercises.values() if k == e)
+    offset = rng.start - 1
+    moving = lab[lab > 0]
+    if offset and moving.size and moving.min() < rng.start:
+        lab = np.where(lab > 0, lab + offset, lab)
+    return lab
+
+
+def ninapro_unit(args):
     container, member, task = args
     import scipy.io
+    db = NINAPRO[task]
     src = io.BytesIO(zipfile.ZipFile(container).read(member)) if container else member
     m = scipy.io.loadmat(src, variable_names=["emg", "restimulus", "rerepetition"])
     s, e = map(int, re.search(r"S(\d+)_E(\d)_A1\.mat$", member).groups())
     n = min(len(m["emg"]), len(m["restimulus"]), len(m["rerepetition"]))
-    x = np.asarray(m["emg"][:n], np.float64).T * 1000.0          # V -> mV
-    lab = np.asarray(m["restimulus"][:n]).ravel().astype(np.int64)
+    x = np.asarray(m["emg"][:n], np.float64).T * db["scale"]
+    lab = _global_labels(np.asarray(m["restimulus"][:n]).ravel().astype(np.int64),
+                         e, db["exercises"])
     rep = np.asarray(m["rerepetition"][:n]).ravel().astype(np.int64)
     # Rest carries repetition 0; it belongs to the repetition it follows (the
     # first rest to repetition 1), so a repetition split splits rest too.
@@ -275,15 +319,18 @@ def db2_unit(args):
             last = filled[i]
         else:
             filled[i] = last
-    w, starts = pipeline(x, 2000.0, task, f"db2_s{s}_e{e}")
-    W = int(TASKS[task]["window"] * 2000)
-    subject = f"db2_s{s:02d}"
+    w, starts = pipeline(x, db["fs"], task, f"{db['prefix']}_s{s}_e{e}")
+    W = int(TASKS[task]["window"] * db["fs"])
+    subject = f"{db['prefix']}_s{s:02d}"
+    n_classes = len(classes_for(task))
     rows, rest = [], []
     for wi, st in zip(w, starts):
         seg_lab = lab[st:st + W]
         if seg_lab.size < W or seg_lab.min() != seg_lab.max():
             continue                                 # straddles a label change
         k = int(seg_lab[0])
+        if k >= n_classes:
+            continue
         r = int(filled[st])
         split = "test" if r in (2, 5) else "train"
         item = (split, subject, f"{subject}/e{e}/m{k}/r{r}", k, wi)
@@ -360,8 +407,9 @@ def main(argv=None) -> int:
     p.add_argument("--raw-dir", required=True)
     p.add_argument("--out-dir", required=True)
     p.add_argument("--jobs", type=int, default=8)
-    p.add_argument("--db2-exercises", default="BCD",
-                   help="NinaPro DB2 exercises to use, a subset of BCD")
+    p.add_argument("--exercises", "--db2-exercises", default=None,
+                   help="NinaPro exercises to use: a subset of BCD (DB2) or ABC "
+                        "(DB5); default all")
     p.add_argument("--max-units", type=int, default=None, help="a quick look")
     args = p.parse_args(argv)
     task, t0 = args.task, time.time()
@@ -373,8 +421,13 @@ def main(argv=None) -> int:
         units = [(s, task) for s in grab_units(args.raw_dir)]
         fn = grab_unit
     else:
-        units = [(c, m, task) for c, m in db2_units(args.raw_dir, args.db2_exercises)]
-        fn = db2_unit
+        exercises = args.exercises or "".join(NINAPRO[task]["exercises"])
+        bad = set(exercises) - set(NINAPRO[task]["exercises"])
+        if bad:
+            raise SystemExit(f"{task} has no exercise {sorted(bad)}; choose from "
+                             f"{''.join(NINAPRO[task]['exercises'])}")
+        units = [(c, m, task) for c, m in ninapro_units(args.raw_dir, task, exercises)]
+        fn = ninapro_unit
     if args.max_units:
         units = units[:args.max_units]
     if not units:
@@ -401,7 +454,7 @@ def main(argv=None) -> int:
     elif task == "grabmyo_xsubj":
         side = _subject_sides({it[1] for it in items}, 0.15, 0.15)
         items = [(side[it[1]],) + it[1:] for it in items]
-    elif task == "ninapro_db2":
+    elif task.startswith("ninapro"):
         segs = sorted({it[2] for it in items if it[0] == "train"})
         pick = np.random.default_rng(SEED).permutation(len(segs))[:int(round(0.1 * len(segs)))]
         val_segs = {segs[i] for i in pick}
@@ -435,7 +488,8 @@ def main(argv=None) -> int:
     summary = {"task": task, "classes": classes, "channels": channels_for(task),
                "sampling_rate": TASKS[task]["fs"], "window_seconds": TASKS[task]["window"],
                "stride_seconds": TASKS[task]["stride"], "prep_version": PREP_VERSION,
-               "db2_exercises": args.db2_exercises if task == "ninapro_db2" else None,
+               "exercises": (args.exercises or "".join(NINAPRO[task]["exercises"])
+                             if task.startswith("ninapro") else None),
                "splits": {s: {"windows": v["windows"], "subjects": len(v["subjects"]),
                               "segments": len(v["segments"]),
                               "per_class": v["per_class"].tolist()} for s, v in stats.items()},

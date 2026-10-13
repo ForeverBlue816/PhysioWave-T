@@ -4,7 +4,7 @@
 #
 #   sbatch scripts/slurm/cineca_emg_downstream.sbatch
 #
-# GPU i takes tasks i, i+4, ... of TASKS (epn612, grabmyo, ninapro_db2,
+# GPU i takes tasks i, i+4, ... of TASKS (epn612, grabmyo, ninapro_db5,
 # epn612_xuser, grabmyo_xsubj): it builds a task's split if it is missing
 # (EMG/emg_downstream_prep.py, CPU, no network -- the raw data comes from
 # scripts/download_emg_downstream.sh on a login node), then runs MODES on it
@@ -18,8 +18,9 @@
 # what the walltime cut off. FORCE=1 reruns everything.
 #
 #   PRETRAINED  $PW_CKPT_ROOT/pretrain_emg_c1_moe/best.pth
-#   TASKS       "epn612 grabmyo ninapro_db2 epn612_xuser grabmyo_xsubj"
-#   MODES       "ft ft@3e-5 probe@1e-3 scratch"  (MODE or MODE@LR; per mode the
+#   TASKS       "epn612 grabmyo ninapro_db5 epn612_xuser grabmyo_xsubj"
+#               (ninapro_db2 still runs if named)
+#   MODES       "ft ft@3e-4 probe@1e-3 scratch"  (MODE or MODE@LR; per mode the
 #               table reports the run with the best VALIDATION score)
 #   TAG, LR, EPOCHS, SEED, SET   passed to EMG/finetune_emg_c1.sh
 # ============================================================================
@@ -41,8 +42,8 @@ PROJECT_DIR="${PROJECT_DIR:-${HOME}/PhysioWave-T}"
 source "${PROJECT_DIR}/scripts/cineca_env.sh"
 cd "${PROJECT_DIR}"
 
-TASKS="${TASKS:-epn612 grabmyo ninapro_db2 epn612_xuser grabmyo_xsubj}"
-MODES="${MODES:-ft ft@3e-5 probe@1e-3 scratch}"
+TASKS="${TASKS:-epn612 grabmyo ninapro_db5 epn612_xuser grabmyo_xsubj}"
+MODES="${MODES:-ft ft@3e-4 probe@1e-3 scratch}"
 read -r -a TASK_LIST <<< "${TASKS}"
 read -r -a MODE_LIST <<< "${MODES}"
 N_GPUS="${N_GPUS:-4}"
@@ -68,6 +69,7 @@ set_for() {      # the download a task reads
         epn612|epn612_xuser)   echo epn612 ;;
         grabmyo|grabmyo_xsubj) echo grabmyo ;;
         ninapro_db2)           echo ninapro_db2 ;;
+        ninapro_db5)           echo ninapro_db5 ;;
         *)                     return 1 ;;
     esac
 }

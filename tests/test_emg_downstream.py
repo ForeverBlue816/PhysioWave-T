@@ -143,6 +143,57 @@ def test_ninapro_db2_repetition_split_and_rest(tmp_path):
     assert f["train"]["data"].shape[1:] == (12, 2000)
 
 
+def _db5_zip(path, subject, rng, per_exercise_labels):
+    """Two Myo armbands at 200 Hz. E2 (exercise B) with labels counted within
+    the exercise (1, 2) or across the database (13, 14), as the mirrors do."""
+    import scipy.io
+    fs, seg, rest = 200, 5 * 200, 3 * 200
+    labs = (1, 2) if per_exercise_labels else (13, 14)
+    emg, lab, rep = [], [], []
+    for m in labs:
+        for r in range(1, 7):
+            emg.append(_semg(16, rest, rng).T * 2); lab += [0] * rest; rep += [0] * rest
+            emg.append(_semg(16, seg, rng).T * 20); lab += [m] * seg; rep += [r] * seg
+    buf = io.BytesIO()
+    scipy.io.savemat(buf, {"emg": np.concatenate(emg).astype(np.float32),
+                           "restimulus": np.array(lab)[:, None].astype(np.int8),
+                           "rerepetition": np.array(rep)[:, None].astype(np.int8)})
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(f"S{subject}_E2_A1.mat", buf.getvalue())
+
+
+def test_ninapro_db5_labels_are_global_whichever_way_the_file_counts(tmp_path):
+    rng = np.random.default_rng(5)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _db5_zip(raw / "s1.zip", 1, rng, per_exercise_labels=True)
+    _db5_zip(raw / "s2.zip", 2, rng, per_exercise_labels=False)
+    f, info = _run("ninapro_db5", raw, tmp_path / "out", "--exercises", "B")
+    assert info["classes"][:2] == ["rest", "m1"] and len(info["classes"]) == 53
+    labels = np.concatenate([f[s]["label"][:] for s in f])
+    assert set(labels.tolist()) == {0, 13, 14}             # both files on one numbering
+    assert f["train"]["data"].shape[1:] == (16, 200)      # 1 s at 200 Hz
+    assert f["train"].attrs["sampling_rate"] == 200.0
+    assert not any(info["segment_overlap"].values())
+    seg = [x.decode() if isinstance(x, bytes) else x for x in f["test"]["segment"][:]]
+    assert {int(x.rsplit("/r", 1)[1]) for x in seg} == {2, 5}
+    assert info["exercises"] == "B"
+
+
+def test_layer_decay_scales_the_pretrained_stack_top_down():
+    from physiowave.train.finetune_main import c1_lr_scale
+    s = c1_lr_scale(depth=6, encoder_lr_scale=1.0, layer_decay=0.5)
+    assert s("head.weight") == 1.0 and s("wavelet_frontend.x") == 1.0
+    assert s("shared_transformer.norm.weight") == 1.0
+    assert s("shared_transformer.blocks.5.attn.q.weight") == 0.5
+    assert s("shared_transformer.blocks.0.mlp.w") == 0.5 ** 6
+    assert s("channel_encoder.id_embed.weight") == 0.5 ** 7
+    both = c1_lr_scale(depth=6, encoder_lr_scale=0.1, layer_decay=0.5)
+    assert abs(both("shared_transformer.blocks.5.attn.q.weight") - 0.05) < 1e-12
+    off = c1_lr_scale(depth=6)
+    assert off("shared_transformer.blocks.0.mlp.w") == 1.0
+
+
 def _emg_encoder(tmp_path):
     from physiowave.train.pretrain_main import main as pretrain
     out = tmp_path / "pre"
@@ -185,6 +236,43 @@ def test_emg_encoder_transfers_and_probe_trains_the_fresh_frontend(tmp_path):
     torch.save(ck, tmp_path / "ecg_like.pth")
     with pytest.raises(SystemExit):
         EMGC1Downstream(**kw).load_pretrained(str(tmp_path / "ecg_like.pth"))
+
+
+@pytest.mark.slow
+def test_emg_finetune_end_to_end_with_layer_decay(tmp_path, caplog):
+    rng = np.random.default_rng(6)
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    _db5_zip(raw / "s1.zip", 1, rng, per_exercise_labels=False)
+    data = tmp_path / "c1" / "ninapro_db5"
+    from emg_downstream_prep import main as prep
+    assert prep(["--task", "ninapro_db5", "--raw-dir", str(raw), "--out-dir", str(data),
+                 "--jobs", "1", "--exercises", "B"]) == 0
+    enc, m = _emg_encoder(tmp_path)
+    from physiowave.train.finetune_main import main as finetune
+    dims = [f"model.embed_dim={m['embed_dim']}", f"model.depth={m['depth']}",
+            f"model.num_heads={m['num_heads']}",
+            f"model.channel_embed_dim={m['channel_embed_dim']}"]
+    common = ["--config", "finetune/emg_c1_ninapro_db5", "--data-dir", str(data),
+              "--num-classes", "53", "--epochs", "1", "--batch-size", "8",
+              "--precision", "fp32", "--device", "cpu", "--num-workers", "0",
+              "--progress", "none"]
+    run = tmp_path / "runs" / "ninapro_db5_ft"
+    with caplog.at_level("INFO"):
+        assert finetune(common + ["--output-dir", str(run), "--set",
+                                  f"model.emg_c1.pretrained={enc}", *dims]) == 0
+    res = json.load(open(run / "results.json"))
+    assert res["pretrained"] and res["hparams"]["layer_decay"] == 0.75
+    assert "layer_decay 0.75" in caplog.text
+    # the control learns at one rate: the config's decay is not applied
+    caplog.clear()
+    run2 = tmp_path / "runs" / "ninapro_db5_scratch"
+    with caplog.at_level("INFO"):
+        assert finetune(common + ["--output-dir", str(run2), "--set", *dims]) == 0
+    assert "layer_decay ignored" in caplog.text
+    r = subprocess.run([PY, os.path.join(ROOT, "scripts", "collect_emg_downstream.py"),
+                        "--root", str(tmp_path / "runs")], capture_output=True, text=True)
+    assert r.returncode == 0 and "NinaPro DB5" in r.stdout
 
 
 def test_emg_collector_marks_the_validation_choice(tmp_path):

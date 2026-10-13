@@ -41,6 +41,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -111,14 +112,48 @@ HPARAM_FALLBACKS = {
     # fine-tuning; below it, the fresh frontend, patcher and head learn at lr
     # while what pretraining learned moves more slowly.
     "encoder_lr_scale": 1.0,
+    # Layer-wise learning-rate decay (BEiT, MAE) over the pretrained Transformer:
+    # the top block at lr x decay, each block below at decay more, the channel
+    # encoder under block 0 at decay^(depth+1). 1.0 is off. Multiplies
+    # encoder_lr_scale. On sEMG, plain fine-tuning at one rate reproduced the
+    # from-scratch curve -- the pretrained features were overwritten -- while
+    # a frozen probe beat it on cross-subject GRABMyo; this is the remedy.
+    "layer_decay": 1.0,
 }
 HPARAM_TYPES = {
     "epochs": int, "batch_size": int, "warmup_epochs": int, "lr": float,
     "weight_decay": float, "warmup_ratio": float, "grad_clip": float,
     "label_smoothing": float, "min_lr_ratio": float, "precision": str,
     "select_by": str, "patience": int, "min_delta": float,
-    "encoder_lr_scale": float,
+    "encoder_lr_scale": float, "layer_decay": float,
 }
+
+
+def c1_lr_scale(depth: int, encoder_lr_scale: float = 1.0, layer_decay: float = 1.0):
+    """``name -> multiple of lr`` for a C1 downstream model's parameters.
+
+    What pretraining supplied (TRANSFERABLE) learns at ``encoder_lr_scale``
+    times lr; the fresh frontend, patcher and head at lr. ``layer_decay``
+    below 1 is layer-wise decay: the top Transformer block at ``decay``, each
+    block below at ``decay`` more, the final norm above the top block at 1,
+    and the channel encoder and gate, which feed block 0, at
+    ``decay ** (depth + 1)``. The two factors multiply.
+    """
+    from physiowave.eeg_c1.downstream import TRANSFERABLE
+    s, d = float(encoder_lr_scale), float(layer_decay)
+
+    def scale(name: str) -> float:
+        if not name.startswith(TRANSFERABLE):
+            return 1.0
+        f = s
+        if d != 1.0:
+            m = re.match(r"shared_transformer\.blocks\.(\d+)\.", name)
+            if m:
+                f *= d ** (depth - int(m.group(1)))
+            elif not name.startswith("shared_transformer."):
+                f *= d ** (depth + 1)
+        return f
+    return scale
 
 
 def resolve_hparams(args, cfg: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
@@ -558,6 +593,9 @@ def parse_args(argv=None):
     p.add_argument("--min-lr-ratio", type=float, default=None,
                    help="floor of the cosine decay, as a fraction of --lr")
     p.add_argument("--grad-clip", type=float, default=None)
+    p.add_argument("--layer-decay", type=float, default=None,
+                   help="layer-wise lr decay over the pretrained Transformer "
+                        "(train.layer_decay; 1.0 is off)")
     p.add_argument("--encoder-lr-scale", type=float, default=None,
                    help="learning rate of the pretrained encoder parameters as a "
                         "fraction of --lr (EEG C1 only); default 1.0")
@@ -782,21 +820,38 @@ def main(argv=None) -> int:
     else:
         criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
     lr_scale = None
-    if args.encoder_lr_scale != 1.0:
+    scaled = args.encoder_lr_scale != 1.0 or args.layer_decay != 1.0
+    has_pretrained = bool(args.pretrained
+                          or (model_cfg.get(c1_name or "eeg_c1") or {}).get("pretrained"))
+    if scaled and not has_pretrained:
+        # Both scales protect what pretraining supplied. From scratch there is
+        # nothing to protect, and the control should learn at one rate.
+        if info.is_main:
+            logger.info("encoder_lr_scale/layer_decay ignored: no pretrained "
+                        "encoder loaded, every parameter learns at lr")
+        scaled = False
+    if scaled:
         if not c1_name:
-            raise SystemExit("--encoder-lr-scale is defined for model.name=eeg_c1/ecg_c1 "
-                             "only: it scales what that model loads from "
-                             "pretraining")
-        from physiowave.eeg_c1.downstream import TRANSFERABLE
-        s = float(args.encoder_lr_scale)
-        lr_scale = lambda name: s if name.startswith(TRANSFERABLE) else 1.0  # noqa: E731
+            raise SystemExit("encoder_lr_scale and layer_decay are defined for "
+                             "model.name=eeg_c1/ecg_c1/emg_c1 only: they scale "
+                             "what that model loads from pretraining")
+        blocks = getattr(getattr(core, "shared_transformer", None), "blocks", None)
+        if blocks is None:
+            raise SystemExit("layer_decay needs the model's shared_transformer.blocks")
+        lr_scale = c1_lr_scale(len(blocks), args.encoder_lr_scale, args.layer_decay)
     optimizer = build_optimizer(core, args.lr, args.weight_decay, lr_scale=lr_scale)
     if info.is_main and lr_scale is not None:
-        n_enc = sum(p.numel() for n, p in core.named_parameters()
-                    if p.requires_grad and lr_scale(n) != 1.0)
-        logger.info("encoder lr %.2e (x%g) on %s params; the rest at %.2e",
-                    args.lr * args.encoder_lr_scale, args.encoder_lr_scale,
-                    f"{n_enc:,}", args.lr)
+        # Every distinct rate with how many parameters learn at it, highest
+        # first: the fresh parts at lr, then the Transformer top to bottom.
+        at = {}
+        for n, p in core.named_parameters():
+            if p.requires_grad:
+                k = round(lr_scale(n), 6)
+                at[k] = at.get(k, 0) + p.numel()
+        logger.info("learning rates (encoder_lr_scale %g, layer_decay %g): %s",
+                    args.encoder_lr_scale, args.layer_decay,
+                    ", ".join(f"{args.lr * k:.2e} on {v:,}"
+                              for k, v in sorted(at.items(), reverse=True)))
     steps = max(len(train_loader), 1)
     total_steps = args.epochs * steps
     if args.warmup_ratio is not None:

@@ -24,7 +24,7 @@ bash scripts/download_emg_downstream.sh all
 bash scripts/download_emg_downstream.sh status
 
 # 2. one job: 1 node, 4 GPUs, 6 h. Builds each split if needed, then runs, per task:
-#    ft at 1e-4 and 3e-5, probe at 1e-3, scratch at 1e-4.
+#    ft at 1e-4 and 3e-4, probe at 1e-3, scratch at 1e-4.
 sbatch scripts/slurm/cineca_emg_downstream.sbatch
 
 # 3. results: $PW_CKPT_ROOT/emg_downstream/summary.{txt,md,json}; to share them
@@ -41,7 +41,8 @@ The paper's methods section should state the following details.
 | `epn612_xuser` | same | 6 | **user-independent**; see below |
 | `grabmyo` | GRABMyo 1.1.0: 43 participants, 3 sessions (days 1, 8, 29), 28 electrodes (16 forearm + 12 wrist), 2048 Hz | 17: 16 gestures + rest | **inter-session**; see below |
 | `grabmyo_xsubj` | same | 17 | **subject-independent**: participants split 70/15/15 (seed 42), all sessions |
-| `ninapro_db2` | NinaPro DB2: 40 subjects, 12 Delsys electrodes, 2 kHz | 50: 49 movements of exercises B (17), C (23) and D (9), plus rest | **repetition split**; see below |
+| `ninapro_db5` | NinaPro DB5: 10 subjects, two Myo armbands (16 ch), 200 Hz | 53: 52 movements of exercises A (12), B (17) and C (23), plus rest | **repetition split**; see below |
+| `ninapro_db2` | NinaPro DB2: 40 subjects, 12 Delsys electrodes, 2 kHz | 50: 49 movements of exercises B (17), C (23) and D (9), plus rest | **repetition split**; kept, not in the default job (see below) |
 
 ### `epn612`: the paper's (v1) protocol, user-dependent
 
@@ -65,17 +66,29 @@ Test users are therefore seen during training.
 - Sessions 1–2 train; trial 7 of those sessions validates.
 - Session 3, recorded three weeks later, tests.
 
-### `ninapro_db2`: repetition split
+### `ninapro_db5` and `ninapro_db2`: repetition split
 
 - This follows Atzori et al. (2014): repetitions 1, 3, 4 and 6 train, and 2
   and 5 test. Every subject appears on both sides.
 - 10% of the training (subject, movement, repetition) segments validate.
   Validation takes whole segments, so no validation window overlaps a
   training window.
-- Labels are the refined `restimulus` and `rerepetition`.
+- Labels are the refined `restimulus` and `rerepetition`, numbered across
+  the database (DB5: A 1–12, B 13–29, C 30–52; DB2: B 1–17, C 18–40,
+  D 41–49). A file that counts within its exercise is renumbered.
 - Rest is subsampled, per subject and exercise, to the mean window count of
   one movement.
-- `--db2-exercises` (default `BCD`) selects a subset of exercises.
+- `--exercises` (default all) selects a subset of exercises.
+
+DB5 replaced DB2 in the default job. DB2 is 40 subjects pooled into one
+50-class model on 1 s windows, a setting the literature does not report (it
+trains per subject, on 200 ms windows); the model reached 40% from scratch
+and 34% fine-tuned, with the training set memorised by epoch 6. DB5 is the
+Myo armband, EPN-612's sensor, so the same frontend serves both; it is the
+dataset the EMG foundation-model papers report (TinyMyo: 89.4% on 200 ms
+windows, a protocol that is not this one), and with ten subjects it is the
+task where a pretrained encoder has the most to add. The DB2 code and
+config stay and run when `TASKS` names them.
 
 ### Preprocessing
 
@@ -94,6 +107,8 @@ No quality filter is applied to a benchmark. Windows are as follows:
 
 - **EPN-612** stays at 200 Hz. Each sample gives one window of 5 s, which is
   40 patches of 0.125 s.
+- **DB5** stays at its 200 Hz too: 1 s windows (8 patches of 0.125 s) with a
+  0.25 s stride, inside a single label.
 - **GRABMyo and DB2** are resampled to 2000 Hz and cut into 1 s windows with a
   0.5 s stride, the pretraining window. A window must lie inside a single
   label.
@@ -121,11 +136,20 @@ supplied and trains the head along with the montage's new frontend.
 | pooling | mean pool |
 | epochs | 30 |
 | warmup | 10% |
+| learning rate | 1e-4 and 3e-4 for the fresh frontend, patcher and head; the table keeps the one validation prefers |
+| layer-wise decay | 0.75 over the pretrained stack: top block 0.75 lr, block 0 0.18 lr, channel encoder 0.13 lr; not applied from scratch |
 | weight decay | 0.05 |
 | batch size | 64 |
 | early stopping | patience 10 |
 | checkpoint selection | validation accuracy |
 | reported metrics | accuracy, balanced accuracy, macro F1, Cohen's kappa |
+
+The layer-wise decay (`train.layer_decay`, `finetune_main.py`) came from the
+first round with the epoch-38 encoder: fine-tuned at one rate, every task's
+training curve was the from-scratch curve, and on cross-subject GRABMyo the
+frozen probe (0.832) beat fine-tuning (0.790). The pretrained features were
+being overwritten; the decay lets the fresh parts learn at lr while the
+Transformer moves by less the deeper it is.
 
 ## The paper's (v1) number
 
@@ -138,8 +162,8 @@ like-for-like.
 
 | file | what |
 |---|---|
-| `scripts/download_emg_downstream.sh` | EPN-612 (Zenodo, parallel ranged), GRABMyo (open S3), DB2 (ninapro.hevs.ch, parallel ranged) |
-| `EMG/emg_downstream_prep.py` | raw → `{train,val,test}.h5` + `split.json` (reads EPN's and DB2's zips in place) |
+| `scripts/download_emg_downstream.sh` | EPN-612 (Zenodo, parallel ranged), GRABMyo (open S3), DB5 (Zenodo), DB2 (ninapro.hevs.ch, parallel ranged) |
+| `EMG/emg_downstream_prep.py` | raw → `{train,val,test}.h5` + `split.json` (reads EPN's and NinaPro's zips in place) |
 | `configs/finetune/emg_c1_*.yaml` | per-task settings |
 | `EMG/finetune_emg_c1.sh` | one run (TASK, MODE) |
 | `scripts/slurm/cineca_emg_downstream.sbatch` | everything in one job, 1 node, 4 GPUs, 6 h |

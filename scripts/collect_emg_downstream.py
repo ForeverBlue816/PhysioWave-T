@@ -22,14 +22,16 @@ COLS = [("acc", "Acc"), ("balanced_acc", "BalAcc"), ("macro_f1", "F1-mac"),
         ("kappa", "Kappa")]
 SPEC = {
     "heading": "sEMG C1 downstream",
-    "tasks": ("epn612", "epn612_xuser", "grabmyo", "grabmyo_xsubj", "ninapro_db2"),
+    "tasks": ("epn612", "epn612_xuser", "grabmyo", "grabmyo_xsubj", "ninapro_db5",
+              "ninapro_db2"),
     "columns": {t: COLS for t in ("epn612", "epn612_xuser", "grabmyo",
-                                  "grabmyo_xsubj", "ninapro_db2")},
+                                  "grabmyo_xsubj", "ninapro_db5", "ninapro_db2")},
     "titles": {
         "epn612": "EMG-EPN-612, 6 gestures, user-dependent (the paper's protocol; paper: accuracy)",
         "epn612_xuser": "EMG-EPN-612, 6 gestures, user-independent (test users never trained on)",
         "grabmyo": "GRABMyo, 17 classes, inter-session (sessions 1-2 train, session 3 tests)",
         "grabmyo_xsubj": "GRABMyo, 17 classes, subject-independent",
+        "ninapro_db5": "NinaPro DB5, exercises A+B+C, 52 movements + rest, two Myo at 200 Hz (reps 1,3,4,6 / 2,5)",
         "ninapro_db2": "NinaPro DB2, exercises B+C+D, 49 movements + rest (reps 1,3,4,6 / 2,5)",
     },
     # PhysioWave (v1), README "Benchmark Results".

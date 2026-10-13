@@ -43,6 +43,12 @@ train:
   epochs: 30
   warmup_ratio: 0.1
   lr: 1.0e-4
+  # Layer-wise decay over the pretrained Transformer (finetune_main.py): the
+  # fresh frontend and head at lr, the top block at 0.75 lr, block 0 at 0.18
+  # lr, the channel encoder at 0.13 lr. Plain fine-tuning at one rate
+  # reproduced the from-scratch curve on every sEMG task. Not applied when no
+  # encoder is loaded (MODE=scratch).
+  layer_decay: 0.75
   min_lr_ratio: 0.01
   weight_decay: 0.05
   batch_size: 64

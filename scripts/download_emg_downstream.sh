@@ -19,12 +19,15 @@
 #   ninapro_db2  NinaPro DB2 from ninapro.hevs.ch: DB2_s1.zip .. DB2_s40.zip
 #                (~19 GB), kept zipped; the .mat files are read out of them.
 #                Cite Atzori et al., Sci. Data 2014.
+#   ninapro_db5  NinaPro DB5 from Zenodo 1000116: s1.zip .. s10.zip (~200 MB),
+#                kept zipped. Cite Pizzolato et al., PLoS ONE 2017.
 #
 # LAYOUT (what the preprocessing and scripts/slurm/cineca_emg_downstream.sbatch
 # expect):
 #   $EMG_ROOT/downstream/raw/epn612/EMG-EPN612 Dataset.zip
 #   $EMG_ROOT/downstream/raw/grabmyo/Session{1,2,3}/session*_participant*/...
 #   $EMG_ROOT/downstream/raw/ninapro_db2/DB2_s{1..40}.zip
+#   $EMG_ROOT/downstream/raw/ninapro_db5/s{1..10}.zip
 #   $EMG_ROOT/downstream/c1/<task>/        written by the preprocessing
 #
 # None of these is in the sEMG pretraining corpus; the pretraining
@@ -41,9 +44,10 @@ EMG_ROOT="${EMG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/emg}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python}"
 JOBS="${JOBS:-16}"
-SETS="epn612 grabmyo ninapro_db2"
+SETS="epn612 grabmyo ninapro_db5 ninapro_db2"
 EPN_URL="${EPN_URL:-https://zenodo.org/api/records/4421500/files/EMG-EPN612%20Dataset.zip/content}"
 DB2_BASE="${DB2_BASE:-https://ninapro.hevs.ch/files/DB2_Preproc}"
+DB5_BASE="${DB5_BASE:-https://zenodo.org/api/records/1000116/files}"
 
 say()  { echo "==> $*"; }
 warn() { echo "WARNING: $*" >&2; }
@@ -93,6 +97,26 @@ for z in sorted(glob.glob(os.path.join(sys.argv[1], "DB2_s*.zip"))):
     ok += sum(1 for n in names if re.search(r"S\d+_E[123]_A1\.mat$", n)) == 3
 print(f"    {ok} subject zips with all three exercises (expected 40)")
 sys.exit(0 if ok == 40 else 1)
+PY
+}
+
+get_ninapro_db5() {
+    local d list s; d="$(raw_dir ninapro_db5)"; list="${d}/.files.tsv"
+    mkdir -p "${d}"
+    : > "${list}"
+    for s in $(seq 1 10); do
+        printf '%s\t%s\n' "${DB5_BASE}/s${s}.zip/content" "${d}/s${s}.zip" >> "${list}"
+    done
+    say "${DB5_BASE}/s{1..10}.zip (~200 MB, ${JOBS} connections)"
+    "${PYTHON}" "${HERE}/fetch_ranged.py" --list "${list}" --jobs "${JOBS}" || return 1
+    "${PYTHON}" - "${d}" <<'PY'
+import glob, os, re, sys, zipfile
+ok = 0
+for z in sorted(glob.glob(os.path.join(sys.argv[1], "s*.zip"))):
+    names = zipfile.ZipFile(z).namelist()
+    ok += sum(1 for n in names if re.search(r"S\d+_E[123]_A1\.mat$", n)) == 3
+print(f"    {ok} subject zips with all three exercises (expected 10)")
+sys.exit(0 if ok == 10 else 1)
 PY
 }
 
@@ -147,6 +171,6 @@ case "${1:-}" in
         for ds in ${SETS}; do run_one "${ds}" || failed+=("${ds}"); done
         echo; status
         [[ ${#failed[@]} -eq 0 ]] || { warn "incomplete: ${failed[*]} -- rerun"; exit 1; } ;;
-    epn612|grabmyo|ninapro_db2) run_one "$1" ;;
-    *) echo "usage: bash $0 status|all|epn612|grabmyo|ninapro_db2" >&2; exit 1 ;;
+    epn612|grabmyo|ninapro_db2|ninapro_db5) run_one "$1" ;;
+    *) echo "usage: bash $0 status|all|epn612|grabmyo|ninapro_db5|ninapro_db2" >&2; exit 1 ;;
 esac
