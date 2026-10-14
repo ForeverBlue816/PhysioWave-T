@@ -123,18 +123,22 @@ def build_model(cfg: Dict, tasks: Dict[str, Dict[str, MultimodalWindows]], out_d
     ck = {m: (cfg.get("encoders") or {}).get(m) for m in MODALITIES}
     if mode != "scratch" and not any(ck.values()):
         raise SystemExit("encoder_mode is not scratch but no encoders.<m> path is set")
-    encoders, metas, reports = {}, {}, {}
+    encoders, metas, reports, keep = {}, {}, {}, {}
     primary: Dict[str, torch.nn.Module] = {}
     for t, splits in tasks.items():
         ds = splits["train"]
-        encoders[t], metas[t], reports[t] = {}, {}, {}
+        encoders[t], metas[t], reports[t], keep[t] = {}, {}, {}, {}
         for m in ds.modalities:
             names = ds.channel_names[m]
             enc, rep = build_encoder(
                 m, names, ds.rates[m], ds.shapes[m][-1],
                 None if mode == "scratch" else ck[m],
                 os.path.join(out_dir, "encoders"), freeze=(mode == "frozen"),
-                dropout=float(mcfg.get("encoder_dropout", 0.0)))
+                dropout=float(mcfg.get("encoder_dropout", 0.0)),
+                max_drop=int(mcfg.get("route_drop_max", 0)))
+            keep[t][m] = rep.get("keep_index")
+            if rep.get("dropped_channels"):
+                names = [n for n in names if n not in rep["dropped_channels"]]
             if m in primary:
                 share_core(primary[m], enc)
                 rep["shares_core_with"] = next(tt for tt in encoders if m in encoders[tt])
@@ -148,7 +152,8 @@ def build_model(cfg: Dict, tasks: Dict[str, Dict[str, MultimodalWindows]], out_d
                                     "dropout", "residual_weight") if k in mcfg}
     model = C1Multimodal(encoders, metas, n_classes, fusion=mcfg.get("fusion", "ralf"),
                          summary_tokens=int(mcfg.get("summary_tokens", 4)),
-                         summary_heads=int(mcfg.get("summary_heads", 4)), **core_kw)
+                         summary_heads=int(mcfg.get("summary_heads", 4)),
+                         keep_index=keep, **core_kw)
     return model, reports
 
 
@@ -319,9 +324,11 @@ def main(argv=None) -> int:
         json.dump(reports, f, indent=2, default=str)
     for t, per in reports.items():
         for m, rep in per.items():
-            logger.info("%s/%s: route %s, %s%s", t, m, rep.get("route"), rep.get("summary"),
+            logger.info("%s/%s: route %s, %s%s%s", t, m, rep.get("route"), rep.get("summary"),
                         f" (shares core with {rep['shares_core_with']})"
-                        if rep.get("shares_core_with") else "")
+                        if rep.get("shares_core_with") else "",
+                        f" [electrodes left out for the route: {rep['dropped_channels']}]"
+                        if rep.get("dropped_channels") else "")
     n_total = sum(p.numel() for p in model.parameters())
     n_train = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info("model %.2f M parameters, %.2f M trainable; fusion=%s encoder_mode=%s",
@@ -451,6 +458,7 @@ def main(argv=None) -> int:
     test_corruptor = SignalCorruptor(CorruptionConfig(prob=1.0, kinds=list(CORRUPTIONS)),
                                      torch.Generator().manual_seed(1234))
     results = {"fusion": model.fusion_name, "encoder_mode": cfg["model"]["encoder_mode"],
+               "seed": int(cfg.get("seed", 42)),
                "best_epoch": best_epoch, "best_score": best, "select_by": select_by,
                "hparams": {k: tcfg.get(k) for k in ("epochs", "batch_size", "lr", "layer_decay",
                                                     "weight_decay", "modality_dropout",

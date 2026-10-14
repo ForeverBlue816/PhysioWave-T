@@ -234,11 +234,24 @@ class C1Multimodal(nn.Module):
     def __init__(self, encoders: Dict[str, Dict[str, nn.Module]],
                  metas: Dict[str, Dict[str, object]], tasks: Dict[str, int],
                  fusion: str = "ralf", summary_tokens: int = 4, summary_heads: int = 4,
+                 keep_index: Optional[Dict[str, Dict[str, Optional[List[int]]]]] = None,
                  **core_kwargs):
         super().__init__()
         self.tasks = dict(tasks)
         self.encoders = nn.ModuleDict({t: nn.ModuleDict(dict(ms)) for t, ms in encoders.items()})
         self.metas = metas
+        # Rows of the stored window an encoder takes, when its route left a
+        # few electrodes out (encoders.build_encoder); None = all of them.
+        self.keep_index: Dict[str, Dict[str, Optional[torch.Tensor]]] = {}
+        for t, per in (keep_index or {}).items():
+            self.keep_index[t] = {}
+            for m, idx in per.items():
+                if idx is not None:
+                    buf = torch.tensor(idx, dtype=torch.long)
+                    self.register_buffer(f"keep_{t}_{m}", buf, persistent=False)
+                    self.keep_index[t][m] = buf
+                else:
+                    self.keep_index[t][m] = None
         first = next(iter(encoders.values()))
         self.modalities = [m for m in MODALITIES if m in first]
         dims = {m: int(first[m].embed_dim) for m in self.modalities}
@@ -254,7 +267,11 @@ class C1Multimodal(nn.Module):
         for m in self.modalities:
             if x.get(m) is None:
                 continue
-            tokens = self.encoders[task][m].encode(x[m], self.metas[task][m])
+            xm = x[m]
+            keep = self.keep_index.get(task, {}).get(m)
+            if keep is not None:
+                xm = xm.index_select(1, keep.to(xm.device))
+            tokens = self.encoders[task][m].encode(xm, self.metas[task][m])
             feats[m] = self.pools[m](tokens)
         return feats
 

@@ -45,17 +45,30 @@ def modality_class(modality: str):
     return cls
 
 
-def choose_route(modality: str, names: Sequence[str], fs: float) -> Optional[str]:
-    """The smallest pretraining route this montage sits inside, or None."""
+def choose_route(modality: str, names: Sequence[str], fs: float, max_drop: int = 0
+                 ) -> Tuple[Optional[str], List[str]]:
+    """The smallest pretraining route this montage sits inside, and the
+    electrodes that have to be left out to make it fit (at most ``max_drop``).
+
+    MPDB's 59 electrodes are all E64_256 slots but PO5 and PO6; on the route
+    the pretrained wavelet frontend and patcher transfer, off it a fresh
+    frontend learns from a few thousand windows. Dropping two electrodes to
+    get there is a choice the caller makes, is bounded, and is recorded in
+    the encoder report -- never silent.
+    """
     cls = modality_class(modality)
-    fits = []
+    best = None
     for rid, route in cls.ROUTES_TABLE.items():
         if int(route.sampling_rate) != int(fs):
             continue
         slots = set(route.slots)
-        if all(cls.normalize_name(n) in slots for n in names):
-            fits.append((route.n_channels, rid))
-    return min(fits)[1] if fits else None
+        out = [n for n in names if cls.normalize_name(n) not in slots]
+        if len(out) > max_drop or len(out) == len(names):
+            continue
+        key = (len(out), route.n_channels)
+        if best is None or key < best[0]:
+            best = (key, rid, out)
+    return (best[1], best[2]) if best else (None, [])
 
 
 def exported_encoder(checkpoint: str, modality: str, route_id: Optional[str],
@@ -98,15 +111,20 @@ def channel_meta(names: Sequence[str]) -> SimpleNamespace:
 
 def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples: int,
                   checkpoint: Optional[str], cache_dir: str, freeze: bool,
-                  dropout: float = 0.0) -> Tuple[nn.Module, dict]:
+                  dropout: float = 0.0, max_drop: int = 0) -> Tuple[nn.Module, dict]:
     """A downstream C1 model for this montage, its pretrained parts loaded.
 
     ``checkpoint`` None builds the same architecture from scratch (the
-    control). The report says what was taken, what the montage could not use
-    and which route, if any, carried the frontend over.
+    control). The report says what was taken, what the montage could not use,
+    which route, if any, carried the frontend over, and which electrodes were
+    left out to reach it (``dropped_channels``; ``keep_index`` selects the
+    rows the model takes).
     """
     cls = modality_class(modality)
-    route_id = choose_route(modality, names, fs)
+    route_id, dropped = choose_route(modality, names, fs, max_drop)
+    all_names = list(names)
+    keep_index = [i for i, n in enumerate(all_names) if n not in dropped]
+    names = [all_names[i] for i in keep_index]
     exported = (exported_encoder(checkpoint, modality, route_id, cache_dir)
                 if checkpoint else None)
     mc = {}
@@ -125,7 +143,9 @@ def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples
                 pool="mean", freeze_encoder=bool(freeze), freeze_scope="pretrained",
                 **kwargs)
     report = {"modality": modality, "route": route_id, "exported": exported,
-              "embed_dim": int(model.embed_dim), "taken": [], "skipped": []}
+              "embed_dim": int(model.embed_dim), "taken": [], "skipped": [],
+              "dropped_channels": list(dropped),
+              "keep_index": keep_index if dropped else None}
     if exported:
         rep = model.load_pretrained(exported, route_id=route_id)
         report.update({k: list(v) for k, v in rep.items()})

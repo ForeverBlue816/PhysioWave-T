@@ -23,6 +23,7 @@ encoders:
 model:
   fusion: ralf                 # ralf | concat | weighted_logit
   encoder_mode: frozen         # frozen | finetune | scratch
+  route_drop_max: 2            # electrodes a montage may leave out to sit on a pretraining route (recorded)
   encoder_dropout: 0.0
   summary_tokens: 4            # per modality, what the encoder hands the fusion
   summary_heads: 4
@@ -33,9 +34,9 @@ model:
   dropout: 0.1
   residual_weight: 0.5         # reliability-weighted unimodal logits, added to the fused ones
 train:
-  epochs: 30
+  epochs: 60
   batch_size: 32
-  lr: 1.0e-4                   # the fusion, the pools, the montage adapters, the heads
+  lr: 3.0e-4                   # the fusion, the pools, the montage adapters, the heads; 1e-4 left the frozen runs underfit
   encoder_lr_scale: 1.0        # finetune only: the pretrained core as a multiple of lr ...
   layer_decay: 0.75            # ... decayed top-down over the Transformer
   weight_decay: 0.05
@@ -43,7 +44,7 @@ train:
   min_lr_ratio: 0.01
   grad_clip: 1.0
   precision: bf16
-  patience: 8
+  patience: 10
   class_weight: sqrt           # none | sqrt | balanced; SeizeIT2 is ~1:50
   modality_dropout: 0.3        # per present modality, in the consistency view
   uni_weight: 0.2

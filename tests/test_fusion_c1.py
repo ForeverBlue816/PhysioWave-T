@@ -18,6 +18,7 @@ for p in (ROOT, os.path.join(ROOT, "Fusion")):
 from physiowave.fusion.prep_common import read_edf, write_edf  # noqa: E402
 
 EEG8 = ["Fp1", "Fp2", "F3", "F4", "C3", "C4", "O1", "O2"]        # inside E19_256
+EEG9 = EEG8 + ["PO5"]                                            # PO5 is on no route
 
 
 # --------------------------------------------------------------------------- #
@@ -102,7 +103,7 @@ def _fake_eeglab(tmp_path):
             2: {"eeg": seq, "ecg": np.delete(seq, [3, 9, 14]), "emg": seq},
             3: {"eeg": seq, "ecg": np.append(seq[:-1], 999), "emg": seq},
             4: {"eeg": seq, "ecg": seq, "emg": seq}}
-    names = {"eeg": EEG8, "ecg": ["ECG"], "emg": ["ch1", "ch2", "ch3", "ch4"]}
+    names = {"eeg": EEG9, "ecg": ["ECG"], "emg": ["ch1", "ch2", "ch3", "ch4"]}
     tmp_path.mkdir(parents=True, exist_ok=True)
     for s in plan:
         for m in names:
@@ -131,10 +132,10 @@ def test_mpdb_prep_aligns_epochs_and_splits_by_subject(tmp_path, monkeypatch):
     tot = sum(v["windows"] for v in info["splits"].values())
     assert tot == 57                                          # 20 + 17 (ECG pruned of 3) + 20
     with h5py.File(out / "train.h5", "r") as f:
-        assert f["eeg"].shape[1:] == (8, 512) and f["ecg"].shape[1:] == (1, 500)
+        assert f["eeg"].shape[1:] == (9, 512) and f["ecg"].shape[1:] == (1, 500)
         assert f["emg"].shape[1:] == (4, 4000)
         assert set(np.unique(f["label"][:]).tolist()) <= {0, 1, 2, 3, 4}
-        assert json.loads(f.attrs["eeg_channel_names"]) == EEG8
+        assert json.loads(f.attrs["eeg_channel_names"]) == EEG9
         assert json.loads(f.attrs["ecg_channel_names"]) == ["patch1"]
 
 
@@ -262,7 +263,8 @@ def test_fusion_trains_evaluates_and_tabulates(tmp_path, monkeypatch):
     sets = [f"data.tasks.mpdb.dir={mp}", f"data.tasks.seizeit2.dir={sz}",
             f"encoders.eeg={enc['eeg']}", f"encoders.ecg={enc['ecg']}",
             f"encoders.emg={enc['emg']}", "train.batch_size=4", "train.precision=fp32",
-            "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4"]
+            "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4",
+            "model.route_drop_max=2"]
     runs = tmp_path / "runs"
     for fusion, mode in (("ralf", "frozen"), ("concat", "frozen"), ("weighted_logit", "frozen"),
                          ("ralf", "finetune"), ("ralf", "scratch")):
@@ -277,7 +279,8 @@ def test_fusion_trains_evaluates_and_tabulates(tmp_path, monkeypatch):
         assert "auprc" in res["tasks"]["seizeit2"]["test"]["complete"]
         rep = json.load(open(out / "encoders.json"))
         if mode != "scratch":
-            assert rep["mpdb"]["eeg"]["route"] == "E19_256"          # 8 of the 19 slots
+            assert rep["mpdb"]["eeg"]["route"] == "E19_256"          # 8 of the 19 slots ...
+            assert rep["mpdb"]["eeg"]["dropped_channels"] == ["PO5"]  # ... after leaving PO5 out
             assert rep["seizeit2"]["eeg"]["route"] is None            # bte names: no route
             assert rep["mpdb"]["ecg"]["route"] == "L1_250"            # the chest patch
             assert rep["seizeit2"]["eeg"]["shares_core_with"] == "mpdb"

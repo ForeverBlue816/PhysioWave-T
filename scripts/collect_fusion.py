@@ -17,7 +17,10 @@ import argparse
 import glob
 import json
 import os
+import re
 import sys
+
+import numpy as np
 
 HEADLINE = {"mpdb": "balanced_acc", "seizeit2": "auprc"}
 SHORT = {"complete": "all", "eeg_only": "eeg", "ecg_only": "ecg", "emg_only": "emg",
@@ -76,6 +79,25 @@ def main(argv=None) -> int:
                 vals.append(f"{v:.4f}" if isinstance(v, (int, float)) else "   -  ")
             print(f"  {label[:32]:32s}" + "".join(f"{v:>9s}" for v in vals))
             md.append(f"| {label} | " + " | ".join(vals) + " |")
+        # seeds: mean +- std per (fusion, encoder mode) when a run was repeated
+        groups = {}
+        for r in runs:
+            if t not in r.get("tasks", {}):
+                continue
+            key = (r.get("fusion"), r.get("encoder_mode"), re.sub(r"_s\d+$", "", r["_name"]))
+            groups.setdefault(key, []).append(r)
+        multi = {k: v for k, v in groups.items() if len(v) > 1}
+        if multi:
+            print(f"  {'mean +- std over seeds':32s}")
+            for (fus, mode, base), rs in sorted(multi.items()):
+                cells = []
+                for c in conds:
+                    vals = [((r["tasks"][t]["test"].get(c) or {}).get(metric)) for r in rs]
+                    vals = [v for v in vals if isinstance(v, (int, float))]
+                    cells.append(f"{np.mean(vals):.3f}+-{np.std(vals):.3f}" if vals else "   -  ")
+                label = f"{fus}/{mode} x{len(rs)}"
+                print(f"  {label[:32]:32s}" + "".join(f"{v:>12s}" for v in cells))
+                md.append(f"| {label} (mean +- std) | " + " | ".join(cells) + " |")
         md.append("")
     print("=" * 60)
     print("  conditions: a modality name alone = only that modality kept; ~ = corrupted at "

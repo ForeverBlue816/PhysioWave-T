@@ -17,6 +17,7 @@
 #   EEG_CKPT  $PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth
 #   ECG_CKPT  $PW_CKPT_ROOT/pretrain_ecg_c1_moe/best.pth
 #   EMG_CKPT  $PW_CKPT_ROOT/pretrain_emg_c1_moe/epoch38.pth
+#   SEEDS     "42"; several seeds run every RUNS entry, directories suffixed _s<seed> except 42
 #   TAG       suffix on every run directory
 #   SET       extra --set overrides, space separated
 # ============================================================================
@@ -41,12 +42,14 @@ cd "${PROJECT_DIR}"
 FUSION_ROOT="${FUSION_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/fusion}"
 OUT_ROOT="${OUT_ROOT:-${PW_CKPT_ROOT}/fusion}"
 RUNS="${RUNS:-ralf:frozen concat:frozen weighted_logit:frozen ralf:finetune ralf:scratch}"
+SEEDS="${SEEDS:-42}"
 TASKS="${TASKS:-mpdb seizeit2}"
 EEG_CKPT="${EEG_CKPT:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
 ECG_CKPT="${ECG_CKPT:-${PW_CKPT_ROOT}/pretrain_ecg_c1_moe/best.pth}"
 EMG_CKPT="${EMG_CKPT:-${PW_CKPT_ROOT}/pretrain_emg_c1_moe/epoch38.pth}"
 N_GPUS=4
-read -r -a RUN_LIST <<< "${RUNS}"
+RUN_LIST=()
+for seed in ${SEEDS}; do for spec in ${RUNS}; do RUN_LIST+=("${spec}:${seed}"); done; done
 mkdir -p "${OUT_ROOT}"
 
 TASK_SETS=()
@@ -66,8 +69,8 @@ echo "output  ${OUT_ROOT}"
 worker() {
     local gpu="$1" i spec fusion mode out log rc=0
     for ((i = gpu; i < ${#RUN_LIST[@]}; i += N_GPUS)); do
-        spec="${RUN_LIST[$i]}"; fusion="${spec%%:*}"; mode="${spec#*:}"
-        out="${OUT_ROOT}/${fusion}_${mode}${TAG:+_${TAG}}"
+        spec="${RUN_LIST[$i]}"; fusion="${spec%%:*}"; rest="${spec#*:}"; mode="${rest%%:*}"; seed="${rest#*:}"
+        out="${OUT_ROOT}/${fusion}_${mode}${TAG:+_${TAG}}$([[ "${seed}" != "42" ]] && echo "_s${seed}")"
         if [[ -f "${out}/results.json" && "${FORCE:-0}" != "1" ]]; then
             echo "[gpu ${gpu}] ${spec}: already done, skipped"; continue
         fi
@@ -78,7 +81,7 @@ worker() {
                 --config fusion/c1_ralf --output-dir "${out}" \
                 --set "${TASK_SETS[@]}" "encoders.eeg=${EEG_CKPT}" "encoders.ecg=${ECG_CKPT}" \
                       "encoders.emg=${EMG_CKPT}" "model.fusion=${fusion}" \
-                      "model.encoder_mode=${mode}" ${SET:-} > "${log}" 2>&1; then
+                      "model.encoder_mode=${mode}" "seed=${seed}" ${SET:-} > "${log}" 2>&1; then
             echo "[gpu ${gpu}] ${spec}: done $(date +%H:%M)"
         else
             echo "[gpu ${gpu}] ${spec}: FAILED -- see ${log}"; rc=1
