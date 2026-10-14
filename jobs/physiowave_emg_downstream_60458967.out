@@ -1,0 +1,25 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  sEMG C1 downstream  (job 60458967, 1 node, 4 GPUs)
+  tasks  ninapro_db5
+  modes  ft ft@3e-4 probe@1e-3 scratch
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/epoch38.pth
+  output /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream
+============================================================
+[gpu 0] ninapro_db5 ft: start 06:59 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_ft_e38ld.log
+[gpu 0] ninapro_db5 ft: done 07:12
+[gpu 0] ninapro_db5 ft@3e-4: start 07:12 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_ft_lr3e-4_e38ld.log
+[gpu 0] ninapro_db5 ft@3e-4: done 07:23
+[gpu 0] ninapro_db5 probe@1e-3: start 07:23 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_probe_lr1e-3_e38ld.log
+[gpu 0] ninapro_db5 probe@1e-3: done 07:33
+[gpu 0] ninapro_db5 scratch: start 07:33 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_scratch_e38ld.log

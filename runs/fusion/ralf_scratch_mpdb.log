@@ -1,0 +1,30 @@
+2026-10-14 07:06:17,691 INFO: MultiHeadGate: 59 channels is not divisible by 4 heads; using 1.
+2026-10-14 07:06:17,757 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
+2026-10-14 07:06:18,035 INFO: mpdb/eeg: route None, from scratch
+2026-10-14 07:06:18,035 INFO: mpdb/ecg: route L1_250, from scratch
+2026-10-14 07:06:18,035 INFO: mpdb/emg: route None, from scratch
+2026-10-14 07:06:18,038 INFO: model 36.54 M parameters, 36.54 M trainable; fusion=ralf encoder_mode=scratch
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
+  _torch_pytree._register_pytree_node(
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+2026-10-14 07:06:19,098 INFO: tasks {'mpdb': 5}; steps/epoch {'mpdb': 25}; 30 epochs
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 489, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 389, in main
+    loss, logs = train_step(model, batch, t, cfg, corruptor, cw[t], amp, gen)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 209, in train_step
+    xm, lvl, _ = corruptor(x[m])
+                 ^^^^^^^^^^^^^^^
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/pretrain/corruption.py", line 69, in __call__
+    out[b] = self._apply(out[b], kind, sev)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/pretrain/corruption.py", line 103, in _apply
+    y[idx] = torch.randn(len(idx), T, generator=self.g, device=x.device) * 1e-3
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Expected a 'cuda' device type for generator but found 'cpu'

@@ -1,0 +1,52 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+==> mpdb: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb -> /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb  (07:02)
+mpdb: 35 subject(s) under /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb
+  subject 1: 168 windows  (anchor eeg, epochs {'eeg': 168, 'ecg': 234, 'emg': 234}, ambiguous pairs 44, unused {'ecg': 66, 'emg': 66})
+  subject 2: 182 windows  (anchor eeg, epochs {'eeg': 182, 'ecg': 187, 'emg': 234}, ambiguous pairs 14, unused {'ecg': 5, 'emg': 52})
+  subject 3: DROPPED -- {'eeg': 1} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 4: DROPPED -- {'eeg': 12} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 5: 214 windows  (anchor eeg, epochs {'eeg': 214, 'ecg': 236, 'emg': 236}, ambiguous pairs 26, unused {'ecg': 22, 'emg': 22})
+  subject 6: 224 windows  (anchor eeg, epochs {'eeg': 224, 'ecg': 237, 'emg': 237}, ambiguous pairs 18, unused {'ecg': 13, 'emg': 13})
+  subject 7: 231 windows  (anchor eeg, epochs {'eeg': 231, 'ecg': 239, 'emg': 239}, ambiguous pairs 12, unused {'ecg': 8, 'emg': 8})
+  subject 8: DROPPED -- {'emg': 23} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 9: 165 windows  (anchor eeg, epochs {'eeg': 165, 'ecg': 230, 'emg': 230}, ambiguous pairs 40, unused {'ecg': 65, 'emg': 65})
+  subject 10: DROPPED -- {'emg': 4} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 11: DROPPED -- {'emg': 19} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 12: 191 windows  (anchor eeg, epochs {'eeg': 191, 'ecg': 216, 'emg': 216}, ambiguous pairs 23, unused {'ecg': 25, 'emg': 25})
+  subject 13: 182 windows  (anchor eeg, epochs {'eeg': 182, 'ecg': 209, 'emg': 210}, ambiguous pairs 29, unused {'ecg': 27, 'emg': 28})
+  subject 14: 186 windows  (anchor eeg, epochs {'eeg': 186, 'ecg': 211, 'emg': 211}, ambiguous pairs 16, unused {'ecg': 25, 'emg': 25})
+  subject 15: 196 windows  (anchor eeg, epochs {'eeg': 196, 'ecg': 209, 'emg': 209}, ambiguous pairs 16, unused {'ecg': 13, 'emg': 13})
+  subject 16: DROPPED -- {'ecg': 1} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 17: 195 windows  (anchor eeg, epochs {'eeg': 195, 'ecg': 212, 'emg': 212}, ambiguous pairs 17, unused {'ecg': 17, 'emg': 17})
+  subject 18: DROPPED -- {'eeg': 17} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 19: 196 windows  (anchor eeg, epochs {'eeg': 196, 'ecg': 216, 'emg': 216}, ambiguous pairs 18, unused {'ecg': 20, 'emg': 20})
+  subject 20: DROPPED -- {'emg': 3} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 21: 191 windows  (anchor eeg, epochs {'eeg': 191, 'ecg': 214, 'emg': 214}, ambiguous pairs 17, unused {'ecg': 23, 'emg': 23})
+  subject 22: DROPPED -- {'eeg': 18} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 23: DROPPED -- {'eeg': 17} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 24: 193 windows  (anchor eeg, epochs {'eeg': 193, 'ecg': 213, 'emg': 213}, ambiguous pairs 18, unused {'ecg': 20, 'emg': 20})
+  subject 25: DROPPED -- {'eeg': 24} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 26: DROPPED -- {'emg': 10} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 27: DROPPED -- {'ecg': 17} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 28: DROPPED -- {'ecg': 1} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 29: DROPPED -- {'emg': 16} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 30: DROPPED -- {'eeg': 3} anchor epoch(s) have no partner: the marker sequences disagree beyond pruning
+  subject 31: DROPPED -- missing ['ecg']
+  subject 32: DROPPED -- missing ['ecg']
+  subject 33: DROPPED -- missing ['ecg']
+  subject 34: DROPPED -- missing ['ecg']
+  subject 35: DROPPED -- missing ['ecg']
+  train    790 windows  4 subjects  per class [104, 176, 170, 224, 116]
+  val      963 windows  5 subjects  per class [124, 210, 195, 304, 130]
+  test     961 windows  5 subjects  per class [134, 211, 191, 287, 138]
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb/{train,val,test}.h5 and split.json in 98s
