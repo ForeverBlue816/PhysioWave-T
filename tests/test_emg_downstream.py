@@ -209,6 +209,36 @@ def _emg_encoder(tmp_path):
     return enc, m
 
 
+def test_unknown_channel_names_get_their_own_trainable_rows():
+    """Names outside the vocabulary: a row each, seeded from <unk>, trained even
+    under a frozen encoder; names inside it keep their vocabulary ids."""
+    from channel_embedding import UNK_ID
+    from physiowave.emg_c1.downstream import EMGC1Downstream
+    kw = dict(in_channels=4, window_samples=2000, sampling_rate=2000, patch_samples=250,
+              num_classes=3, channel_names=["r_tibialis", "r_gastro", "band01", "l_arm"],
+              embed_dim=96, depth=2, num_heads=4, channel_embed_dim=32)
+    # the gate starts at tanh(0) = 0, so the path carries no gradient until it
+    # opens (a pretrained gate is ~0.3); open it here to see the rows learn
+    m = EMGC1Downstream(**kw, channel_token_gate_init=0.5)
+    assert m.new_channel_names == ["r_tibialis", "r_gastro", "l_arm"]
+    assert m.new_channel_index.tolist() == [0, 1, -1, 2]
+    unk = m.channel_encoder.id_embed.weight[UNK_ID]
+    assert torch.allclose(m.new_channel_embed.weight, unk.expand(3, -1))
+    meta = type("M", (), {"channel_names": kw["channel_names"], "channel_mask": None})()
+    out = m(torch.randn(2, 4, 2000), meta)["logits"]
+    assert out.shape == (2, 3)
+    out.sum().backward()
+    assert m.new_channel_embed.weight.grad is not None
+    assert m.new_channel_embed.weight.grad.abs().sum() > 0
+    for scope in ("pretrained", "encoder"):
+        probe = EMGC1Downstream(**kw, freeze_encoder=True, freeze_scope=scope)
+        trainable = {n.split(".")[0] for n, p in probe.named_parameters() if p.requires_grad}
+        assert "new_channel_embed" in trainable and "shared_transformer" not in trainable
+    # a vocabulary-only montage allocates nothing
+    assert EMGC1Downstream(**{**kw, "channel_names": [f"band0{k}" for k in range(1, 5)]}
+                           ).new_channel_embed is None
+
+
 @pytest.mark.slow
 def test_emg_encoder_transfers_and_probe_trains_the_fresh_frontend(tmp_path):
     from physiowave.emg_c1.downstream import EMGC1Downstream
@@ -220,6 +250,10 @@ def test_emg_encoder_transfers_and_probe_trains_the_fresh_frontend(tmp_path):
     model = EMGC1Downstream(**kw)
     rep = model.load_pretrained(str(enc))
     assert "gate yes" in model.describe_transfer(rep)
+    assert rep["new_channel_rows"] == kw["channel_names"]        # myo1..8: none in the vocabulary
+    from channel_embedding import UNK_ID
+    assert torch.allclose(model.new_channel_embed.weight[0],
+                          model.channel_encoder.id_embed.weight[UNK_ID])
     assert not any(k.startswith("wavelet_frontend.") for k in rep["taken"])   # no route
     meta = type("M", (), {"channel_names": kw["channel_names"], "channel_mask": None})()
     assert model(torch.randn(2, 8, 1000), meta)["logits"].shape == (2, 6)

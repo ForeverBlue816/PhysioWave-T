@@ -289,6 +289,13 @@ class ChannelEncoder(nn.Module):
         code = None
         if self.mode in ("id", "hybrid"):
             code = self.id_embed(meta["channel_ids"])                 # [C, Dc]
+            # A downstream montage's rows for names the vocabulary does not
+            # have (physiowave.eeg_c1.downstream): the caller supplies the
+            # rows and which channels take them; the rest keep their ids.
+            override = meta.get("code_override")
+            if override is not None:
+                sel = meta["code_override_mask"].to(code.device).unsqueeze(-1)
+                code = torch.where(sel, override.to(code.dtype), code)
 
         if self.mode in ("signed", "hybrid"):
             phi = spherical_basis(meta["electrode_xyz"])              # [E, 8]

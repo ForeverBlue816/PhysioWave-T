@@ -1,5 +1,7 @@
 # PhysioWave: A Multi-Scale Wavelet-Transformer for Physiological Signal Representation
 
+> **Methods reference.** The three pretrained C1 encoders (EEG, ECG, sEMG) -- routes, wavelet frontend, channel identity, Transformer, objective, corpora and training budgets -- are described in [`docs/c1_pretraining_architecture.md`](docs/c1_pretraining_architecture.md). Downstream protocols: [`docs/ecg_downstream.md`](docs/ecg_downstream.md), [`docs/emg_downstream.md`](docs/emg_downstream.md); multimodal fusion: [`docs/fusion.md`](docs/fusion.md).
+
 <div align="center">
 
 [![NeurIPS 2025](https://img.shields.io/badge/NeurIPS-2025-blue.svg)](https://neurips.cc/)

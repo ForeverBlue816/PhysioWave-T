@@ -105,7 +105,7 @@ absence. `--bg-per-hour`, `--guard`, `--sz-stride` change the sampling;
 | modality | montage | route | what loads |
 |---|---|---|---|
 | EEG | MPDB's 59 electrodes | E64_256 if every name is one of its slots, else routeless | core (+ frontend on a route) |
-| EEG | SeizeIT2's two bte channels | routeless (names not in the vocabulary, `<unk>` codes) | core |
+| EEG | SeizeIT2's two bte channels | routeless (names not in the vocabulary: a new embedding row each, seeded from `<unk>`, trained as an adapter) | core |
 | ECG | one chest derivation, named `patch1` | L1_250 | core + frontend |
 | sEMG | 4 limb channels / 1 deltoid | routeless | core |
 

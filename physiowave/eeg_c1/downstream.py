@@ -43,7 +43,7 @@ from typing import Dict, List, Optional, Sequence
 import torch
 import torch.nn as nn
 
-from channel_embedding import (CHANNEL_VOCAB, ChannelEncoder, PAD_ID,
+from channel_embedding import (CHANNEL_VOCAB, UNK_ID, ChannelEncoder, PAD_ID,
                                channel_ids_for, vocab_payload)
 from transformer_modules import PatchEmbed, PositionEmbedding, TransformerEncoder
 
@@ -75,7 +75,7 @@ ROUTE_BOUND = ("wavelet_frontend.", "patch_embed.")
 #: BETWEEN TWO MONTAGES, not part of the representation -- freezing it would
 #: measure the encoder's response to the wrong electrode gains rather than the
 #: encoder.
-TRAINABLE_WHEN_FROZEN = ("head", "spatial_filter")
+TRAINABLE_WHEN_FROZEN = ("head", "spatial_filter", "new_channel_embed")
 
 #: What ``freeze_encoder`` freezes.
 #:
@@ -219,7 +219,8 @@ class EEGC1Downstream(nn.Module):
                  spatial_max_norm: float = 1.0,
                  slot_aliases: Optional[Dict[str, str]] = None,
                  freeze_encoder: bool = False,
-                 freeze_scope: str = "encoder"):
+                 freeze_scope: str = "encoder",
+                 new_channel_rows: bool = True):
         super().__init__()
         if wavelet_names is None:
             wavelet_names = self.DEFAULT_WAVELETS
@@ -313,6 +314,29 @@ class EEGC1Downstream(nn.Module):
             self.channel_to_token = nn.Linear(channel_embed_dim, embed_dim)
             self.channel_token_gate = nn.Parameter(
                 torch.tensor(float(channel_token_gate_init)))
+        # ROWS FOR NAMES THE VOCABULARY DOES NOT HAVE. A Myo electrode, a
+        # GRABMyo forearm position, a behind-the-ear EEG channel all resolve
+        # to <unk>, and a montage whose every channel is <unk> has switched
+        # the channel-identity path off: one shared vector, channels told
+        # apart by position alone. Each unknown name gets a row of its own
+        # here, initialised to the pretrained <unk> row so the first forward
+        # is exactly what it was, and trained as a montage adapter -- under a
+        # frozen encoder too, like the fresh frontend and the spatial filter.
+        # Only off a route: a route's slots are vocabulary names.
+        self.new_channel_embed = None
+        self.new_channel_names: List[str] = []
+        self.register_buffer("new_channel_index", None, persistent=False)
+        if (new_channel_rows and self.channel_encoder is not None
+                and self.slot_index is None and self.model_channel_names):
+            ids, _ = self.ids_for(self.model_channel_names)
+            pos = [i for i, k in enumerate(ids) if k == UNK_ID]
+            if pos:
+                self.new_channel_embed = nn.Embedding(len(pos), channel_embed_dim)
+                index = torch.full((len(ids),), -1, dtype=torch.long)
+                index[pos] = torch.arange(len(pos))
+                self.new_channel_index = index
+                self.new_channel_names = [self.model_channel_names[i] for i in pos]
+                self._init_new_rows()
         self.pos_embed = PositionEmbedding(embed_dim=embed_dim, pos_type="2d")
         self.shared_transformer = TransformerEncoder(
             embed_dim=embed_dim, depth=depth, num_heads=num_heads,
@@ -394,6 +418,23 @@ class EEGC1Downstream(nn.Module):
         return self
 
     # -- channel metadata ---------------------------------------------------- #
+    def _init_new_rows(self) -> None:
+        """Every new row starts as the <unk> row the encoder currently holds."""
+        if self.new_channel_embed is None:
+            return
+        with torch.no_grad():
+            unk = self.channel_encoder.id_embed.weight[UNK_ID]
+            self.new_channel_embed.weight.copy_(
+                unk.unsqueeze(0).expand_as(self.new_channel_embed.weight))
+
+    def _with_new_rows(self, cm):
+        """Attach the new rows to the channel metadata the encoder reads."""
+        if cm is None or self.new_channel_embed is None:
+            return cm
+        idx = self.new_channel_index.to(cm["channel_ids"].device)
+        rows = self.new_channel_embed.weight[idx.clamp_min(0)]
+        return {**cm, "code_override": rows, "code_override_mask": idx >= 0}
+
     def _meta_tensors(self, meta, device) -> Optional[Dict[str, torch.Tensor]]:
         """``ChannelMeta`` or the C1 dict, resolved to ids against THIS vocab.
 
@@ -500,7 +541,7 @@ class EEGC1Downstream(nn.Module):
             if self.spatial_filter is not None:
                 x = self.spatial_filter(x)
         x = self._to_slots(x)
-        cm = self._slot_meta(cm)
+        cm = self._slot_meta(cm) if self.slot_index is not None else self._with_new_rows(cm)
         spec = self.wavelet_frontend(x)
         tokens = self.patch_embed(spec.unsqueeze(1))
         n_patches = tokens.shape[1] // r.n_channels
@@ -621,6 +662,7 @@ class EEGC1Downstream(nn.Module):
                 f"  --allow-missing-gate runs anyway, which is only right if "
                 f"you are deliberately ablating the mechanism.")
         self.load_state_dict(own)
+        self._init_new_rows()
         if self._frozen and self.freeze_scope == "pretrained" and same_route \
                 and any(k.startswith(ROUTE_BOUND) for k in taken):
             # The frontend and patcher came from pretraining too, so under
@@ -629,7 +671,8 @@ class EEGC1Downstream(nn.Module):
             self._apply_freeze()
         return {"taken": taken, "skipped": skipped,
                 "shape_mismatch": shape_mismatch,
-                "route_reused": [ck_route] if same_route else []}
+                "route_reused": [ck_route] if same_route else [],
+                "new_channel_rows": list(self.new_channel_names)}
 
     def describe_transfer(self, report: Dict[str, List[str]]) -> str:
         def n(prefix):
@@ -639,4 +682,8 @@ class EEGC1Downstream(nn.Module):
                  f"gate {'yes' if 'channel_token_gate' in report['taken'] else 'NO'}",
                  f"frontend {n('wavelet_frontend.')}",
                  f"patcher {n('patch_embed.')}"]
+        rows = report.get("new_channel_rows") or []
+        if rows:
+            parts.append(f"{len(rows)} new channel row(s) for names outside the "
+                         f"vocabulary (trained as adapters)")
         return "loaded: " + ", ".join(parts)

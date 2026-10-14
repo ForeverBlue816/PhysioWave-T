@@ -119,9 +119,13 @@ None of the benchmark montages is a pretraining route. So the downstream model
 builds its own wavelet frontend and patch embedding and loads the pretrained
 channel encoder, gate and Transformer (`physiowave/emg_c1/downstream.py`).
 
-The electrode names are not in the pretraining vocabulary, so every channel
-gets the same unknown code. Channels are still told apart by the 2-D position
-encoding.
+The electrode names are not in the pretraining vocabulary. Each such name
+gets a channel-embedding row of its own, initialised to the pretrained `<unk>`
+row and trained as a montage adapter (also under a frozen encoder, like the
+fresh frontend), so the channel-identity path stays live on a montage the
+vocabulary has never seen. Before this (runs tagged `e38` and `e38ld`) every
+such channel shared the one `<unk>` vector and was told apart by position
+alone.
 
 The probe uses `freeze_scope: pretrained`: it freezes what pretraining
 supplied and trains the head along with the montage's new frontend.
