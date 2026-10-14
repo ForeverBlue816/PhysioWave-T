@@ -124,74 +124,120 @@ def split_eeg_ecg(data: np.ndarray, names: List[str]) -> Tuple[np.ndarray, List[
     return data[eeg_rows], [names[i] for i in eeg_rows], ecg
 
 
-def pair_events(a: List[Tuple[float, int]], b: List[Tuple[float, int]], tol: float
+def _offset_mode(ta, ca, tb, cb, seed, avail_b):
+    """The clock offset for the EEG events ``seed``: the mode of their same-code
+    time differences to the available EMG events. Right pairs pile into one
+    20 ms bin; wrong pairs scatter over the 300 s range."""
+    diffs = []
+    for i in seed:
+        ib = np.where((cb == ca[i]) & avail_b)[0]
+        if len(ib):
+            d = tb[ib] - ta[i]
+            diffs.append(d[np.abs(d) < 300.0])
+    diffs = np.concatenate(diffs) if diffs else np.zeros(0)
+    if diffs.size < 2:
+        return None
+    edges = np.arange(diffs.min() - 0.02, diffs.max() + 0.04, 0.02)
+    hist, _ = np.histogram(diffs, bins=edges)
+    k = int(np.argmax(hist))
+    lo, hi = edges[max(0, k - 2)], edges[min(len(edges) - 1, k + 3)]
+    return float(np.median(diffs[(diffs >= lo) & (diffs <= hi)]))
+
+
+def pair_events(a: List[Tuple[float, int]], b: List[Tuple[float, int]], tol: float,
+                seed_events: int = 60, break_after: int = 8
                 ) -> Tuple[List[Tuple[int, int]], Dict]:
     """Indices into ``a`` (EEG&ECG file) and ``b`` (EMG file) of the same events.
 
-    The two devices share the simulator's trigger stream but not a clock:
-    the EMG file is offset by a constant (seconds) plus a drift of a few
-    tens of ppm, and it may hold a few events the other file does not (the
-    raw throttle files carry nine extra). Codes repeat hundreds of times, so
-    order alone is ambiguous; TIME is not. The clock relation
-    ``t_b = s * t_a + o`` is estimated from the codes that occur equally
-    often in both files (the behaviour markers among them), refined by a
-    least-squares fit over the pairs it explains, and every event of ``a``
-    is then paired with the nearest same-code event of ``b`` within ``tol``
-    of its predicted time, each event of ``b`` used once.
+    The two devices share the simulator's trigger stream but not a clock: the
+    EMG file is offset by a constant plus a drift of ~20 ppm, may hold a few
+    events the other file does not, and -- when a device was stopped and
+    restarted inside an experiment (the extra 69/71 start/stop markers in a
+    throttle file) -- its time axis jumps, so one offset explains only part
+    of the recording. Codes repeat hundreds of times, so order is ambiguous;
+    time is not.
+
+    The pairing marches through the EEG events in time. A clock segment
+    starts with the offset estimated from the next ``seed_events`` events
+    (the mode of their same-code time differences) and a drift fitted to
+    what that offset matches; each following event takes the nearest
+    same-code EMG event within ``tol`` of its predicted time, with the fit
+    refreshed as pairs accumulate. ``break_after`` consecutive events without
+    a partner end the segment, and the next one is estimated afresh from
+    there -- that is what a restart looks like. A lone missed trigger does
+    not break a segment. Unpaired events leave their window without EMG.
     """
     if not a or not b:
         return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0}
     ta, ca = np.array([t for t, _ in a]), np.array([c for _, c in a])
     tb, cb = np.array([t for t, _ in b]), np.array([c for _, c in b])
-    # 1. the offset, as the mode of all same-code time differences. Right
-    #    pairs pile into one 20 ms bin (drift spreads them over a few); wrong
-    #    pairs scatter over the whole range. k-th-to-k-th pairing is NOT
-    #    robust here: a code that fires every few seconds with one extra
-    #    event in one file shifts every later pair.
-    diffs = []
-    for c in np.unique(ca):
-        ia, ib = np.where(ca == c)[0], np.where(cb == c)[0]
-        if not len(ib):
-            continue
-        d = (tb[ib][None, :] - ta[ia][:, None]).ravel()
-        diffs.append(d[np.abs(d) < 300.0])
-    diffs = np.concatenate(diffs) if diffs else np.zeros(0)
-    if diffs.size < 3:
-        return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0,
-                    "reason": "no shared codes within 300 s of each other"}
-    edges = np.arange(diffs.min() - 0.02, diffs.max() + 0.04, 0.02)
-    hist, _ = np.histogram(diffs, bins=edges)
-    k = int(np.argmax(hist))
-    lo, hi = edges[max(0, k - 2)], edges[min(len(edges) - 1, k + 3)]
-    off, scale = float(np.median(diffs[(diffs >= lo) & (diffs <= hi)])), 1.0
+    order = np.argsort(ta)
+    avail_b = np.ones(len(b), bool)
+    pairs: List[Tuple[int, int]] = []
+    segments = []
+    resid: List[float] = []
 
-    def match(off, scale, tol_):
-        used = np.zeros(len(b), bool)
-        pairs = []
-        for i in np.argsort(ta):
-            pred = scale * ta[i] + off
-            cand = np.where((cb == ca[i]) & ~used & (np.abs(tb - pred) <= tol_))[0]
-            if cand.size:
-                j = int(cand[np.argmin(np.abs(tb[cand] - pred))])
-                used[j] = True
-                pairs.append((int(i), j))
-        return pairs
-    # 2. refine with a linear fit (drift) over what the offset explains, at a
-    #    tolerance that admits the drift but not a neighbouring event; then
-    #    the final pairing at the caller's tolerance
-    for tol_ in (0.1, tol):
-        pairs = match(float(off), float(scale), tol_)
-        if len(pairs) >= 3:
-            xa = ta[[i for i, _ in pairs]]
-            xb = tb[[j for _, j in pairs]]
-            scale, off = np.polyfit(xa, xb, 1)
-    pairs = match(float(off), float(scale), tol)
-    resid = [abs(scale * ta[i] + off - tb[j]) for i, j in pairs]
-    return pairs, {"events_eeg": len(a), "events_emg": len(b), "paired": len(pairs),
-                   "unpaired_eeg": len(a) - len(pairs), "unused_emg": len(b) - len(pairs),
-                   "clock_offset_s": round(float(off), 3),
-                   "clock_drift_ppm": round((float(scale) - 1.0) * 1e6, 1),
-                   "max_residual_ms": round(1000 * float(max(resid)), 1) if resid else None}
+    def nearest(i, off, scale, tol_):
+        pred = scale * ta[i] + off
+        cand = np.where((cb == ca[i]) & avail_b & (np.abs(tb - pred) <= tol_))[0]
+        return int(cand[np.argmin(np.abs(tb[cand] - pred))]) if cand.size else None
+
+    def refit(seg, off, scale):
+        if len(seg) < 3:
+            return off, scale
+        xa = ta[[i for i, _ in seg[-200:]]]
+        xb = tb[[j for _, j in seg[-200:]]]
+        sc, of = np.polyfit(xa, xb, 1)
+        return float(of), float(sc)
+
+    pos = 0
+    while pos < len(order):
+        seed = order[pos:pos + seed_events]
+        off = _offset_mode(ta, ca, tb, cb, seed, avail_b)
+        if off is None:
+            break
+        scale = 1.0
+        # the drift, from what the offset alone explains inside the seed
+        trial = [(int(i), j) for i in seed for j in [nearest(i, off, scale, 0.1)] if j is not None]
+        off, scale = refit(trial, off, scale)
+        seg, fails, k, end_k = [], 0, pos, pos
+        while k < len(order):
+            i = int(order[k])
+            j = nearest(i, off, scale, tol)
+            if j is None:
+                fails += 1
+                if fails >= break_after and len(seg) >= 3:
+                    break
+            else:
+                fails = 0
+                seg.append((i, j))
+                resid.append(abs(scale * ta[i] + off - tb[j]))
+                avail_b[j] = False
+                end_k = k
+                if len(seg) % 50 == 0:
+                    off, scale = refit(seg, off, scale)
+            k += 1
+        if len(seg) >= 3:
+            pairs += seg
+            segments.append({"paired": len(seg), "clock_offset_s": round(off, 3),
+                             "clock_drift_ppm": round((scale - 1.0) * 1e6, 1),
+                             "from_s": round(float(ta[seg[0][0]]), 1),
+                             "to_s": round(float(ta[seg[-1][0]]), 1)})
+            pos = end_k + 1
+        else:
+            for i, j in seg:
+                avail_b[j] = True
+            del resid[len(resid) - len(seg):]
+            pos += max(1, break_after)
+    pairs.sort()
+    info = {"events_eeg": len(a), "events_emg": len(b), "paired": len(pairs),
+            "unpaired_eeg": len(a) - len(pairs), "unused_emg": len(b) - len(pairs),
+            "max_residual_ms": round(1000 * float(max(resid)), 1) if resid else None,
+            "segments": segments}
+    if segments:
+        info["clock_offset_s"] = segments[0]["clock_offset_s"]
+        info["clock_drift_ppm"] = segments[0]["clock_drift_ppm"]
+    return pairs, info
 
 
 def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, pre: float,
