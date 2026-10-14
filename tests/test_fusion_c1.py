@@ -94,12 +94,12 @@ def test_seizeit2_prep_windows_labels_presence_and_split(tmp_path):
 # --------------------------------------------------------------------------- #
 
 def _fake_eeglab(tmp_path):
-    """subjects 1 and 4 aligned, 2 aligned by k-th occurrence, 3 refused."""
+    """subjects 1 and 4 identical, 2 with a pruned ECG, 3 refused."""
     import mpdb_prep
     rng = np.random.default_rng(1)
     seq = np.array([133, 135, 139, 129, 125, 143, 141, 131, 127, 145] * 2)
     plan = {1: {"eeg": seq, "ecg": seq, "emg": seq},
-            2: {"eeg": seq, "ecg": seq[::-1].copy(), "emg": seq},
+            2: {"eeg": seq, "ecg": np.delete(seq, [3, 9, 14]), "emg": seq},
             3: {"eeg": seq, "ecg": np.append(seq[:-1], 999), "emg": seq},
             4: {"eeg": seq, "ecg": seq, "emg": seq}}
     names = {"eeg": EEG8, "ecg": ["ECG"], "emg": ["ch1", "ch2", "ch3", "ch4"]}
@@ -129,7 +129,7 @@ def test_mpdb_prep_aligns_epochs_and_splits_by_subject(tmp_path, monkeypatch):
     dropped = [n for n in info["subjects"] if n.get("dropped")]
     assert [n["subject"] for n in dropped] == [3]
     tot = sum(v["windows"] for v in info["splits"].values())
-    assert tot == 60                                          # subjects 1, 2 and 4, 20 epochs each
+    assert tot == 57                                          # 20 + 17 (ECG pruned of 3) + 20
     with h5py.File(out / "train.h5", "r") as f:
         assert f["eeg"].shape[1:] == (8, 512) and f["ecg"].shape[1:] == (1, 500)
         assert f["emg"].shape[1:] == (4, 4000)

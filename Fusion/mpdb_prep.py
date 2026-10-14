@@ -18,10 +18,13 @@ paper's Table 2:
 THE SOURCE is the authors' PREPROCESSED release (figshare 22192831): per
 subject EEG_{n}.set, ECG_{n}.set, EMG_{n}.set, EEGLAB epochs of 2 s (0.5 s
 before the marker to 1.5 s after), already band-passed. The raw release
-(22193119, 23 GB of continuous .set files) is not needed. The three files of
-a subject are ALIGNED by their marker sequence: a subject whose files do not
-carry the same events in the same order is dropped and named in split.json,
-never aligned by guesswork.
+(22193119, 23 GB of continuous .set files) is not needed. The release carries
+no timestamps, and the three files of a subject hold different epoch counts
+(the EEG is pruned of rejected epochs, sometimes the ECG too), so they are
+ALIGNED BY MARKER ORDER: the shortest file anchors and the others are paired
+to it by the longest common subsequence of marker codes. split.json records
+per subject how many pairs were ambiguous up to a same-behaviour neighbour;
+a subject whose files disagree beyond pruning is dropped and named.
 
 PREPROCESSING. The authors' filters stand (re-filtering a 2 s epoch at 0.5 Hz
 would put the transient inside the window). Each epoch is resampled to the
@@ -95,29 +98,77 @@ def find_subjects(raw: str) -> Dict[int, Dict[str, str]]:
     return found
 
 
-def align(codes: Dict[str, np.ndarray]) -> Optional[List[Tuple[int, ...]]]:
-    """Epoch indices per modality that describe the same event, or None.
+def _lcs_pairs(a: np.ndarray, b: np.ndarray) -> List[Tuple[int, int]]:
+    """Order-preserving pairing of ``a`` into ``b`` (longest common subsequence)."""
+    n, m = len(a), len(b)
+    L = np.zeros((n + 1, m + 1), np.int32)
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            L[i, j] = L[i + 1, j + 1] + 1 if a[i] == b[j] else max(L[i + 1, j], L[i, j + 1])
+    pairs, i, j = [], 0, 0
+    while i < n and j < m:
+        if a[i] == b[j]:
+            pairs.append((i, j)); i += 1; j += 1
+        elif L[i + 1, j] >= L[i, j + 1]:
+            i += 1
+        else:
+            j += 1
+    return pairs
 
-    Identical sequences align 1:1. Otherwise, if every file holds the same
-    multiset of codes, the k-th occurrence of a code in one file is matched
-    to the k-th in the others -- the files were cut from one synchronised
-    session, so order within a code is preserved. Anything else is refused.
+
+def align(codes: Dict[str, np.ndarray]) -> Tuple[Optional[List[Tuple[int, ...]]], Dict]:
+    """Epoch indices per modality that describe the same event, and how sure.
+
+    The release carries no timestamps (no urevent, latencies are the epoch
+    grid), only each file's ordered marker sequence, and the files differ:
+    the EEG is pruned of rejected epochs, sometimes the ECG too, and one
+    EMG file holds twice the lane-change epochs. So the shortest sequence
+    anchors, and each other file is paired to it by the longest common
+    subsequence of marker codes -- order preserved, a pruned epoch skipped.
+    Every anchor epoch has to find a partner in every file, or the subject is
+    refused. ``ambiguous`` counts pairs where the skipped stretch before the
+    partner held the same code: the pairing there is right up to a neighbour
+    of the same behaviour, which the label does not see but the fusion does.
     """
     mods = list(codes)
-    ref = codes[mods[0]]
-    if all(len(codes[m]) == len(ref) and np.array_equal(codes[m], ref) for m in mods):
-        return [tuple(i for _ in mods) for i in range(len(ref))]
-    if not all(sorted(codes[m].tolist()) == sorted(ref.tolist()) for m in mods):
-        return None
-    pos = {m: {} for m in mods}
+    anchor = min(mods, key=lambda m: len(codes[m]))
+    a = codes[anchor]
+    idx = {anchor: list(range(len(a)))}
+    info = {"anchor": anchor, "epochs": {m: int(len(codes[m])) for m in mods},
+            "ambiguous": 0, "unused": {}}
     for m in mods:
-        for i, c in enumerate(codes[m].tolist()):
-            pos[m].setdefault(c, []).append(i)
-    out = []
-    for i, c in enumerate(ref.tolist()):
-        k = pos[mods[0]][c].index(i)
-        out.append(tuple(pos[m][c][k] for m in mods))
-    return out
+        if m == anchor:
+            continue
+        pairs = _lcs_pairs(a, codes[m])
+        if len(pairs) != len(a):
+            info["unmatched"] = {m: int(len(a) - len(pairs))}
+            return None, info
+        idx[m] = [j for _, j in pairs]
+        info["unused"][m] = int(len(codes[m]) - len(pairs))
+    # Ambiguity: an anchor epoch inside a run of one code whose partner run in
+    # some file is longer. Which epoch of that run was pruned there is not
+    # recoverable, so every pair in the run may be off by a same-behaviour
+    # neighbour. Counted once per anchor epoch over all files.
+    ambiguous = set()
+    i = 0
+    while i < len(a):
+        k = i
+        while k + 1 < len(a) and a[k + 1] == a[i]:
+            k += 1
+        for m in mods:
+            if m == anchor:
+                continue
+            seq = codes[m]
+            j0, j1 = idx[m][i], idx[m][k]
+            while j0 > 0 and seq[j0 - 1] == a[i]:
+                j0 -= 1
+            while j1 + 1 < len(seq) and seq[j1 + 1] == a[i]:
+                j1 += 1
+            if j1 - j0 > k - i:
+                ambiguous.update(range(i, k + 1))
+        i = k + 1
+    info["ambiguous"] = len(ambiguous)
+    return [tuple(idx[m][k] for m in mods) for k in range(len(a))], info
 
 
 def subject_windows(subj: int, files: Dict[str, str]) -> Tuple[List[dict], Dict]:
@@ -130,9 +181,11 @@ def subject_windows(subj: int, files: Dict[str, str]) -> Tuple[List[dict], Dict]
     if set(loaded) != set(MODALITIES):
         note["dropped"] = f"missing {sorted(set(MODALITIES) - set(loaded))}"
         return [], note
-    pairs = align(codes)
+    pairs, how = align(codes)
+    note["alignment"] = how
     if pairs is None:
-        note["dropped"] = "marker sequences disagree between the three files"
+        note["dropped"] = (f"{how['unmatched']} anchor epoch(s) have no partner: the "
+                           f"marker sequences disagree beyond pruning")
         return [], note
     items = []
     unknown = 0
@@ -260,7 +313,10 @@ def main(argv=None) -> int:
             print(f"  subject {subj}: DROPPED -- {note['dropped']}", flush=True)
             continue
         loaded[subj] = items
-        print(f"  subject {subj}: {len(items)} windows", flush=True)
+        how = note["alignment"]
+        print(f"  subject {subj}: {len(items)} windows  (anchor {how['anchor']}, epochs "
+              f"{how['epochs']}, ambiguous pairs {how['ambiguous']}, unused {how['unused']})",
+              flush=True)
     if not loaded:
         raise SystemExit("every subject was dropped; see the notes above")
     side = subject_split([f"mpdb_s{s:02d}" for s in loaded],
