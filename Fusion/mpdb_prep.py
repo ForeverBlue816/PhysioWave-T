@@ -12,7 +12,7 @@ Ten simulator events fall into five behaviours, by the marker codes of the
 paper's Table 2:
 
     smooth driving  133              lane change  129 131
-    acceleration    135 143          turning      125 127
+    acceleration    135 137 143      turning      125 127
     deceleration    139 141 145
 
 THE SOURCE is the authors' PREPROCESSED release (figshare 22192831): per
@@ -55,7 +55,9 @@ from physiowave.fusion.prep_common import (MODALITIES, MultimodalWriter,  # noqa
                                            subject_split)
 
 CLASSES = ["smooth", "acceleration", "deceleration", "lane_change", "turning"]
-MARKER_CLASS = {133: 0, 135: 1, 143: 1, 139: 2, 141: 2, 145: 2,
+#: Table 2 says overtaking is 135; the release carries 137 in its place
+#: (alternating with 143 through the throttle experiment), so both map.
+MARKER_CLASS = {133: 0, 135: 1, 137: 1, 143: 1, 139: 2, 141: 2, 145: 2,
                 129: 3, 131: 3, 125: 4, 127: 4}
 EMG_CHANNELS = ["r_tibialis_anterior", "r_gastrocnemius",
                 "brachioradialis_a", "brachioradialis_b"]
@@ -183,27 +185,35 @@ def inspect_files(raw: str, n: int) -> int:
             try:
                 import scipy.io
                 mat = scipy.io.loadmat(path, squeeze_me=True, struct_as_record=False)
-                eeg = mat.get("EEG", mat)
-                keys = [k for k in dir(eeg) if not k.startswith("_")] if hasattr(eeg, "_fieldnames") else list(mat)
-                print(f"      mat fields: {keys[:40]}")
-                ev = getattr(eeg, "event", None)
-                if ev is not None:
-                    ev = np.atleast_1d(ev)
-                    f0 = ev[0]._fieldnames if hasattr(ev[0], "_fieldnames") else None
-                    print(f"      event: {len(ev)} entries, fields {f0}")
-                    for e in ev[:6]:
-                        print("        " + ", ".join(f"{k}={getattr(e, k)!r}" for k in (f0 or [])[:8]))
-                ur = getattr(eeg, "urevent", None)
-                if ur is not None:
-                    print(f"      urevent: {np.atleast_1d(ur).size} entries")
-                ep = getattr(eeg, "epoch", None)
-                if ep is not None:
-                    ep = np.atleast_1d(ep)
-                    print(f"      epoch: {ep.size} entries, fields "
-                          f"{ep[0]._fieldnames if hasattr(ep[0], '_fieldnames') else None}")
-                    if hasattr(ep[0], "_fieldnames"):
-                        print("        " + ", ".join(f"{k}={getattr(ep[0], k)!r}"[:80]
-                                                     for k in ep[0]._fieldnames[:6]))
+                # EEGLAB writes the EEG struct's fields at the top level.
+                get = (lambda k: mat.get(k)) if "event" in mat else \
+                    (lambda k: getattr(mat.get("EEG"), k, None))
+
+                def rows(arr, n=6):
+                    arr = np.atleast_1d(arr)
+                    f = list(getattr(arr[0], "_fieldnames", []))
+                    out = [f"{arr.size} entries, fields {f}"]
+                    for e in arr[:n]:
+                        out.append("        " + ", ".join(
+                            f"{k}={getattr(e, k)!r}"[:60] for k in f[:10]))
+                    return "\n".join(out)
+                print(f"      trials {get('trials')}  pnts {get('pnts')}  xmin {get('xmin')}  "
+                      f"xmax {get('xmax')}  setname {get('setname')!r}")
+                for key in ("event", "urevent", "epoch"):
+                    v = get(key)
+                    if v is None or (isinstance(v, np.ndarray) and v.size == 0):
+                        print(f"      {key}: none")
+                    else:
+                        print(f"      {key}: " + rows(v))
+                ur = get("urevent")
+                if ur is not None and np.atleast_1d(ur).size:
+                    ur = np.atleast_1d(ur)
+                    if hasattr(ur[0], "latency"):
+                        lat = np.array([float(getattr(e, "latency", np.nan)) for e in ur])
+                        typ = [str(getattr(e, "type", "")) for e in ur]
+                        print(f"      urevent latencies (s): {np.round(lat[:12] / 1000.0, 3).tolist()}")
+                        print(f"      urevent types: {typ[:12]}  intervals (s): "
+                              f"{np.round(np.diff(lat[:12]) / 1000.0, 3).tolist()}")
             except NotImplementedError:
                 print("      (MATLAB v7.3 file: fields not listed here)")
             except Exception as exc:  # noqa: BLE001
