@@ -35,7 +35,7 @@ def test_edf_round_trip(tmp_path):
         assert np.abs(out[k] - sig[k]).max() < 0.3           # 16-bit over +-5 mV
 
 
-def _bids(root, subjects=("sub-001", "sub-002", "sub-003"), seconds=600, fs=256):
+def _bids(root, subjects=("sub-097", "sub-098", "sub-099"), seconds=600, fs=256):
     rng = np.random.default_rng(0)
     for si, sub in enumerate(subjects):
         for run in (1, 2):
@@ -59,7 +59,7 @@ def test_seizeit2_prep_windows_labels_presence_and_split(tmp_path):
     raw = tmp_path / "raw"
     _bids(raw)
     out = tmp_path / "out"
-    assert main(["--raw-dir", str(raw), "--out-dir", str(out), "--jobs", "1",
+    assert main(["--raw-dir", str(raw), "--out-dir", str(out), "--jobs", "1", "--split", "random",
                  "--bg-per-hour", "60", "--val-subjects", "1", "--test-subjects", "1"]) == 0
     import h5py
     f = {s: h5py.File(out / f"{s}.h5", "r") for s in ("train", "val", "test")}
@@ -88,6 +88,33 @@ def test_seizeit2_prep_windows_labels_presence_and_split(tmp_path):
     assert abs(float(tr["eeg"][:8].std()) - 1.0) < 0.1
     for g in f.values():
         g.close()
+
+
+def test_seizeit2_official_split():
+    from seizeit2_prep import official_split
+    subs = [f"sub-{i:03d}" for i in (1, 2, 3, 4, 5, 6, 7, 8, 96, 97, 125)]
+    side = official_split(subs, 0.12, 42)
+    assert side["sub-097"] == side["sub-125"] == "test"
+    assert all(side[s] in ("train", "val") for s in subs[:9])
+    assert sum(v == "val" for v in side.values()) == 1                 # 12% of nine
+
+
+def test_event_scoring_matches_the_reference_rules():
+    from physiowave.fusion.seizure_events import evaluate, post_process, score_recording
+    n = 3600
+    y = np.zeros(n, bool); y[1000:1060] = True; y[2000:2030] = True
+    p = np.zeros(n)
+    p[1005:1020] = 0.9; p[1021:1050] = 0.9           # a 1 s gap: merged into one event
+    p[2500:2520] = 0.8                               # 20 s, no seizure: one false alarm
+    p[3000:3005] = 0.9                               # 5 s: shorter than 8 s, dropped
+    assert post_process(p, 0.5)[1020] and not post_process(p, 0.5)[3002]
+    r = score_recording(p, y, 0.5)
+    assert (r["hit"], r["false_events"], r["n_seizures"]) == (1, 1, 2)
+    assert r["sens_ovlp"] == 0.5 and r["fa_ovlp_h"] == 1.0
+    out = evaluate([(p, y), (np.zeros(1800), np.zeros(1800, bool))])
+    ev = out["at_0.5"]["events"]
+    assert ev["sens"] == 0.5 and abs(ev["fa_24h"] - 16.0) < 1e-9          # 1 FA in 1.5 h
+    assert out["n_seizures"] == 2 and len(out["curve"]) == 51
 
 
 # --------------------------------------------------------------------------- #
@@ -253,7 +280,7 @@ def test_fusion_trains_evaluates_and_tabulates(tmp_path, monkeypatch):
     raw = tmp_path / "sz_raw"
     _bids(raw, seconds=300)
     sz = tmp_path / "c1" / "seizeit2"
-    assert sz_main(["--raw-dir", str(raw), "--out-dir", str(sz), "--jobs", "1",
+    assert sz_main(["--raw-dir", str(raw), "--out-dir", str(sz), "--jobs", "1", "--split", "random",
                     "--bg-per-hour", "120", "--val-subjects", "1", "--test-subjects", "1"]) == 0
     enc = _smoke_encoders(tmp_path)
 
@@ -288,3 +315,40 @@ def test_fusion_trains_evaluates_and_tabulates(tmp_path, monkeypatch):
     r = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "collect_fusion.py"),
                         "--root", str(runs)], capture_output=True, text=True)
     assert r.returncode == 0 and "ralf/frozen" in r.stdout and "seizeit2" in r.stdout
+
+
+@pytest.mark.slow
+def test_seizeit2_official_split_train_and_event_evaluation(tmp_path):
+    """Official split -> a fusion run -> continuous event-level evaluation."""
+    import subprocess
+    from seizeit2_prep import main as sz_main
+    raw = tmp_path / "sz_raw"
+    _bids(raw, subjects=("sub-001", "sub-002", "sub-003", "sub-004", "sub-097", "sub-098"),
+          seconds=300)
+    sz = tmp_path / "c1" / "seizeit2"
+    assert sz_main(["--raw-dir", str(raw), "--out-dir", str(sz), "--jobs", "1",
+                    "--bg-per-hour", "120"]) == 0
+    info = json.load(open(sz / "split.json"))
+    assert info["split"] == "official"
+    assert info["subject_split"]["sub-097"] == info["subject_split"]["sub-098"] == "test"
+    enc = _smoke_encoders(tmp_path)
+    from physiowave.fusion.train import main as train
+    run = tmp_path / "runs" / "ralf_frozen"
+    assert train(["--config", "fusion/c1_ralf", "--device", "cpu", "--num-workers", "0",
+                  "--progress", "none", "--epochs", "1", "--max-steps", "2",
+                  "--output-dir", str(run), "--set", f"data.tasks.seizeit2.dir={sz}",
+                  f"encoders.eeg={enc['eeg']}", f"encoders.ecg={enc['ecg']}",
+                  f"encoders.emg={enc['emg']}", "train.batch_size=4", "train.precision=fp32",
+                  "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4"]) == 0
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "Fusion", "seizeit2_events.py"),
+                        "--run-dir", str(run), "--raw-dir", str(raw), "--device", "cpu",
+                        "--step", "2", "--batch", "64"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
+    ev = json.load(open(run / "events_cross.json"))
+    assert ev["n_runs"] == 4                                   # sub-097, sub-098 x 2 runs
+    c = ev["conditions"]["complete"]
+    assert c["n_seizures"] == 4 and "sens_at_fa_events" in c and len(c["curve"]) == 51
+    # the run without ECG/EMG has no ecg_only condition; the others do
+    assert "ecg_only" in ev["conditions"]
+    z = np.load(run / "predictions" / "sub-097_run-01.npz")
+    assert len(z["label"]) == 300 and z["label"].sum() == 30
