@@ -26,8 +26,8 @@ PREPROCESSING per modality on the whole run (physiowave/fusion/prep_common.py),
 then the window is resampled to the encoder rate (EEG stays 256, ECG 250,
 EMG 2000) and normalised as that pretraining corpus was.
 
-SPLIT by patient: --test-subjects 25, --val-subjects 15, the rest train
-(seed 42). --subjects restricts to a regex over sub-XXX for a first pass.
+SPLIT by patient: 20% test, 12% val (25 and 15 of the 125), the rest train
+(seed 42); --test-subjects / --val-subjects set counts instead. --subjects restricts to a regex over sub-XXX for a first pass.
 """
 
 from __future__ import annotations
@@ -189,8 +189,11 @@ def main(argv=None) -> int:
                    help="seconds around a seizure or impedance check no background is cut from")
     p.add_argument("--bg-per-hour", type=float, default=30.0)
     p.add_argument("--subjects", default=None, help="regex over sub-XXX")
-    p.add_argument("--val-subjects", type=int, default=15)
-    p.add_argument("--test-subjects", type=int, default=25)
+    p.add_argument("--val-fraction", type=float, default=0.12,
+                   help="of the subjects present (15 of 125); --val-subjects overrides")
+    p.add_argument("--test-fraction", type=float, default=0.20, help="(25 of 125)")
+    p.add_argument("--val-subjects", type=int, default=None)
+    p.add_argument("--test-subjects", type=int, default=None)
     p.add_argument("--split-seed", type=int, default=SEED)
     p.add_argument("--jobs", type=int, default=8)
     p.add_argument("--max-runs", type=int, default=None, help="a quick look")
@@ -205,7 +208,13 @@ def main(argv=None) -> int:
     subjects = sorted({r["subject"] for r in runs})
     print(f"seizeit2: {len(runs)} run(s), {len(subjects)} subject(s) under {args.raw_dir}",
           flush=True)
-    side = subject_split(subjects, args.val_subjects, args.test_subjects, args.split_seed)
+    # Fractions, so a subset of the patients (a first pass) splits like the
+    # whole set would, instead of 25 test + 15 val leaving one patient to train.
+    n = len(subjects)
+    n_val = args.val_subjects if args.val_subjects is not None else max(1, round(args.val_fraction * n))
+    n_test = args.test_subjects if args.test_subjects is not None else max(1, round(args.test_fraction * n))
+    side = subject_split(subjects, n_val, n_test, args.split_seed)
+    print(f"  split: {n - n_val - n_test} train / {n_val} val / {n_test} test subjects", flush=True)
 
     os.makedirs(args.out_dir, exist_ok=True)
     channels = {"eeg": EEG_CHANNELS, "ecg": ECG_CHANNELS, "emg": EMG_CHANNELS}

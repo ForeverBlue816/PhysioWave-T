@@ -155,6 +155,62 @@ def subject_windows(subj: int, files: Dict[str, str]) -> Tuple[List[dict], Dict]
     return items, note
 
 
+def inspect_files(raw: str, n: int) -> int:
+    """What is in the .set files: epochs, events, channels, the raw event fields.
+
+    Run this on a login node before the first preprocessing: it shows how the
+    three files of a subject can be aligned (identical sequences, the same
+    multiset, or only through urevent numbers / latencies).
+    """
+    found = find_subjects(raw)
+    for subj in sorted(found)[:n]:
+        print(f"subject {subj}")
+        for m in MODALITIES:
+            path = found[subj].get(m)
+            if not path:
+                print(f"  {m}: MISSING")
+                continue
+            try:
+                data, codes, names, fs = load_eeglab_epochs(path)
+                hist = {int(c): int((codes == c).sum()) for c in np.unique(codes)}
+                print(f"  {m}: {os.path.basename(path)}  epochs {data.shape[0]}  "
+                      f"channels {data.shape[1]} x {data.shape[2]} samples @ {fs:g} Hz")
+                print(f"      codes {hist}")
+                print(f"      first 24: {codes[:24].tolist()}")
+                print(f"      channels: {names[:70]}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"  {m}: mne could not read it: {exc!r}")
+            try:
+                import scipy.io
+                mat = scipy.io.loadmat(path, squeeze_me=True, struct_as_record=False)
+                eeg = mat.get("EEG", mat)
+                keys = [k for k in dir(eeg) if not k.startswith("_")] if hasattr(eeg, "_fieldnames") else list(mat)
+                print(f"      mat fields: {keys[:40]}")
+                ev = getattr(eeg, "event", None)
+                if ev is not None:
+                    ev = np.atleast_1d(ev)
+                    f0 = ev[0]._fieldnames if hasattr(ev[0], "_fieldnames") else None
+                    print(f"      event: {len(ev)} entries, fields {f0}")
+                    for e in ev[:6]:
+                        print("        " + ", ".join(f"{k}={getattr(e, k)!r}" for k in (f0 or [])[:8]))
+                ur = getattr(eeg, "urevent", None)
+                if ur is not None:
+                    print(f"      urevent: {np.atleast_1d(ur).size} entries")
+                ep = getattr(eeg, "epoch", None)
+                if ep is not None:
+                    ep = np.atleast_1d(ep)
+                    print(f"      epoch: {ep.size} entries, fields "
+                          f"{ep[0]._fieldnames if hasattr(ep[0], '_fieldnames') else None}")
+                    if hasattr(ep[0], "_fieldnames"):
+                        print("        " + ", ".join(f"{k}={getattr(ep[0], k)!r}"[:80]
+                                                     for k in ep[0]._fieldnames[:6]))
+            except NotImplementedError:
+                print("      (MATLAB v7.3 file: fields not listed here)")
+            except Exception as exc:  # noqa: BLE001
+                print(f"      mat peek failed: {exc!r}")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -164,7 +220,11 @@ def main(argv=None) -> int:
     p.add_argument("--test-subjects", type=int, default=5)
     p.add_argument("--split-seed", type=int, default=SEED)
     p.add_argument("--max-subjects", type=int, default=None, help="a quick look")
+    p.add_argument("--inspect", type=int, default=0, metavar="N",
+                   help="print what the first N subjects' files contain and exit")
     args = p.parse_args(argv)
+    if args.inspect:
+        return inspect_files(args.raw_dir, args.inspect)
     t0 = time.time()
 
     found = find_subjects(args.raw_dir)
