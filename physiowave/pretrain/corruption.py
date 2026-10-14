@@ -36,7 +36,13 @@ class CorruptionConfig:
 
 
 class SignalCorruptor:
-    """Applies one corruption per item and reports the severity that was used."""
+    """Applies one corruption per item and reports the severity that was used.
+
+    The generator lives on the CPU whatever device the signal is on: every
+    random draw is made there and moved, so one seeded generator serves a
+    CUDA batch (a CUDA tensor cannot be drawn from a CPU generator, and the
+    first cluster run of the fusion died on exactly that).
+    """
 
     def __init__(self, cfg: CorruptionConfig, generator: Optional[torch.Generator] = None) -> None:
         self.cfg = cfg
@@ -79,13 +85,13 @@ class SignalCorruptor:
             snr_db = lo + (hi - lo) * sev
             power = x.pow(2).mean().clamp_min(1e-12)
             noise_power = power / (10 ** (snr_db / 10))
-            return x + torch.randn(x.shape, generator=self.g, device=x.device) * noise_power.sqrt()
+            return x + torch.randn(x.shape, generator=self.g).to(x.device) * noise_power.sqrt()
         if kind == "drift":
             lo, hi = self.cfg.drift_amp_range
             amp = (lo + (hi - lo) * sev) * x.std().clamp_min(1e-6)
             t = torch.linspace(0, 1, T, device=x.device)
-            phase = torch.rand(C, 1, generator=self.g, device=x.device) * 6.283
-            freq = 0.5 + 2.0 * torch.rand(C, 1, generator=self.g, device=x.device)
+            phase = (torch.rand(C, 1, generator=self.g) * 6.283).to(x.device)
+            freq = (0.5 + 2.0 * torch.rand(C, 1, generator=self.g)).to(x.device)
             return x + amp * torch.sin(6.283 * freq * t.view(1, T) + phase)
         if kind == "saturation":
             lo, hi = self.cfg.saturation_quantile_range
@@ -97,10 +103,10 @@ class SignalCorruptor:
             n_bad = int(round(C * (lo + (hi - lo) * sev)))
             if n_bad <= 0:
                 return x
-            idx = torch.randperm(C, generator=self.g)[:n_bad]
+            idx = torch.randperm(C, generator=self.g)[:n_bad].to(x.device)
             y = x.clone()
             # A dead electrode rails or goes flat with high-frequency noise.
-            y[idx] = torch.randn(len(idx), T, generator=self.g, device=x.device) * 1e-3
+            y[idx] = torch.randn(len(idx), T, generator=self.g).to(x.device) * 1e-3
             return y
         if kind == "dropout":
             lo, hi = self.cfg.dropout_frac_range
