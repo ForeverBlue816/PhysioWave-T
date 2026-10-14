@@ -11,3 +11,42 @@ Loading cineca-ai/4.3.0
     openjdk/11.0.20.1_1
 ==> mpdb: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb -> /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb  (09:17)
 mpdb raw: 35 subject(s) under /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb_raw
+  subject 1: 234 windows (234 with ECG, 234 with EMG)  brake:48w/emg 675/675 throttle:48w/emg 507/507 turn:44w/emg 615/615 change:94w/emg 517/517
+  subject 2: 268 windows (268 with ECG, 268 with EMG)  brake:48w/emg 610/612 throttle:39w/emg 371/371 turn:48w/emg 589/592 change:133w/emg 671/671
+  subject 3: 235 windows (235 with ECG, 214 with EMG)  brake:48w/emg 724/732 throttle:48w/emg 576/576 turn:48w/emg 623/628 change:91w/emg 324/425
+  subject 4: 219 windows (219 with ECG, 219 with EMG)  brake:48w/emg 511/511 throttle:48w/emg 396/396 turn:34w/emg 410/410 change:89w/emg 421/421
+  subject 5: 236 windows (236 with ECG, 236 with EMG)  brake:48w/emg 711/711 throttle:48w/emg 538/545 turn:46w/emg 615/615 change:94w/emg 460/460
+  subject 6: 237 windows (237 with ECG, 237 with EMG)  brake:48w/emg 613/616 throttle:48w/emg 478/478 turn:48w/emg 583/583 change:93w/emg 447/447
+  subject 7: 239 windows (239 with ECG, 239 with EMG)  brake:48w/emg 676/676 throttle:48w/emg 479/479 turn:50w/emg 618/618 change:93w/emg 500/500
+  subject 8: 237 windows (237 with ECG, 234 with EMG)  brake:48w/emg 651/654 throttle:52w/emg 463/465 turn:48w/emg 546/550 change:89w/emg 400/418
+  subject 9: 230 windows (230 with ECG, 230 with EMG)  brake:48w/emg 564/568 throttle:48w/emg 389/392 turn:47w/emg 765/769 change:87w/emg 461/464
+  subject 10: 212 windows (212 with ECG, 207 with EMG)  brake:48w/emg 574/585 throttle:48w/emg 555/571 turn:70w/emg 1000/1021 change:46w/emg 230/230
+  subject 11: 213 windows (213 with ECG, 212 with EMG)  brake:48w/emg 787/795 throttle:48w/emg 623/623 turn:72w/emg 989/989 change:45w/emg 231/235
+  subject 12: 216 windows (216 with ECG, 216 with EMG)  brake:48w/emg 621/621 throttle:49w/emg 465/467 turn:69w/emg 797/797 change:50w/emg 317/317
+  subject 13: 209 windows (209 with ECG, 209 with EMG)  brake:48w/emg 894/894 throttle:48w/emg 723/726 turn:69w/emg 1077/1077 change:44w/emg 421/421
+  subject 14: 211 windows (211 with ECG, 211 with EMG)  brake:48w/emg 574/576 throttle:48w/emg 473/473 turn:71w/emg 969/969 change:44w/emg 277/277
+  subject 15: 209 windows (209 with ECG, 209 with EMG)  brake:48w/emg 822/822 throttle:48w/emg 671/671 turn:67w/emg 1011/1011 change:46w/emg 391/391
+  subject 16: 248 windows (248 with ECG, 172 with EMG)  brake:48w/emg 583/583 throttle:48w/emg 377/389 turn:67w/emg 937/955 change:85w/emg 28/455
+  subject 17: 212 windows (212 with ECG, 212 with EMG)  brake:48w/emg 576/576 throttle:48w/emg 517/519 turn:69w/emg 925/927 change:47w/emg 245/245
+  subject 18: 242 windows (242 with ECG, 180 with EMG)  brake:48w/emg 552/552 throttle:48w/emg 377/379 turn:99w/emg 566/1219 change:47w/emg 204/204
+  subject 19: 216 windows (216 with ECG, 216 with EMG)  brake:48w/emg 589/589 throttle:48w/emg 620/620 turn:75w/emg 1091/1091 change:45w/emg 210/212
+  subject 20: 205 windows (205 with ECG, 205 with EMG)  brake:48w/emg 546/546 throttle:48w/emg 408/408 turn:67w/emg 1017/1017 change:42w/emg 278/278
+  subject 21: 214 windows (214 with ECG, 214 with EMG)  brake:48w/emg 890/890 throttle:48w/emg 555/560 turn:70w/emg 1231/1244 change:48w/emg 238/238
+  subject 22: 213 windows (213 with ECG, 213 with EMG)  brake:47w/emg 634/634 throttle:48w/emg 690/690 turn:71w/emg 897/899 change:47w/emg 230/230
+  subject 23: 215 windows (215 with ECG, 214 with EMG)  brake:48w/emg 593/594 throttle:54w/emg 572/606 turn:69w/emg 862/863 change:44w/emg 239/239
+  subject 24: 213 windows (213 with ECG, 213 with EMG)  brake:48w/emg 593/593 throttle:48w/emg 457/459 turn:69w/emg 936/937 change:48w/emg 252/260
+  subject 25: 222 windows (222 with ECG, 204 with EMG)  brake:48w/emg 835/853 throttle:65w/emg 513/652 turn:69w/emg 1101/1101 change:40w/emg 356/356
+  subject 26: 213 windows (213 with ECG, 213 with EMG)  brake:48w/emg 708/708 throttle:48w/emg 464/464 turn:70w/emg 880/884 change:47w/emg 404/404
+  subject 27: 214 windows (214 with ECG, 191 with EMG)  brake:47w/emg 543/545 throttle:48w/emg 249/531 turn:74w/emg 875/882 change:45w/emg 241/245
+  subject 28: 215 windows (215 with ECG, 173 with EMG)  brake:48w/emg 528/529 throttle:51w/emg 109/451 turn:69w/emg 858/858 change:47w/emg 215/217
+  subject 29: 210 windows (210 with ECG, 210 with EMG)  brake:48w/emg 483/483 throttle:48w/emg 432/436 turn:71w/emg 939/940 change:43w/emg 245/249
+  subject 30: 218 windows (218 with ECG, 129 with EMG)  brake:54w/emg 20/700 throttle:48w/emg 426/441 turn:71w/emg 678/1046 change:45w/emg 260/293
+  subject 31: 174 windows (174 with ECG, 173 with EMG)  brake:48w/emg 622/622 throttle:41w/emg 472/472 turn:40w/emg 604/611 change:45w/emg 224/224
+  subject 32: 146 windows (146 with ECG, 146 with EMG)  brake:14w/emg 235/236 throttle:44w/emg 614/614 turn:43w/emg 574/574 change:45w/emg 197/197
+  subject 33: 188 windows (188 with ECG, 188 with EMG)  brake:48w/emg 640/640 throttle:45w/emg 408/408 turn:49w/emg 648/648 change:46w/emg 214/214
+  subject 34: 206 windows (206 with ECG, 160 with EMG)  brake:48w/emg 524/524 throttle:47w/emg 30/452 turn:68w/emg 945/945 change:43w/emg 224/224
+  subject 35: 149 windows (149 with ECG, 149 with EMG)  brake:5w/emg 92/92 throttle:48w/emg 491/491 turn:50w/emg 638/639 change:46w/emg 238/238
+  train  5,449 windows  25 subjects  per class [763, 1194, 1164, 1537, 791]  present {'eeg': 5449, 'ecg': 5449, 'emg': 5173}
+  val    1,031 windows  5 subjects  per class [150, 244, 203, 273, 161]  present {'eeg': 1031, 'ecg': 1031, 'emg': 938}
+  test   1,058 windows  5 subjects  per class [148, 233, 240, 289, 148]  present {'eeg': 1058, 'ecg': 1058, 'emg': 1039}
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb/{train,val,test}.h5 and split.json in 1725s

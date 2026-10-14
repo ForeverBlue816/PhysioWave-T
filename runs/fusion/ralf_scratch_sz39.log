@@ -1,31 +1,518 @@
-2026-10-14 07:05:22,293 INFO: MultiHeadGate: 2 channels is not divisible by 4 heads; using 2.
-2026-10-14 07:05:22,357 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
-2026-10-14 07:05:22,421 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
-2026-10-14 07:05:22,633 INFO: seizeit2/eeg: route None, from scratch
-2026-10-14 07:05:22,633 INFO: seizeit2/ecg: route L1_250, from scratch
-2026-10-14 07:05:22,633 INFO: seizeit2/emg: route None, from scratch
-2026-10-14 07:05:22,636 INFO: model 35.98 M parameters, 35.98 M trainable; fusion=ralf encoder_mode=scratch
+2026-10-14 12:24:43,931 INFO: MultiHeadGate: 2 channels is not divisible by 4 heads; using 2.
+2026-10-14 12:24:43,999 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
+2026-10-14 12:24:44,068 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
+2026-10-14 12:24:44,480 INFO: seizeit2/eeg: route None, from scratch
+2026-10-14 12:24:44,480 INFO: seizeit2/ecg: route L1_250, from scratch
+2026-10-14 12:24:44,480 INFO: seizeit2/emg: route None, from scratch
+2026-10-14 12:24:44,484 INFO: model 35.98 M parameters, 35.98 M trainable; fusion=ralf encoder_mode=scratch
 /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
   _torch_pytree._register_pytree_node(
 /leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
   warnings.warn(
-2026-10-14 07:05:23,693 INFO: tasks {'seizeit2': 2}; steps/epoch {'seizeit2': 2305}; 30 epochs
-Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 489, in <module>
-    raise SystemExit(main())
-                     ^^^^^^
-  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 389, in main
-    loss, logs = train_step(model, batch, t, cfg, corruptor, cw[t], amp, gen)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/fusion/train.py", line 209, in train_step
-    xm, lvl, _ = corruptor(x[m])
-                 ^^^^^^^^^^^^^^^
-  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/pretrain/corruption.py", line 69, in __call__
-    out[b] = self._apply(out[b], kind, sev)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/physiowave/pretrain/corruption.py", line 103, in _apply
-    y[idx] = torch.randn(len(idx), T, generator=self.g, device=x.device) * 1e-3
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: Expected a 'cuda' device type for generator but found 'cpu'
+2026-10-14 12:24:48,441 INFO: tasks {'seizeit2': 2}; steps/epoch {'seizeit2': 2305}; 30 epochs
+2026-10-14 12:24:52,082 INFO: epoch 0 step 1/2305 [seizeit2] loss 1.1753 lr 2.89e-08
+2026-10-14 12:25:17,489 INFO: epoch 0 step 51/2305 [seizeit2] loss 1.0261 lr 7.52e-07
+2026-10-14 12:25:45,552 INFO: epoch 0 step 101/2305 [seizeit2] loss 1.0618 lr 1.48e-06
+2026-10-14 12:26:11,416 INFO: epoch 0 step 151/2305 [seizeit2] loss 0.4151 lr 2.20e-06
+2026-10-14 12:26:38,037 INFO: epoch 0 step 201/2305 [seizeit2] loss 0.9912 lr 2.92e-06
+2026-10-14 12:27:06,761 INFO: epoch 0 step 251/2305 [seizeit2] loss 0.9939 lr 3.64e-06
+2026-10-14 12:27:30,288 INFO: epoch 0 step 301/2305 [seizeit2] loss 0.8597 lr 4.37e-06
+2026-10-14 12:27:55,510 INFO: epoch 0 step 351/2305 [seizeit2] loss 0.8475 lr 5.09e-06
+2026-10-14 12:28:23,403 INFO: epoch 0 step 401/2305 [seizeit2] loss 1.1820 lr 5.81e-06
+2026-10-14 12:28:49,901 INFO: epoch 0 step 451/2305 [seizeit2] loss 0.8646 lr 6.54e-06
+2026-10-14 12:29:17,494 INFO: epoch 0 step 501/2305 [seizeit2] loss 0.8011 lr 7.26e-06
+2026-10-14 12:29:43,276 INFO: epoch 0 step 551/2305 [seizeit2] loss 0.6123 lr 7.98e-06
+2026-10-14 12:30:10,260 INFO: epoch 0 step 601/2305 [seizeit2] loss 1.0373 lr 8.71e-06
+2026-10-14 12:30:31,450 INFO: epoch 0 step 651/2305 [seizeit2] loss 0.8878 lr 9.43e-06
+2026-10-14 12:30:52,300 INFO: epoch 0 step 701/2305 [seizeit2] loss 0.8090 lr 1.02e-05
+2026-10-14 12:31:14,210 INFO: epoch 0 step 751/2305 [seizeit2] loss 0.8324 lr 1.09e-05
+2026-10-14 12:31:33,658 INFO: epoch 0 step 801/2305 [seizeit2] loss 0.8491 lr 1.16e-05
+2026-10-14 12:31:54,212 INFO: epoch 0 step 851/2305 [seizeit2] loss 0.4552 lr 1.23e-05
+2026-10-14 12:32:14,885 INFO: epoch 0 step 901/2305 [seizeit2] loss 0.3708 lr 1.30e-05
+2026-10-14 12:32:35,568 INFO: epoch 0 step 951/2305 [seizeit2] loss 0.7902 lr 1.38e-05
+2026-10-14 12:32:53,983 INFO: epoch 0 step 1001/2305 [seizeit2] loss 0.6188 lr 1.45e-05
+2026-10-14 12:33:10,356 INFO: epoch 0 step 1051/2305 [seizeit2] loss 0.7990 lr 1.52e-05
+2026-10-14 12:33:26,476 INFO: epoch 0 step 1101/2305 [seizeit2] loss 1.5719 lr 1.59e-05
+2026-10-14 12:33:42,496 INFO: epoch 0 step 1151/2305 [seizeit2] loss 0.6750 lr 1.67e-05
+2026-10-14 12:34:01,173 INFO: epoch 0 step 1201/2305 [seizeit2] loss 0.5193 lr 1.74e-05
+2026-10-14 12:34:18,694 INFO: epoch 0 step 1251/2305 [seizeit2] loss 0.9387 lr 1.81e-05
+2026-10-14 12:34:35,565 INFO: epoch 0 step 1301/2305 [seizeit2] loss 0.6916 lr 1.88e-05
+2026-10-14 12:34:51,933 INFO: epoch 0 step 1351/2305 [seizeit2] loss 0.6858 lr 1.96e-05
+2026-10-14 12:35:10,753 INFO: epoch 0 step 1401/2305 [seizeit2] loss 0.8716 lr 2.03e-05
+2026-10-14 12:35:26,129 INFO: epoch 0 step 1451/2305 [seizeit2] loss 0.9176 lr 2.10e-05
+2026-10-14 12:35:41,107 INFO: epoch 0 step 1501/2305 [seizeit2] loss 0.5972 lr 2.17e-05
+2026-10-14 12:35:56,601 INFO: epoch 0 step 1551/2305 [seizeit2] loss 0.6705 lr 2.24e-05
+2026-10-14 12:36:13,728 INFO: epoch 0 step 1601/2305 [seizeit2] loss 0.5864 lr 2.32e-05
+2026-10-14 12:36:29,470 INFO: epoch 0 step 1651/2305 [seizeit2] loss 1.0590 lr 2.39e-05
+2026-10-14 12:36:44,257 INFO: epoch 0 step 1701/2305 [seizeit2] loss 0.8117 lr 2.46e-05
+2026-10-14 12:36:58,946 INFO: epoch 0 step 1751/2305 [seizeit2] loss 0.5580 lr 2.53e-05
+2026-10-14 12:37:19,213 INFO: epoch 0 step 1801/2305 [seizeit2] loss 0.7250 lr 2.61e-05
+2026-10-14 12:37:34,990 INFO: epoch 0 step 1851/2305 [seizeit2] loss 0.7083 lr 2.68e-05
+2026-10-14 12:37:50,328 INFO: epoch 0 step 1901/2305 [seizeit2] loss 0.6435 lr 2.75e-05
+2026-10-14 12:38:06,825 INFO: epoch 0 step 1951/2305 [seizeit2] loss 0.5544 lr 2.82e-05
+2026-10-14 12:38:22,547 INFO: epoch 0 step 2001/2305 [seizeit2] loss 0.5786 lr 2.90e-05
+2026-10-14 12:38:38,323 INFO: epoch 0 step 2051/2305 [seizeit2] loss 0.4700 lr 2.97e-05
+2026-10-14 12:38:55,953 INFO: epoch 0 step 2101/2305 [seizeit2] loss 0.6959 lr 3.04e-05
+2026-10-14 12:39:11,186 INFO: epoch 0 step 2151/2305 [seizeit2] loss 0.9199 lr 3.11e-05
+2026-10-14 12:39:25,765 INFO: epoch 0 step 2201/2305 [seizeit2] loss 0.5967 lr 3.18e-05
+2026-10-14 12:39:42,087 INFO: epoch 0 step 2251/2305 [seizeit2] loss 0.4829 lr 3.26e-05
+2026-10-14 12:39:56,518 INFO: epoch 0 step 2301/2305 [seizeit2] loss 0.4884 lr 3.33e-05
+2026-10-14 12:39:57,842 INFO: epoch 0 step 2305/2305 [seizeit2] loss 1.1954 lr 3.33e-05
+2026-10-14 12:41:03,879 INFO: epoch 0 done: seizeit2: acc=0.8713, auroc=0.7736, auprc=0.3339 | score 0.3339  (best)
+2026-10-14 12:41:04,833 INFO: epoch 1 step 1/2305 [seizeit2] loss 0.8100 lr 3.34e-05
+2026-10-14 12:41:21,239 INFO: epoch 1 step 51/2305 [seizeit2] loss 0.6487 lr 3.41e-05
+2026-10-14 12:41:37,174 INFO: epoch 1 step 101/2305 [seizeit2] loss 0.4902 lr 3.48e-05
+2026-10-14 12:41:53,025 INFO: epoch 1 step 151/2305 [seizeit2] loss 0.8043 lr 3.55e-05
+2026-10-14 12:42:08,708 INFO: epoch 1 step 201/2305 [seizeit2] loss 0.9585 lr 3.63e-05
+2026-10-14 12:42:28,225 INFO: epoch 1 step 251/2305 [seizeit2] loss 0.6116 lr 3.70e-05
+2026-10-14 12:42:43,832 INFO: epoch 1 step 301/2305 [seizeit2] loss 0.9609 lr 3.77e-05
+2026-10-14 12:42:59,093 INFO: epoch 1 step 351/2305 [seizeit2] loss 0.7500 lr 3.84e-05
+2026-10-14 12:43:14,809 INFO: epoch 1 step 401/2305 [seizeit2] loss 1.1633 lr 3.91e-05
+2026-10-14 12:43:32,781 INFO: epoch 1 step 451/2305 [seizeit2] loss 0.9216 lr 3.99e-05
+2026-10-14 12:43:52,122 INFO: epoch 1 step 501/2305 [seizeit2] loss 1.1379 lr 4.06e-05
+2026-10-14 12:44:09,110 INFO: epoch 1 step 551/2305 [seizeit2] loss 0.5915 lr 4.13e-05
+2026-10-14 12:44:22,296 INFO: epoch 1 step 601/2305 [seizeit2] loss 0.7921 lr 4.20e-05
+2026-10-14 12:44:37,609 INFO: epoch 1 step 651/2305 [seizeit2] loss 1.0096 lr 4.28e-05
+2026-10-14 12:44:53,353 INFO: epoch 1 step 701/2305 [seizeit2] loss 0.6432 lr 4.35e-05
+2026-10-14 12:45:10,105 INFO: epoch 1 step 751/2305 [seizeit2] loss 0.5282 lr 4.42e-05
+2026-10-14 12:45:26,550 INFO: epoch 1 step 801/2305 [seizeit2] loss 1.4264 lr 4.49e-05
+2026-10-14 12:45:43,873 INFO: epoch 1 step 851/2305 [seizeit2] loss 0.7924 lr 4.57e-05
+2026-10-14 12:46:01,130 INFO: epoch 1 step 901/2305 [seizeit2] loss 0.4166 lr 4.64e-05
+2026-10-14 12:46:17,355 INFO: epoch 1 step 951/2305 [seizeit2] loss 0.3249 lr 4.71e-05
+2026-10-14 12:46:34,355 INFO: epoch 1 step 1001/2305 [seizeit2] loss 0.5855 lr 4.78e-05
+2026-10-14 12:46:51,189 INFO: epoch 1 step 1051/2305 [seizeit2] loss 0.4402 lr 4.85e-05
+2026-10-14 12:47:07,812 INFO: epoch 1 step 1101/2305 [seizeit2] loss 0.7808 lr 4.93e-05
+2026-10-14 12:47:25,149 INFO: epoch 1 step 1151/2305 [seizeit2] loss 0.4881 lr 5.00e-05
+2026-10-14 12:47:40,159 INFO: epoch 1 step 1201/2305 [seizeit2] loss 0.4028 lr 5.07e-05
+2026-10-14 12:47:56,717 INFO: epoch 1 step 1251/2305 [seizeit2] loss 0.4115 lr 5.14e-05
+2026-10-14 12:48:14,413 INFO: epoch 1 step 1301/2305 [seizeit2] loss 0.5456 lr 5.22e-05
+2026-10-14 12:48:29,931 INFO: epoch 1 step 1351/2305 [seizeit2] loss 0.8680 lr 5.29e-05
+2026-10-14 12:48:46,017 INFO: epoch 1 step 1401/2305 [seizeit2] loss 0.6284 lr 5.36e-05
+2026-10-14 12:49:02,458 INFO: epoch 1 step 1451/2305 [seizeit2] loss 0.4841 lr 5.43e-05
+2026-10-14 12:49:21,479 INFO: epoch 1 step 1501/2305 [seizeit2] loss 0.5201 lr 5.51e-05
+2026-10-14 12:49:36,247 INFO: epoch 1 step 1551/2305 [seizeit2] loss 0.5694 lr 5.58e-05
+2026-10-14 12:49:55,109 INFO: epoch 1 step 1601/2305 [seizeit2] loss 0.7640 lr 5.65e-05
+2026-10-14 12:50:12,640 INFO: epoch 1 step 1651/2305 [seizeit2] loss 1.0037 lr 5.72e-05
+2026-10-14 12:50:29,613 INFO: epoch 1 step 1701/2305 [seizeit2] loss 0.4637 lr 5.79e-05
+2026-10-14 12:50:46,374 INFO: epoch 1 step 1751/2305 [seizeit2] loss 1.2935 lr 5.87e-05
+2026-10-14 12:51:02,228 INFO: epoch 1 step 1801/2305 [seizeit2] loss 0.5975 lr 5.94e-05
+2026-10-14 12:51:17,957 INFO: epoch 1 step 1851/2305 [seizeit2] loss 0.5167 lr 6.01e-05
+2026-10-14 12:51:34,849 INFO: epoch 1 step 1901/2305 [seizeit2] loss 0.5777 lr 6.08e-05
+2026-10-14 12:51:52,478 INFO: epoch 1 step 1951/2305 [seizeit2] loss 0.8532 lr 6.16e-05
+2026-10-14 12:52:09,630 INFO: epoch 1 step 2001/2305 [seizeit2] loss 0.5140 lr 6.23e-05
+2026-10-14 12:52:29,851 INFO: epoch 1 step 2051/2305 [seizeit2] loss 0.6856 lr 6.30e-05
+2026-10-14 12:52:45,784 INFO: epoch 1 step 2101/2305 [seizeit2] loss 0.6857 lr 6.37e-05
+2026-10-14 12:53:01,986 INFO: epoch 1 step 2151/2305 [seizeit2] loss 0.9888 lr 6.45e-05
+2026-10-14 12:53:18,932 INFO: epoch 1 step 2201/2305 [seizeit2] loss 0.6440 lr 6.52e-05
+2026-10-14 12:53:36,005 INFO: epoch 1 step 2251/2305 [seizeit2] loss 1.2554 lr 6.59e-05
+2026-10-14 12:53:52,110 INFO: epoch 1 step 2301/2305 [seizeit2] loss 0.4419 lr 6.66e-05
+2026-10-14 12:53:53,410 INFO: epoch 1 step 2305/2305 [seizeit2] loss 0.5032 lr 6.67e-05
+2026-10-14 12:55:03,806 INFO: epoch 1 done: seizeit2: acc=0.8582, auroc=0.8187, auprc=0.4179 | score 0.4179  (best)
+2026-10-14 12:55:04,578 INFO: epoch 2 step 1/2305 [seizeit2] loss 0.4654 lr 6.67e-05
+2026-10-14 12:55:24,054 INFO: epoch 2 step 51/2305 [seizeit2] loss 0.3354 lr 6.74e-05
+2026-10-14 12:55:39,309 INFO: epoch 2 step 101/2305 [seizeit2] loss 0.5010 lr 6.81e-05
+2026-10-14 12:55:55,009 INFO: epoch 2 step 151/2305 [seizeit2] loss 0.5068 lr 6.89e-05
+2026-10-14 12:56:11,052 INFO: epoch 2 step 201/2305 [seizeit2] loss 0.8582 lr 6.96e-05
+2026-10-14 12:56:27,704 INFO: epoch 2 step 251/2305 [seizeit2] loss 0.2915 lr 7.03e-05
+2026-10-14 12:56:42,375 INFO: epoch 2 step 301/2305 [seizeit2] loss 0.8839 lr 7.10e-05
+2026-10-14 12:56:56,743 INFO: epoch 2 step 351/2305 [seizeit2] loss 0.6568 lr 7.18e-05
+2026-10-14 12:57:12,531 INFO: epoch 2 step 401/2305 [seizeit2] loss 1.4349 lr 7.25e-05
+2026-10-14 12:57:29,763 INFO: epoch 2 step 451/2305 [seizeit2] loss 0.4665 lr 7.32e-05
+2026-10-14 12:57:44,625 INFO: epoch 2 step 501/2305 [seizeit2] loss 0.8001 lr 7.39e-05
+2026-10-14 12:57:57,418 INFO: epoch 2 step 551/2305 [seizeit2] loss 0.6845 lr 7.46e-05
+2026-10-14 12:58:10,126 INFO: epoch 2 step 601/2305 [seizeit2] loss 0.5725 lr 7.54e-05
+2026-10-14 12:58:22,866 INFO: epoch 2 step 651/2305 [seizeit2] loss 0.7118 lr 7.61e-05
+2026-10-14 12:58:35,562 INFO: epoch 2 step 701/2305 [seizeit2] loss 0.5565 lr 7.68e-05
+2026-10-14 12:58:48,229 INFO: epoch 2 step 751/2305 [seizeit2] loss 0.9501 lr 7.75e-05
+2026-10-14 12:59:00,975 INFO: epoch 2 step 801/2305 [seizeit2] loss 0.6734 lr 7.83e-05
+2026-10-14 12:59:13,725 INFO: epoch 2 step 851/2305 [seizeit2] loss 0.5300 lr 7.90e-05
+2026-10-14 12:59:26,444 INFO: epoch 2 step 901/2305 [seizeit2] loss 0.5927 lr 7.97e-05
+2026-10-14 12:59:39,169 INFO: epoch 2 step 951/2305 [seizeit2] loss 0.1720 lr 8.04e-05
+2026-10-14 12:59:52,007 INFO: epoch 2 step 1001/2305 [seizeit2] loss 0.4419 lr 8.12e-05
+2026-10-14 13:00:04,758 INFO: epoch 2 step 1051/2305 [seizeit2] loss 0.6045 lr 8.19e-05
+2026-10-14 13:00:17,566 INFO: epoch 2 step 1101/2305 [seizeit2] loss 0.4882 lr 8.26e-05
+2026-10-14 13:00:30,430 INFO: epoch 2 step 1151/2305 [seizeit2] loss 0.7559 lr 8.33e-05
+2026-10-14 13:00:43,048 INFO: epoch 2 step 1201/2305 [seizeit2] loss 0.7711 lr 8.40e-05
+2026-10-14 13:00:55,842 INFO: epoch 2 step 1251/2305 [seizeit2] loss 0.2972 lr 8.48e-05
+2026-10-14 13:01:08,472 INFO: epoch 2 step 1301/2305 [seizeit2] loss 0.9181 lr 8.55e-05
+2026-10-14 13:01:21,203 INFO: epoch 2 step 1351/2305 [seizeit2] loss 0.5151 lr 8.62e-05
+2026-10-14 13:01:33,862 INFO: epoch 2 step 1401/2305 [seizeit2] loss 0.9584 lr 8.69e-05
+2026-10-14 13:01:46,535 INFO: epoch 2 step 1451/2305 [seizeit2] loss 0.3712 lr 8.77e-05
+2026-10-14 13:01:59,185 INFO: epoch 2 step 1501/2305 [seizeit2] loss 1.0170 lr 8.84e-05
+2026-10-14 13:02:11,930 INFO: epoch 2 step 1551/2305 [seizeit2] loss 0.5590 lr 8.91e-05
+2026-10-14 13:02:24,698 INFO: epoch 2 step 1601/2305 [seizeit2] loss 0.4964 lr 8.98e-05
+2026-10-14 13:02:37,554 INFO: epoch 2 step 1651/2305 [seizeit2] loss 0.6419 lr 9.06e-05
+2026-10-14 13:02:50,204 INFO: epoch 2 step 1701/2305 [seizeit2] loss 0.5234 lr 9.13e-05
+2026-10-14 13:03:02,802 INFO: epoch 2 step 1751/2305 [seizeit2] loss 0.8383 lr 9.20e-05
+2026-10-14 13:03:15,536 INFO: epoch 2 step 1801/2305 [seizeit2] loss 0.4965 lr 9.27e-05
+2026-10-14 13:03:28,279 INFO: epoch 2 step 1851/2305 [seizeit2] loss 0.4081 lr 9.34e-05
+2026-10-14 13:03:41,033 INFO: epoch 2 step 1901/2305 [seizeit2] loss 0.4296 lr 9.42e-05
+2026-10-14 13:03:53,739 INFO: epoch 2 step 1951/2305 [seizeit2] loss 0.1955 lr 9.49e-05
+2026-10-14 13:04:06,385 INFO: epoch 2 step 2001/2305 [seizeit2] loss 0.5083 lr 9.56e-05
+2026-10-14 13:04:18,990 INFO: epoch 2 step 2051/2305 [seizeit2] loss 0.4397 lr 9.63e-05
+2026-10-14 13:04:31,796 INFO: epoch 2 step 2101/2305 [seizeit2] loss 0.4823 lr 9.71e-05
+2026-10-14 13:04:44,669 INFO: epoch 2 step 2151/2305 [seizeit2] loss 0.4080 lr 9.78e-05
+2026-10-14 13:04:57,340 INFO: epoch 2 step 2201/2305 [seizeit2] loss 0.7789 lr 9.85e-05
+2026-10-14 13:05:10,101 INFO: epoch 2 step 2251/2305 [seizeit2] loss 0.2889 lr 9.92e-05
+2026-10-14 13:05:22,800 INFO: epoch 2 step 2301/2305 [seizeit2] loss 0.7450 lr 1.00e-04
+2026-10-14 13:05:23,792 INFO: epoch 2 step 2305/2305 [seizeit2] loss 0.5847 lr 1.00e-04
+2026-10-14 13:06:13,910 INFO: epoch 2 done: seizeit2: acc=0.8905, auroc=0.8003, auprc=0.3815 | score 0.3815
+2026-10-14 13:06:14,267 INFO: epoch 3 step 1/2305 [seizeit2] loss 0.3528 lr 1.00e-04
+2026-10-14 13:06:27,008 INFO: epoch 3 step 51/2305 [seizeit2] loss 0.3566 lr 1.00e-04
+2026-10-14 13:06:39,698 INFO: epoch 3 step 101/2305 [seizeit2] loss 0.4501 lr 1.00e-04
+2026-10-14 13:06:52,450 INFO: epoch 3 step 151/2305 [seizeit2] loss 0.5510 lr 1.00e-04
+2026-10-14 13:07:05,171 INFO: epoch 3 step 201/2305 [seizeit2] loss 0.5353 lr 1.00e-04
+2026-10-14 13:07:17,845 INFO: epoch 3 step 251/2305 [seizeit2] loss 0.5556 lr 1.00e-04
+2026-10-14 13:07:30,505 INFO: epoch 3 step 301/2305 [seizeit2] loss 0.6220 lr 1.00e-04
+2026-10-14 13:07:43,190 INFO: epoch 3 step 351/2305 [seizeit2] loss 0.3744 lr 1.00e-04
+2026-10-14 13:07:56,004 INFO: epoch 3 step 401/2305 [seizeit2] loss 0.5507 lr 1.00e-04
+2026-10-14 13:08:08,779 INFO: epoch 3 step 451/2305 [seizeit2] loss 0.2002 lr 1.00e-04
+2026-10-14 13:08:21,549 INFO: epoch 3 step 501/2305 [seizeit2] loss 0.5653 lr 1.00e-04
+2026-10-14 13:08:34,302 INFO: epoch 3 step 551/2305 [seizeit2] loss 0.1976 lr 1.00e-04
+2026-10-14 13:08:47,187 INFO: epoch 3 step 601/2305 [seizeit2] loss 0.4997 lr 1.00e-04
+2026-10-14 13:08:59,902 INFO: epoch 3 step 651/2305 [seizeit2] loss 0.3280 lr 1.00e-04
+2026-10-14 13:09:12,513 INFO: epoch 3 step 701/2305 [seizeit2] loss 0.8488 lr 1.00e-04
+2026-10-14 13:09:25,260 INFO: epoch 3 step 751/2305 [seizeit2] loss 0.6259 lr 1.00e-04
+2026-10-14 13:09:38,129 INFO: epoch 3 step 801/2305 [seizeit2] loss 0.3588 lr 1.00e-04
+2026-10-14 13:09:50,987 INFO: epoch 3 step 851/2305 [seizeit2] loss 0.4624 lr 1.00e-04
+2026-10-14 13:10:03,783 INFO: epoch 3 step 901/2305 [seizeit2] loss 0.4531 lr 9.99e-05
+2026-10-14 13:10:16,470 INFO: epoch 3 step 951/2305 [seizeit2] loss 0.3751 lr 9.99e-05
+2026-10-14 13:10:29,332 INFO: epoch 3 step 1001/2305 [seizeit2] loss 0.4301 lr 9.99e-05
+2026-10-14 13:10:41,925 INFO: epoch 3 step 1051/2305 [seizeit2] loss 0.9730 lr 9.99e-05
+2026-10-14 13:10:54,597 INFO: epoch 3 step 1101/2305 [seizeit2] loss 0.6062 lr 9.99e-05
+2026-10-14 13:11:07,416 INFO: epoch 3 step 1151/2305 [seizeit2] loss 0.7031 lr 9.99e-05
+2026-10-14 13:11:20,182 INFO: epoch 3 step 1201/2305 [seizeit2] loss 0.8676 lr 9.99e-05
+2026-10-14 13:11:32,883 INFO: epoch 3 step 1251/2305 [seizeit2] loss 0.2777 lr 9.99e-05
+2026-10-14 13:11:45,564 INFO: epoch 3 step 1301/2305 [seizeit2] loss 1.1644 lr 9.99e-05
+2026-10-14 13:11:58,268 INFO: epoch 3 step 1351/2305 [seizeit2] loss 0.6280 lr 9.99e-05
+2026-10-14 13:12:11,049 INFO: epoch 3 step 1401/2305 [seizeit2] loss 0.2347 lr 9.99e-05
+2026-10-14 13:12:23,650 INFO: epoch 3 step 1451/2305 [seizeit2] loss 0.6218 lr 9.99e-05
+2026-10-14 13:12:36,359 INFO: epoch 3 step 1501/2305 [seizeit2] loss 0.5076 lr 9.99e-05
+2026-10-14 13:12:49,068 INFO: epoch 3 step 1551/2305 [seizeit2] loss 0.4827 lr 9.98e-05
+2026-10-14 13:13:01,792 INFO: epoch 3 step 1601/2305 [seizeit2] loss 0.4104 lr 9.98e-05
+2026-10-14 13:13:14,502 INFO: epoch 3 step 1651/2305 [seizeit2] loss 0.4891 lr 9.98e-05
+2026-10-14 13:13:27,132 INFO: epoch 3 step 1701/2305 [seizeit2] loss 0.3946 lr 9.98e-05
+2026-10-14 13:13:39,903 INFO: epoch 3 step 1751/2305 [seizeit2] loss 0.3516 lr 9.98e-05
+2026-10-14 13:13:52,649 INFO: epoch 3 step 1801/2305 [seizeit2] loss 0.3978 lr 9.98e-05
+2026-10-14 13:14:05,488 INFO: epoch 3 step 1851/2305 [seizeit2] loss 0.4012 lr 9.98e-05
+2026-10-14 13:14:18,078 INFO: epoch 3 step 1901/2305 [seizeit2] loss 0.3838 lr 9.98e-05
+2026-10-14 13:14:30,761 INFO: epoch 3 step 1951/2305 [seizeit2] loss 0.3722 lr 9.98e-05
+2026-10-14 13:14:43,537 INFO: epoch 3 step 2001/2305 [seizeit2] loss 0.9067 lr 9.97e-05
+2026-10-14 13:14:56,350 INFO: epoch 3 step 2051/2305 [seizeit2] loss 0.3472 lr 9.97e-05
+2026-10-14 13:15:09,266 INFO: epoch 3 step 2101/2305 [seizeit2] loss 0.2279 lr 9.97e-05
+2026-10-14 13:15:21,966 INFO: epoch 3 step 2151/2305 [seizeit2] loss 0.4261 lr 9.97e-05
+2026-10-14 13:15:34,688 INFO: epoch 3 step 2201/2305 [seizeit2] loss 0.5701 lr 9.97e-05
+2026-10-14 13:15:47,479 INFO: epoch 3 step 2251/2305 [seizeit2] loss 0.5600 lr 9.97e-05
+2026-10-14 13:16:00,266 INFO: epoch 3 step 2301/2305 [seizeit2] loss 0.6965 lr 9.97e-05
+2026-10-14 13:16:01,218 INFO: epoch 3 step 2305/2305 [seizeit2] loss 0.6563 lr 9.97e-05
+2026-10-14 13:16:50,625 INFO: epoch 3 done: seizeit2: acc=0.8632, auroc=0.7987, auprc=0.3467 | score 0.3467
+2026-10-14 13:16:51,030 INFO: epoch 4 step 1/2305 [seizeit2] loss 0.3562 lr 9.97e-05
+2026-10-14 13:17:03,915 INFO: epoch 4 step 51/2305 [seizeit2] loss 0.1783 lr 9.97e-05
+2026-10-14 13:17:16,681 INFO: epoch 4 step 101/2305 [seizeit2] loss 0.2746 lr 9.96e-05
+2026-10-14 13:17:29,470 INFO: epoch 4 step 151/2305 [seizeit2] loss 0.3702 lr 9.96e-05
+2026-10-14 13:17:42,132 INFO: epoch 4 step 201/2305 [seizeit2] loss 0.5084 lr 9.96e-05
+2026-10-14 13:17:54,916 INFO: epoch 4 step 251/2305 [seizeit2] loss 0.1073 lr 9.96e-05
+2026-10-14 13:18:07,814 INFO: epoch 4 step 301/2305 [seizeit2] loss 0.2394 lr 9.96e-05
+2026-10-14 13:18:20,533 INFO: epoch 4 step 351/2305 [seizeit2] loss 0.6090 lr 9.96e-05
+2026-10-14 13:18:33,356 INFO: epoch 4 step 401/2305 [seizeit2] loss 0.7969 lr 9.95e-05
+2026-10-14 13:18:46,036 INFO: epoch 4 step 451/2305 [seizeit2] loss 0.1705 lr 9.95e-05
+2026-10-14 13:18:58,866 INFO: epoch 4 step 501/2305 [seizeit2] loss 0.4122 lr 9.95e-05
+2026-10-14 13:19:11,647 INFO: epoch 4 step 551/2305 [seizeit2] loss 0.2592 lr 9.95e-05
+2026-10-14 13:19:24,614 INFO: epoch 4 step 601/2305 [seizeit2] loss 0.3184 lr 9.95e-05
+2026-10-14 13:19:37,417 INFO: epoch 4 step 651/2305 [seizeit2] loss 0.4121 lr 9.94e-05
+2026-10-14 13:19:50,039 INFO: epoch 4 step 701/2305 [seizeit2] loss 0.2241 lr 9.94e-05
+2026-10-14 13:20:02,728 INFO: epoch 4 step 751/2305 [seizeit2] loss 0.2185 lr 9.94e-05
+2026-10-14 13:20:15,511 INFO: epoch 4 step 801/2305 [seizeit2] loss 0.5646 lr 9.94e-05
+2026-10-14 13:20:28,186 INFO: epoch 4 step 851/2305 [seizeit2] loss 0.6677 lr 9.94e-05
+2026-10-14 13:20:40,998 INFO: epoch 4 step 901/2305 [seizeit2] loss 0.2462 lr 9.94e-05
+2026-10-14 13:20:53,802 INFO: epoch 4 step 951/2305 [seizeit2] loss 0.1758 lr 9.93e-05
+2026-10-14 13:21:06,543 INFO: epoch 4 step 1001/2305 [seizeit2] loss 0.3875 lr 9.93e-05
+2026-10-14 13:21:19,322 INFO: epoch 4 step 1051/2305 [seizeit2] loss 0.2024 lr 9.93e-05
+2026-10-14 13:21:31,987 INFO: epoch 4 step 1101/2305 [seizeit2] loss 0.3912 lr 9.93e-05
+2026-10-14 13:21:44,690 INFO: epoch 4 step 1151/2305 [seizeit2] loss 0.4486 lr 9.92e-05
+2026-10-14 13:21:57,496 INFO: epoch 4 step 1201/2305 [seizeit2] loss 0.5959 lr 9.92e-05
+2026-10-14 13:22:10,343 INFO: epoch 4 step 1251/2305 [seizeit2] loss 0.1941 lr 9.92e-05
+2026-10-14 13:22:23,033 INFO: epoch 4 step 1301/2305 [seizeit2] loss 0.9050 lr 9.92e-05
+2026-10-14 13:22:35,705 INFO: epoch 4 step 1351/2305 [seizeit2] loss 0.3357 lr 9.92e-05
+2026-10-14 13:22:48,334 INFO: epoch 4 step 1401/2305 [seizeit2] loss 0.5189 lr 9.91e-05
+2026-10-14 13:23:01,132 INFO: epoch 4 step 1451/2305 [seizeit2] loss 0.2117 lr 9.91e-05
+2026-10-14 13:23:13,991 INFO: epoch 4 step 1501/2305 [seizeit2] loss 0.3031 lr 9.91e-05
+2026-10-14 13:23:26,820 INFO: epoch 4 step 1551/2305 [seizeit2] loss 0.5757 lr 9.91e-05
+2026-10-14 13:23:39,538 INFO: epoch 4 step 1601/2305 [seizeit2] loss 0.3554 lr 9.90e-05
+2026-10-14 13:23:52,229 INFO: epoch 4 step 1651/2305 [seizeit2] loss 0.1361 lr 9.90e-05
+2026-10-14 13:24:04,982 INFO: epoch 4 step 1701/2305 [seizeit2] loss 0.4618 lr 9.90e-05
+2026-10-14 13:24:17,767 INFO: epoch 4 step 1751/2305 [seizeit2] loss 0.0989 lr 9.90e-05
+2026-10-14 13:24:30,446 INFO: epoch 4 step 1801/2305 [seizeit2] loss 0.5786 lr 9.89e-05
+2026-10-14 13:24:43,377 INFO: epoch 4 step 1851/2305 [seizeit2] loss 0.1762 lr 9.89e-05
+2026-10-14 13:24:56,108 INFO: epoch 4 step 1901/2305 [seizeit2] loss 0.5833 lr 9.89e-05
+2026-10-14 13:25:08,919 INFO: epoch 4 step 1951/2305 [seizeit2] loss 0.1412 lr 9.89e-05
+2026-10-14 13:25:21,534 INFO: epoch 4 step 2001/2305 [seizeit2] loss 0.6359 lr 9.88e-05
+2026-10-14 13:25:34,589 INFO: epoch 4 step 2051/2305 [seizeit2] loss 0.4710 lr 9.88e-05
+2026-10-14 13:25:47,237 INFO: epoch 4 step 2101/2305 [seizeit2] loss 0.3593 lr 9.88e-05
+2026-10-14 13:26:00,147 INFO: epoch 4 step 2151/2305 [seizeit2] loss 0.2818 lr 9.88e-05
+2026-10-14 13:26:12,948 INFO: epoch 4 step 2201/2305 [seizeit2] loss 0.2047 lr 9.87e-05
+2026-10-14 13:26:25,690 INFO: epoch 4 step 2251/2305 [seizeit2] loss 0.4471 lr 9.87e-05
+2026-10-14 13:26:38,488 INFO: epoch 4 step 2301/2305 [seizeit2] loss 0.3196 lr 9.87e-05
+2026-10-14 13:26:39,468 INFO: epoch 4 step 2305/2305 [seizeit2] loss 0.1051 lr 9.87e-05
+2026-10-14 13:27:29,886 INFO: epoch 4 done: seizeit2: acc=0.8977, auroc=0.7277, auprc=0.3479 | score 0.3479
+2026-10-14 13:27:30,236 INFO: epoch 5 step 1/2305 [seizeit2] loss 0.2729 lr 9.87e-05
+2026-10-14 13:27:42,889 INFO: epoch 5 step 51/2305 [seizeit2] loss 0.3731 lr 9.86e-05
+2026-10-14 13:27:55,682 INFO: epoch 5 step 101/2305 [seizeit2] loss 0.5025 lr 9.86e-05
+2026-10-14 13:28:08,473 INFO: epoch 5 step 151/2305 [seizeit2] loss 0.3858 lr 9.86e-05
+2026-10-14 13:28:21,221 INFO: epoch 5 step 201/2305 [seizeit2] loss 0.4451 lr 9.85e-05
+2026-10-14 13:28:33,953 INFO: epoch 5 step 251/2305 [seizeit2] loss 0.2613 lr 9.85e-05
+2026-10-14 13:28:46,918 INFO: epoch 5 step 301/2305 [seizeit2] loss 0.4773 lr 9.85e-05
+2026-10-14 13:28:59,629 INFO: epoch 5 step 351/2305 [seizeit2] loss 0.2584 lr 9.85e-05
+2026-10-14 13:29:12,434 INFO: epoch 5 step 401/2305 [seizeit2] loss 0.2615 lr 9.84e-05
+2026-10-14 13:29:25,140 INFO: epoch 5 step 451/2305 [seizeit2] loss 0.2347 lr 9.84e-05
+2026-10-14 13:29:37,975 INFO: epoch 5 step 501/2305 [seizeit2] loss 0.5723 lr 9.84e-05
+2026-10-14 13:29:50,679 INFO: epoch 5 step 551/2305 [seizeit2] loss 0.2209 lr 9.83e-05
+2026-10-14 13:30:03,373 INFO: epoch 5 step 601/2305 [seizeit2] loss 0.6187 lr 9.83e-05
+2026-10-14 13:30:16,277 INFO: epoch 5 step 651/2305 [seizeit2] loss 0.2229 lr 9.83e-05
+2026-10-14 13:30:29,070 INFO: epoch 5 step 701/2305 [seizeit2] loss 0.8255 lr 9.82e-05
+2026-10-14 13:30:41,976 INFO: epoch 5 step 751/2305 [seizeit2] loss 0.1263 lr 9.82e-05
+2026-10-14 13:30:54,737 INFO: epoch 5 step 801/2305 [seizeit2] loss 0.6017 lr 9.82e-05
+2026-10-14 13:31:07,647 INFO: epoch 5 step 851/2305 [seizeit2] loss 0.3823 lr 9.81e-05
+2026-10-14 13:31:20,314 INFO: epoch 5 step 901/2305 [seizeit2] loss 0.3322 lr 9.81e-05
+2026-10-14 13:31:33,008 INFO: epoch 5 step 951/2305 [seizeit2] loss 0.3722 lr 9.81e-05
+2026-10-14 13:31:45,607 INFO: epoch 5 step 1001/2305 [seizeit2] loss 0.1494 lr 9.80e-05
+2026-10-14 13:31:58,256 INFO: epoch 5 step 1051/2305 [seizeit2] loss 0.2565 lr 9.80e-05
+2026-10-14 13:32:11,087 INFO: epoch 5 step 1101/2305 [seizeit2] loss 0.2441 lr 9.80e-05
+2026-10-14 13:32:23,780 INFO: epoch 5 step 1151/2305 [seizeit2] loss 0.2254 lr 9.79e-05
+2026-10-14 13:32:36,614 INFO: epoch 5 step 1201/2305 [seizeit2] loss 0.6045 lr 9.79e-05
+2026-10-14 13:32:49,379 INFO: epoch 5 step 1251/2305 [seizeit2] loss 0.3395 lr 9.78e-05
+2026-10-14 13:33:02,191 INFO: epoch 5 step 1301/2305 [seizeit2] loss 0.6903 lr 9.78e-05
+2026-10-14 13:33:14,989 INFO: epoch 5 step 1351/2305 [seizeit2] loss 0.1763 lr 9.78e-05
+2026-10-14 13:33:27,757 INFO: epoch 5 step 1401/2305 [seizeit2] loss 0.9727 lr 9.77e-05
+2026-10-14 13:33:40,750 INFO: epoch 5 step 1451/2305 [seizeit2] loss 0.2888 lr 9.77e-05
+2026-10-14 13:33:53,395 INFO: epoch 5 step 1501/2305 [seizeit2] loss 0.4526 lr 9.77e-05
+2026-10-14 13:34:06,093 INFO: epoch 5 step 1551/2305 [seizeit2] loss 0.1988 lr 9.76e-05
+2026-10-14 13:34:18,740 INFO: epoch 5 step 1601/2305 [seizeit2] loss 0.1593 lr 9.76e-05
+2026-10-14 13:34:31,426 INFO: epoch 5 step 1651/2305 [seizeit2] loss 0.1717 lr 9.75e-05
+2026-10-14 13:34:44,020 INFO: epoch 5 step 1701/2305 [seizeit2] loss 0.1679 lr 9.75e-05
+2026-10-14 13:34:56,984 INFO: epoch 5 step 1751/2305 [seizeit2] loss 0.3121 lr 9.75e-05
+2026-10-14 13:35:09,647 INFO: epoch 5 step 1801/2305 [seizeit2] loss 0.4236 lr 9.74e-05
+2026-10-14 13:35:22,351 INFO: epoch 5 step 1851/2305 [seizeit2] loss 0.1870 lr 9.74e-05
+2026-10-14 13:35:35,079 INFO: epoch 5 step 1901/2305 [seizeit2] loss 0.1445 lr 9.74e-05
+2026-10-14 13:35:47,666 INFO: epoch 5 step 1951/2305 [seizeit2] loss 0.2846 lr 9.73e-05
+2026-10-14 13:36:00,272 INFO: epoch 5 step 2001/2305 [seizeit2] loss 0.1272 lr 9.73e-05
+2026-10-14 13:36:12,960 INFO: epoch 5 step 2051/2305 [seizeit2] loss 0.3095 lr 9.72e-05
+2026-10-14 13:36:25,699 INFO: epoch 5 step 2101/2305 [seizeit2] loss 0.6469 lr 9.72e-05
+2026-10-14 13:36:38,457 INFO: epoch 5 step 2151/2305 [seizeit2] loss 0.6758 lr 9.71e-05
+2026-10-14 13:36:51,232 INFO: epoch 5 step 2201/2305 [seizeit2] loss 1.0316 lr 9.71e-05
+2026-10-14 13:37:04,038 INFO: epoch 5 step 2251/2305 [seizeit2] loss 0.1308 lr 9.71e-05
+2026-10-14 13:37:16,708 INFO: epoch 5 step 2301/2305 [seizeit2] loss 0.2282 lr 9.70e-05
+2026-10-14 13:37:17,681 INFO: epoch 5 step 2305/2305 [seizeit2] loss 0.1608 lr 9.70e-05
+2026-10-14 13:38:05,403 INFO: epoch 5 done: seizeit2: acc=0.8968, auroc=0.7698, auprc=0.3395 | score 0.3395
+2026-10-14 13:38:05,758 INFO: epoch 6 step 1/2305 [seizeit2] loss 0.2474 lr 9.70e-05
+2026-10-14 13:38:18,334 INFO: epoch 6 step 51/2305 [seizeit2] loss 0.3821 lr 9.70e-05
+2026-10-14 13:38:31,130 INFO: epoch 6 step 101/2305 [seizeit2] loss 0.3181 lr 9.69e-05
+2026-10-14 13:38:43,991 INFO: epoch 6 step 151/2305 [seizeit2] loss 0.1158 lr 9.69e-05
+2026-10-14 13:38:56,696 INFO: epoch 6 step 201/2305 [seizeit2] loss 0.1138 lr 9.68e-05
+2026-10-14 13:39:09,555 INFO: epoch 6 step 251/2305 [seizeit2] loss 0.1865 lr 9.68e-05
+2026-10-14 13:39:22,408 INFO: epoch 6 step 301/2305 [seizeit2] loss 0.2616 lr 9.68e-05
+2026-10-14 13:39:35,105 INFO: epoch 6 step 351/2305 [seizeit2] loss 0.3112 lr 9.67e-05
+2026-10-14 13:39:47,951 INFO: epoch 6 step 401/2305 [seizeit2] loss 0.2515 lr 9.67e-05
+2026-10-14 13:40:00,839 INFO: epoch 6 step 451/2305 [seizeit2] loss 0.0975 lr 9.66e-05
+2026-10-14 13:40:13,543 INFO: epoch 6 step 501/2305 [seizeit2] loss 0.1399 lr 9.66e-05
+2026-10-14 13:40:26,225 INFO: epoch 6 step 551/2305 [seizeit2] loss 0.3037 lr 9.65e-05
+2026-10-14 13:40:38,858 INFO: epoch 6 step 601/2305 [seizeit2] loss 0.2333 lr 9.65e-05
+2026-10-14 13:40:51,509 INFO: epoch 6 step 651/2305 [seizeit2] loss 0.3152 lr 9.64e-05
+2026-10-14 13:41:04,317 INFO: epoch 6 step 701/2305 [seizeit2] loss 0.1105 lr 9.64e-05
+2026-10-14 13:41:17,078 INFO: epoch 6 step 751/2305 [seizeit2] loss 0.2822 lr 9.63e-05
+2026-10-14 13:41:29,778 INFO: epoch 6 step 801/2305 [seizeit2] loss 0.2596 lr 9.63e-05
+2026-10-14 13:41:42,407 INFO: epoch 6 step 851/2305 [seizeit2] loss 0.1210 lr 9.62e-05
+2026-10-14 13:41:55,199 INFO: epoch 6 step 901/2305 [seizeit2] loss 0.1706 lr 9.62e-05
+2026-10-14 13:42:07,840 INFO: epoch 6 step 951/2305 [seizeit2] loss 0.1604 lr 9.61e-05
+2026-10-14 13:42:20,566 INFO: epoch 6 step 1001/2305 [seizeit2] loss 0.7338 lr 9.61e-05
+2026-10-14 13:42:33,337 INFO: epoch 6 step 1051/2305 [seizeit2] loss 0.1284 lr 9.61e-05
+2026-10-14 13:42:46,031 INFO: epoch 6 step 1101/2305 [seizeit2] loss 0.3263 lr 9.60e-05
+2026-10-14 13:42:58,980 INFO: epoch 6 step 1151/2305 [seizeit2] loss 0.3038 lr 9.60e-05
+2026-10-14 13:43:11,653 INFO: epoch 6 step 1201/2305 [seizeit2] loss 0.1778 lr 9.59e-05
+2026-10-14 13:43:24,334 INFO: epoch 6 step 1251/2305 [seizeit2] loss 0.4085 lr 9.59e-05
+2026-10-14 13:43:36,959 INFO: epoch 6 step 1301/2305 [seizeit2] loss 0.2905 lr 9.58e-05
+2026-10-14 13:43:49,899 INFO: epoch 6 step 1351/2305 [seizeit2] loss 0.1175 lr 9.58e-05
+2026-10-14 13:44:02,741 INFO: epoch 6 step 1401/2305 [seizeit2] loss 0.6589 lr 9.57e-05
+2026-10-14 13:44:15,347 INFO: epoch 6 step 1451/2305 [seizeit2] loss 0.1605 lr 9.57e-05
+2026-10-14 13:44:28,104 INFO: epoch 6 step 1501/2305 [seizeit2] loss 0.1598 lr 9.56e-05
+2026-10-14 13:44:40,914 INFO: epoch 6 step 1551/2305 [seizeit2] loss 0.5121 lr 9.55e-05
+2026-10-14 13:44:53,537 INFO: epoch 6 step 1601/2305 [seizeit2] loss 0.1421 lr 9.55e-05
+2026-10-14 13:45:06,346 INFO: epoch 6 step 1651/2305 [seizeit2] loss 0.3225 lr 9.54e-05
+2026-10-14 13:45:19,066 INFO: epoch 6 step 1701/2305 [seizeit2] loss 0.3500 lr 9.54e-05
+2026-10-14 13:45:31,810 INFO: epoch 6 step 1751/2305 [seizeit2] loss 0.1643 lr 9.53e-05
+2026-10-14 13:45:44,543 INFO: epoch 6 step 1801/2305 [seizeit2] loss 0.2063 lr 9.53e-05
+2026-10-14 13:45:57,335 INFO: epoch 6 step 1851/2305 [seizeit2] loss 0.1917 lr 9.52e-05
+2026-10-14 13:46:10,056 INFO: epoch 6 step 1901/2305 [seizeit2] loss 0.5364 lr 9.52e-05
+2026-10-14 13:46:23,010 INFO: epoch 6 step 1951/2305 [seizeit2] loss 0.1206 lr 9.51e-05
+2026-10-14 13:46:36,022 INFO: epoch 6 step 2001/2305 [seizeit2] loss 0.2403 lr 9.51e-05
+2026-10-14 13:46:48,861 INFO: epoch 6 step 2051/2305 [seizeit2] loss 0.0906 lr 9.50e-05
+2026-10-14 13:47:01,562 INFO: epoch 6 step 2101/2305 [seizeit2] loss 0.4698 lr 9.50e-05
+2026-10-14 13:47:14,249 INFO: epoch 6 step 2151/2305 [seizeit2] loss 0.1787 lr 9.49e-05
+2026-10-14 13:47:27,004 INFO: epoch 6 step 2201/2305 [seizeit2] loss 1.0309 lr 9.49e-05
+2026-10-14 13:47:39,902 INFO: epoch 6 step 2251/2305 [seizeit2] loss 0.0737 lr 9.48e-05
+2026-10-14 13:47:52,714 INFO: epoch 6 step 2301/2305 [seizeit2] loss 0.1701 lr 9.47e-05
+2026-10-14 13:47:53,677 INFO: epoch 6 step 2305/2305 [seizeit2] loss 0.1421 lr 9.47e-05
+2026-10-14 13:48:41,553 INFO: epoch 6 done: seizeit2: acc=0.8960, auroc=0.8042, auprc=0.3892 | score 0.3892
+2026-10-14 13:48:41,936 INFO: epoch 7 step 1/2305 [seizeit2] loss 0.1621 lr 9.47e-05
+2026-10-14 13:48:54,663 INFO: epoch 7 step 51/2305 [seizeit2] loss 0.2005 lr 9.47e-05
+2026-10-14 13:49:07,375 INFO: epoch 7 step 101/2305 [seizeit2] loss 0.3124 lr 9.46e-05
+2026-10-14 13:49:20,141 INFO: epoch 7 step 151/2305 [seizeit2] loss 0.2015 lr 9.46e-05
+2026-10-14 13:49:32,874 INFO: epoch 7 step 201/2305 [seizeit2] loss 0.1508 lr 9.45e-05
+2026-10-14 13:49:45,585 INFO: epoch 7 step 251/2305 [seizeit2] loss 0.4943 lr 9.44e-05
+2026-10-14 13:49:58,369 INFO: epoch 7 step 301/2305 [seizeit2] loss 0.0873 lr 9.44e-05
+2026-10-14 13:50:11,148 INFO: epoch 7 step 351/2305 [seizeit2] loss 0.1623 lr 9.43e-05
+2026-10-14 13:50:23,997 INFO: epoch 7 step 401/2305 [seizeit2] loss 0.1531 lr 9.43e-05
+2026-10-14 13:50:36,751 INFO: epoch 7 step 451/2305 [seizeit2] loss 0.1070 lr 9.42e-05
+2026-10-14 13:50:49,462 INFO: epoch 7 step 501/2305 [seizeit2] loss 0.0991 lr 9.42e-05
+2026-10-14 13:51:02,194 INFO: epoch 7 step 551/2305 [seizeit2] loss 0.1461 lr 9.41e-05
+2026-10-14 13:51:14,945 INFO: epoch 7 step 601/2305 [seizeit2] loss 0.0517 lr 9.40e-05
+2026-10-14 13:51:27,753 INFO: epoch 7 step 651/2305 [seizeit2] loss 0.0732 lr 9.40e-05
+2026-10-14 13:51:40,455 INFO: epoch 7 step 701/2305 [seizeit2] loss 0.0765 lr 9.39e-05
+2026-10-14 13:51:53,426 INFO: epoch 7 step 751/2305 [seizeit2] loss 0.1069 lr 9.39e-05
+2026-10-14 13:52:06,100 INFO: epoch 7 step 801/2305 [seizeit2] loss 0.2528 lr 9.38e-05
+2026-10-14 13:52:18,949 INFO: epoch 7 step 851/2305 [seizeit2] loss 0.0639 lr 9.37e-05
+2026-10-14 13:52:31,793 INFO: epoch 7 step 901/2305 [seizeit2] loss 0.2736 lr 9.37e-05
+2026-10-14 13:52:44,476 INFO: epoch 7 step 951/2305 [seizeit2] loss 0.2872 lr 9.36e-05
+2026-10-14 13:52:57,225 INFO: epoch 7 step 1001/2305 [seizeit2] loss 0.0720 lr 9.36e-05
+2026-10-14 13:53:10,001 INFO: epoch 7 step 1051/2305 [seizeit2] loss 0.1054 lr 9.35e-05
+2026-10-14 13:53:22,864 INFO: epoch 7 step 1101/2305 [seizeit2] loss 0.1819 lr 9.34e-05
+2026-10-14 13:53:35,699 INFO: epoch 7 step 1151/2305 [seizeit2] loss 0.1002 lr 9.34e-05
+2026-10-14 13:53:48,341 INFO: epoch 7 step 1201/2305 [seizeit2] loss 0.0425 lr 9.33e-05
+2026-10-14 13:54:01,100 INFO: epoch 7 step 1251/2305 [seizeit2] loss 0.1746 lr 9.32e-05
+2026-10-14 13:54:13,829 INFO: epoch 7 step 1301/2305 [seizeit2] loss 0.1107 lr 9.32e-05
+2026-10-14 13:54:26,391 INFO: epoch 7 step 1351/2305 [seizeit2] loss 0.1358 lr 9.31e-05
+2026-10-14 13:54:39,096 INFO: epoch 7 step 1401/2305 [seizeit2] loss 0.4553 lr 9.31e-05
+2026-10-14 13:54:51,832 INFO: epoch 7 step 1451/2305 [seizeit2] loss 0.0728 lr 9.30e-05
+2026-10-14 13:55:04,696 INFO: epoch 7 step 1501/2305 [seizeit2] loss 0.1316 lr 9.29e-05
+2026-10-14 13:55:17,410 INFO: epoch 7 step 1551/2305 [seizeit2] loss 0.1924 lr 9.29e-05
+2026-10-14 13:55:30,271 INFO: epoch 7 step 1601/2305 [seizeit2] loss 0.0695 lr 9.28e-05
+2026-10-14 13:55:42,836 INFO: epoch 7 step 1651/2305 [seizeit2] loss 0.1752 lr 9.27e-05
+2026-10-14 13:55:55,563 INFO: epoch 7 step 1701/2305 [seizeit2] loss 0.0966 lr 9.27e-05
+2026-10-14 13:56:08,348 INFO: epoch 7 step 1751/2305 [seizeit2] loss 0.2592 lr 9.26e-05
+2026-10-14 13:56:21,114 INFO: epoch 7 step 1801/2305 [seizeit2] loss 0.0754 lr 9.25e-05
+2026-10-14 13:56:33,922 INFO: epoch 7 step 1851/2305 [seizeit2] loss 0.0835 lr 9.25e-05
+2026-10-14 13:56:46,667 INFO: epoch 7 step 1901/2305 [seizeit2] loss 0.2258 lr 9.24e-05
+2026-10-14 13:56:59,798 INFO: epoch 7 step 1951/2305 [seizeit2] loss 0.1004 lr 9.23e-05
+2026-10-14 13:57:12,726 INFO: epoch 7 step 2001/2305 [seizeit2] loss 0.6473 lr 9.23e-05
+2026-10-14 13:57:25,451 INFO: epoch 7 step 2051/2305 [seizeit2] loss 0.2797 lr 9.22e-05
+2026-10-14 13:57:38,241 INFO: epoch 7 step 2101/2305 [seizeit2] loss 0.2474 lr 9.21e-05
+2026-10-14 13:57:51,011 INFO: epoch 7 step 2151/2305 [seizeit2] loss 0.2515 lr 9.21e-05
+2026-10-14 13:58:03,796 INFO: epoch 7 step 2201/2305 [seizeit2] loss 0.1156 lr 9.20e-05
+2026-10-14 13:58:16,767 INFO: epoch 7 step 2251/2305 [seizeit2] loss 0.2587 lr 9.19e-05
+2026-10-14 13:58:29,582 INFO: epoch 7 step 2301/2305 [seizeit2] loss 0.1711 lr 9.19e-05
+2026-10-14 13:58:30,558 INFO: epoch 7 step 2305/2305 [seizeit2] loss 0.2794 lr 9.19e-05
+2026-10-14 13:59:19,450 INFO: epoch 7 done: seizeit2: acc=0.8920, auroc=0.7735, auprc=0.3366 | score 0.3366
+2026-10-14 13:59:19,834 INFO: epoch 8 step 1/2305 [seizeit2] loss 0.0464 lr 9.19e-05
+2026-10-14 13:59:32,405 INFO: epoch 8 step 51/2305 [seizeit2] loss 0.1185 lr 9.18e-05
+2026-10-14 13:59:45,234 INFO: epoch 8 step 101/2305 [seizeit2] loss 0.1133 lr 9.17e-05
+2026-10-14 13:59:57,889 INFO: epoch 8 step 151/2305 [seizeit2] loss 0.2127 lr 9.16e-05
+2026-10-14 14:00:10,725 INFO: epoch 8 step 201/2305 [seizeit2] loss 0.0777 lr 9.16e-05
+2026-10-14 14:00:23,555 INFO: epoch 8 step 251/2305 [seizeit2] loss 0.1198 lr 9.15e-05
+2026-10-14 14:00:36,264 INFO: epoch 8 step 301/2305 [seizeit2] loss 0.0552 lr 9.14e-05
+2026-10-14 14:00:48,940 INFO: epoch 8 step 351/2305 [seizeit2] loss 0.1559 lr 9.14e-05
+2026-10-14 14:01:01,690 INFO: epoch 8 step 401/2305 [seizeit2] loss 0.2616 lr 9.13e-05
+2026-10-14 14:01:14,424 INFO: epoch 8 step 451/2305 [seizeit2] loss 0.0921 lr 9.12e-05
+2026-10-14 14:01:27,128 INFO: epoch 8 step 501/2305 [seizeit2] loss 0.1336 lr 9.12e-05
+2026-10-14 14:01:39,789 INFO: epoch 8 step 551/2305 [seizeit2] loss 0.0975 lr 9.11e-05
+2026-10-14 14:01:52,444 INFO: epoch 8 step 601/2305 [seizeit2] loss 0.1198 lr 9.10e-05
+2026-10-14 14:02:05,210 INFO: epoch 8 step 651/2305 [seizeit2] loss 0.2359 lr 9.09e-05
+2026-10-14 14:02:17,959 INFO: epoch 8 step 701/2305 [seizeit2] loss 0.2532 lr 9.09e-05
+2026-10-14 14:02:30,762 INFO: epoch 8 step 751/2305 [seizeit2] loss 0.0578 lr 9.08e-05
+2026-10-14 14:02:43,492 INFO: epoch 8 step 801/2305 [seizeit2] loss 0.0850 lr 9.07e-05
+2026-10-14 14:02:56,309 INFO: epoch 8 step 851/2305 [seizeit2] loss 0.1217 lr 9.07e-05
+2026-10-14 14:03:09,019 INFO: epoch 8 step 901/2305 [seizeit2] loss 0.0982 lr 9.06e-05
+2026-10-14 14:03:21,899 INFO: epoch 8 step 951/2305 [seizeit2] loss 0.0736 lr 9.05e-05
+2026-10-14 14:03:34,570 INFO: epoch 8 step 1001/2305 [seizeit2] loss 0.5817 lr 9.04e-05
+2026-10-14 14:03:47,569 INFO: epoch 8 step 1051/2305 [seizeit2] loss 0.3514 lr 9.04e-05
+2026-10-14 14:04:00,365 INFO: epoch 8 step 1101/2305 [seizeit2] loss 0.0726 lr 9.03e-05
+2026-10-14 14:04:13,271 INFO: epoch 8 step 1151/2305 [seizeit2] loss 0.0593 lr 9.02e-05
+2026-10-14 14:04:26,001 INFO: epoch 8 step 1201/2305 [seizeit2] loss 0.0532 lr 9.01e-05
+2026-10-14 14:04:38,597 INFO: epoch 8 step 1251/2305 [seizeit2] loss 0.1528 lr 9.01e-05
+2026-10-14 14:04:51,367 INFO: epoch 8 step 1301/2305 [seizeit2] loss 0.5655 lr 9.00e-05
+2026-10-14 14:05:04,140 INFO: epoch 8 step 1351/2305 [seizeit2] loss 0.3025 lr 8.99e-05
+2026-10-14 14:05:16,990 INFO: epoch 8 step 1401/2305 [seizeit2] loss 0.1694 lr 8.98e-05
+2026-10-14 14:05:29,668 INFO: epoch 8 step 1451/2305 [seizeit2] loss 0.2429 lr 8.98e-05
+2026-10-14 14:05:42,551 INFO: epoch 8 step 1501/2305 [seizeit2] loss 0.2460 lr 8.97e-05
+2026-10-14 14:05:55,256 INFO: epoch 8 step 1551/2305 [seizeit2] loss 0.0805 lr 8.96e-05
+2026-10-14 14:06:08,037 INFO: epoch 8 step 1601/2305 [seizeit2] loss 0.3117 lr 8.95e-05
+2026-10-14 14:06:20,788 INFO: epoch 8 step 1651/2305 [seizeit2] loss 0.1170 lr 8.94e-05
+2026-10-14 14:06:33,651 INFO: epoch 8 step 1701/2305 [seizeit2] loss 0.2473 lr 8.94e-05
+2026-10-14 14:06:46,304 INFO: epoch 8 step 1751/2305 [seizeit2] loss 0.0518 lr 8.93e-05
+2026-10-14 14:06:59,067 INFO: epoch 8 step 1801/2305 [seizeit2] loss 0.0443 lr 8.92e-05
+2026-10-14 14:07:11,880 INFO: epoch 8 step 1851/2305 [seizeit2] loss 0.1372 lr 8.91e-05
+2026-10-14 14:07:24,481 INFO: epoch 8 step 1901/2305 [seizeit2] loss 0.1587 lr 8.91e-05
+2026-10-14 14:07:37,059 INFO: epoch 8 step 1951/2305 [seizeit2] loss 0.0948 lr 8.90e-05
+2026-10-14 14:07:49,903 INFO: epoch 8 step 2001/2305 [seizeit2] loss 0.2189 lr 8.89e-05
+2026-10-14 14:08:02,705 INFO: epoch 8 step 2051/2305 [seizeit2] loss 0.2513 lr 8.88e-05
+2026-10-14 14:08:15,334 INFO: epoch 8 step 2101/2305 [seizeit2] loss 0.6302 lr 8.87e-05
+2026-10-14 14:08:28,142 INFO: epoch 8 step 2151/2305 [seizeit2] loss 0.0726 lr 8.87e-05
+2026-10-14 14:08:40,939 INFO: epoch 8 step 2201/2305 [seizeit2] loss 0.0779 lr 8.86e-05
+2026-10-14 14:08:53,611 INFO: epoch 8 step 2251/2305 [seizeit2] loss 0.0814 lr 8.85e-05
+2026-10-14 14:09:06,269 INFO: epoch 8 step 2301/2305 [seizeit2] loss 0.4077 lr 8.84e-05
+2026-10-14 14:09:07,240 INFO: epoch 8 step 2305/2305 [seizeit2] loss 0.0827 lr 8.84e-05
+2026-10-14 14:09:56,531 INFO: epoch 8 done: seizeit2: acc=0.8952, auroc=0.7932, auprc=0.3658 | score 0.3658
+2026-10-14 14:09:56,892 INFO: epoch 9 step 1/2305 [seizeit2] loss 0.3107 lr 8.84e-05
+2026-10-14 14:10:09,802 INFO: epoch 9 step 51/2305 [seizeit2] loss 0.0668 lr 8.83e-05
+2026-10-14 14:10:22,466 INFO: epoch 9 step 101/2305 [seizeit2] loss 0.0676 lr 8.83e-05
+2026-10-14 14:10:35,222 INFO: epoch 9 step 151/2305 [seizeit2] loss 0.0580 lr 8.82e-05
+2026-10-14 14:10:48,067 INFO: epoch 9 step 201/2305 [seizeit2] loss 0.0710 lr 8.81e-05
+2026-10-14 14:11:00,831 INFO: epoch 9 step 251/2305 [seizeit2] loss 0.6943 lr 8.80e-05
+2026-10-14 14:11:13,640 INFO: epoch 9 step 301/2305 [seizeit2] loss 0.1687 lr 8.79e-05
+2026-10-14 14:11:26,380 INFO: epoch 9 step 351/2305 [seizeit2] loss 0.1495 lr 8.78e-05
+2026-10-14 14:11:39,157 INFO: epoch 9 step 401/2305 [seizeit2] loss 0.0764 lr 8.78e-05
+2026-10-14 14:11:51,919 INFO: epoch 9 step 451/2305 [seizeit2] loss 0.2901 lr 8.77e-05
+2026-10-14 14:12:04,740 INFO: epoch 9 step 501/2305 [seizeit2] loss 0.0517 lr 8.76e-05
+2026-10-14 14:12:17,551 INFO: epoch 9 step 551/2305 [seizeit2] loss 0.0839 lr 8.75e-05
+2026-10-14 14:12:30,215 INFO: epoch 9 step 601/2305 [seizeit2] loss 0.0698 lr 8.74e-05
+2026-10-14 14:12:43,003 INFO: epoch 9 step 651/2305 [seizeit2] loss 0.3171 lr 8.74e-05
+2026-10-14 14:12:55,668 INFO: epoch 9 step 701/2305 [seizeit2] loss 0.1861 lr 8.73e-05
+2026-10-14 14:13:08,432 INFO: epoch 9 step 751/2305 [seizeit2] loss 0.5391 lr 8.72e-05
+2026-10-14 14:13:21,106 INFO: epoch 9 step 801/2305 [seizeit2] loss 0.0674 lr 8.71e-05
+2026-10-14 14:13:33,845 INFO: epoch 9 step 851/2305 [seizeit2] loss 0.1938 lr 8.70e-05
+2026-10-14 14:13:46,551 INFO: epoch 9 step 901/2305 [seizeit2] loss 0.0693 lr 8.69e-05
+2026-10-14 14:13:59,335 INFO: epoch 9 step 951/2305 [seizeit2] loss 0.0840 lr 8.68e-05
+2026-10-14 14:14:12,214 INFO: epoch 9 step 1001/2305 [seizeit2] loss 0.5562 lr 8.68e-05
+2026-10-14 14:14:25,083 INFO: epoch 9 step 1051/2305 [seizeit2] loss 0.0533 lr 8.67e-05
+2026-10-14 14:14:37,789 INFO: epoch 9 step 1101/2305 [seizeit2] loss 0.0485 lr 8.66e-05
+2026-10-14 14:14:50,590 INFO: epoch 9 step 1151/2305 [seizeit2] loss 0.0687 lr 8.65e-05
+2026-10-14 14:15:03,331 INFO: epoch 9 step 1201/2305 [seizeit2] loss 0.1823 lr 8.64e-05
+2026-10-14 14:15:16,204 INFO: epoch 9 step 1251/2305 [seizeit2] loss 0.1478 lr 8.63e-05
+2026-10-14 14:15:28,953 INFO: epoch 9 step 1301/2305 [seizeit2] loss 0.2847 lr 8.62e-05
+2026-10-14 14:15:41,715 INFO: epoch 9 step 1351/2305 [seizeit2] loss 0.0971 lr 8.62e-05
+2026-10-14 14:15:54,362 INFO: epoch 9 step 1401/2305 [seizeit2] loss 0.0868 lr 8.61e-05
+2026-10-14 14:16:07,142 INFO: epoch 9 step 1451/2305 [seizeit2] loss 0.1817 lr 8.60e-05
+2026-10-14 14:16:19,901 INFO: epoch 9 step 1501/2305 [seizeit2] loss 0.0546 lr 8.59e-05
+2026-10-14 14:16:32,671 INFO: epoch 9 step 1551/2305 [seizeit2] loss 0.1142 lr 8.58e-05
+2026-10-14 14:16:45,398 INFO: epoch 9 step 1601/2305 [seizeit2] loss 0.0769 lr 8.57e-05
+2026-10-14 14:16:58,179 INFO: epoch 9 step 1651/2305 [seizeit2] loss 0.3934 lr 8.56e-05
+2026-10-14 14:17:10,899 INFO: epoch 9 step 1701/2305 [seizeit2] loss 0.4076 lr 8.56e-05
+2026-10-14 14:17:23,628 INFO: epoch 9 step 1751/2305 [seizeit2] loss 0.2944 lr 8.55e-05
+2026-10-14 14:17:36,420 INFO: epoch 9 step 1801/2305 [seizeit2] loss 0.0587 lr 8.54e-05
+2026-10-14 14:17:49,278 INFO: epoch 9 step 1851/2305 [seizeit2] loss 0.1074 lr 8.53e-05
+2026-10-14 14:18:01,991 INFO: epoch 9 step 1901/2305 [seizeit2] loss 0.2101 lr 8.52e-05
+2026-10-14 14:18:14,812 INFO: epoch 9 step 1951/2305 [seizeit2] loss 0.5280 lr 8.51e-05
+2026-10-14 14:18:27,555 INFO: epoch 9 step 2001/2305 [seizeit2] loss 0.1015 lr 8.50e-05
+2026-10-14 14:18:40,245 INFO: epoch 9 step 2051/2305 [seizeit2] loss 0.0711 lr 8.49e-05
+2026-10-14 14:18:52,922 INFO: epoch 9 step 2101/2305 [seizeit2] loss 0.1805 lr 8.48e-05
+2026-10-14 14:19:05,883 INFO: epoch 9 step 2151/2305 [seizeit2] loss 0.1104 lr 8.47e-05
+2026-10-14 14:19:18,528 INFO: epoch 9 step 2201/2305 [seizeit2] loss 0.0671 lr 8.47e-05
+2026-10-14 14:19:31,267 INFO: epoch 9 step 2251/2305 [seizeit2] loss 0.0777 lr 8.46e-05
+2026-10-14 14:19:44,118 INFO: epoch 9 step 2301/2305 [seizeit2] loss 0.0860 lr 8.45e-05
+2026-10-14 14:19:45,081 INFO: epoch 9 step 2305/2305 [seizeit2] loss 0.0328 lr 8.45e-05
+2026-10-14 14:20:36,109 INFO: epoch 9 done: seizeit2: acc=0.8954, auroc=0.7753, auprc=0.3253 | score 0.3253
+2026-10-14 14:20:36,109 INFO: no improvement for 8 epochs; stopping
+2026-10-14 14:21:56,046 INFO: test seizeit2/complete: acc=0.8755, balanced_acc=0.7118, macro_f1=0.6651, auroc=0.8249, auprc=0.3909
+2026-10-14 14:23:14,176 INFO: test seizeit2/eeg_only: acc=0.9118, balanced_acc=0.5352, macro_f1=0.5448, auroc=0.6375, auprc=0.1581
+2026-10-14 14:24:32,345 INFO: test seizeit2/ecg_only: acc=0.8815, balanced_acc=0.6636, macro_f1=0.6442, auroc=0.7992, auprc=0.3326
+2026-10-14 14:25:50,712 INFO: test seizeit2/emg_only: acc=0.8792, balanced_acc=0.5731, macro_f1=0.5757, auroc=0.6773, auprc=0.2097
+2026-10-14 14:27:09,976 INFO: test seizeit2/eeg_ecg: acc=0.8834, balanced_acc=0.6837, macro_f1=0.6579, auroc=0.8081, auprc=0.3680
+2026-10-14 14:28:29,822 INFO: test seizeit2/eeg_emg: acc=0.8930, balanced_acc=0.5746, macro_f1=0.5845, auroc=0.7275, auprc=0.2124
+2026-10-14 14:29:49,695 INFO: test seizeit2/ecg_emg: acc=0.8730, balanced_acc=0.6949, macro_f1=0.6540, auroc=0.8157, auprc=0.3482
+2026-10-14 14:31:13,016 INFO: test seizeit2/eeg_noise: acc=0.8741, balanced_acc=0.7086, macro_f1=0.6621, auroc=0.8211, auprc=0.3847
+2026-10-14 14:32:35,327 INFO: test seizeit2/eeg_bad_channel: acc=0.8763, balanced_acc=0.6979, macro_f1=0.6588, auroc=0.8109, auprc=0.3516
+2026-10-14 14:33:59,925 INFO: test seizeit2/eeg_drift: acc=0.8690, balanced_acc=0.6974, macro_f1=0.6516, auroc=0.8093, auprc=0.3435
+2026-10-14 14:35:26,108 INFO: test seizeit2/ecg_saturation: acc=0.8670, balanced_acc=0.6774, macro_f1=0.6392, auroc=0.7901, auprc=0.3068
+2026-10-14 14:36:49,557 INFO: test seizeit2/ecg_noise: acc=0.8481, balanced_acc=0.7284, macro_f1=0.6477, auroc=0.8231, auprc=0.3815
+2026-10-14 14:38:12,906 INFO: test seizeit2/emg_dropout: acc=0.8930, balanced_acc=0.6989, macro_f1=0.6766, auroc=0.8185, auprc=0.3839
+2026-10-14 14:39:38,379 INFO: test seizeit2/emg_noise: acc=0.8982, balanced_acc=0.6915, macro_f1=0.6783, auroc=0.8204, auprc=0.3976
+2026-10-14 14:39:38,385 INFO: wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_scratch_sz39/results.json

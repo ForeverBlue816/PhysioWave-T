@@ -11,3 +11,6 @@ Loading cineca-ai/4.3.0
     openjdk/11.0.20.1_1
 ==> mpdb: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb -> /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb  (09:17)
 mpdb raw: 35 subject(s) under /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb_raw
+  subject 1: 234 windows (234 with ECG, 234 with EMG)  brake:48w/emg 675/675 throttle:48w/emg 507/507 turn:44w/emg 615/615 change:94w/emg 517/517
+  subject 2: 268 windows (268 with ECG, 268 with EMG)  brake:48w/emg 610/612 throttle:39w/emg 371/371 turn:48w/emg 589/592 change:133w/emg 671/671
+  subject 3: 235 windows (235 with ECG, 214 with EMG)  brake:48w/emg 724/732 throttle:48w/emg 576/576 turn:48w/emg 623/628 change:91w/emg 324/425

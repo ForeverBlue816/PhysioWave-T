@@ -1,0 +1,253 @@
+{
+  "fusion": "ralf",
+  "encoder_mode": "scratch",
+  "best_epoch": 6,
+  "best_score": 0.3975646637139006,
+  "select_by": {
+    "mpdb": "balanced_acc"
+  },
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 32,
+    "lr": 0.0001,
+    "layer_decay": 0.75,
+    "weight_decay": 0.05,
+    "modality_dropout": 0.3,
+    "uni_weight": 0.2,
+    "reliability_weight": 1.0,
+    "consistency_weight": 1.0,
+    "class_weight": "sqrt"
+  },
+  "corruption_severity": 0.7,
+  "encoders": {
+    "mpdb": {
+      "eeg": {
+        "modality": "eeg",
+        "route": null,
+        "exported": null,
+        "embed_dim": 384,
+        "taken": [],
+        "skipped": [],
+        "summary": "from scratch"
+      },
+      "ecg": {
+        "modality": "ecg",
+        "route": "L1_250",
+        "exported": null,
+        "embed_dim": 384,
+        "taken": [],
+        "skipped": [],
+        "summary": "from scratch"
+      },
+      "emg": {
+        "modality": "emg",
+        "route": null,
+        "exported": null,
+        "embed_dim": 384,
+        "taken": [],
+        "skipped": [],
+        "summary": "from scratch"
+      }
+    }
+  },
+  "seconds": 1136.0971007347107,
+  "tasks": {
+    "mpdb": {
+      "classes": [
+        "smooth",
+        "acceleration",
+        "deceleration",
+        "lane_change",
+        "turning"
+      ],
+      "val": {
+        "acc": 0.4219204655674103,
+        "balanced_acc": 0.3975646637139006,
+        "kappa": 0.26406270023486245,
+        "weighted_f1": 0.4057531849937547,
+        "macro_f1": 0.3847767866024661,
+        "auroc": 0.7168197739045205,
+        "n": 1031,
+        "dropped": 0,
+        "reliability_eeg": 0.8643906712532043,
+        "reliability_ecg": 0.807708203792572,
+        "reliability_emg": 0.8607816696166992
+      },
+      "test": {
+        "complete": {
+          "acc": 0.40926275992438566,
+          "balanced_acc": 0.3681332385298258,
+          "kappa": 0.2321376938235421,
+          "weighted_f1": 0.3809316290700215,
+          "macro_f1": 0.3559719182904172,
+          "auroc": 0.6971402659138792,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.859322726726532
+        },
+        "eeg_only": {
+          "acc": 0.32041587901701324,
+          "balanced_acc": 0.3298223865786275,
+          "kappa": 0.1631247806604994,
+          "weighted_f1": 0.3143137840875825,
+          "macro_f1": 0.300596880168832,
+          "auroc": 0.6288943990018947,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519
+        },
+        "ecg_only": {
+          "acc": 0.2504725897920605,
+          "balanced_acc": 0.21490820241659306,
+          "kappa": 0.023681990353117688,
+          "weighted_f1": 0.1828599855601385,
+          "macro_f1": 0.1571720446522316,
+          "auroc": 0.5244016830739455,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_ecg": 0.8543919324874878
+        },
+        "emg_only": {
+          "acc": 0.37728585178055823,
+          "balanced_acc": 0.329747148626459,
+          "kappa": 0.187549400904505,
+          "weighted_f1": 0.32968325761850353,
+          "macro_f1": 0.3031355768804081,
+          "auroc": 0.6893472131069711,
+          "n": 1039,
+          "dropped": 19,
+          "reliability_emg": 0.859322726726532
+        },
+        "eeg_ecg": {
+          "acc": 0.3534971644612476,
+          "balanced_acc": 0.30968627176711144,
+          "kappa": 0.16534183440442518,
+          "weighted_f1": 0.3421700880262292,
+          "macro_f1": 0.3030129691186646,
+          "auroc": 0.623118191985263,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.8543919324874878
+        },
+        "eeg_emg": {
+          "acc": 0.3941398865784499,
+          "balanced_acc": 0.3580815310833355,
+          "kappa": 0.21720993582344528,
+          "weighted_f1": 0.3645211465422839,
+          "macro_f1": 0.3411817876200139,
+          "auroc": 0.7038389385415738,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_emg": 0.859322726726532
+        },
+        "ecg_emg": {
+          "acc": 0.3714555765595463,
+          "balanced_acc": 0.3166351601538423,
+          "kappa": 0.1727075932830775,
+          "weighted_f1": 0.32552723796295024,
+          "macro_f1": 0.2929304442101682,
+          "auroc": 0.6710917266234475,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.859322726726532
+        },
+        "eeg_noise": {
+          "acc": 0.391304347826087,
+          "balanced_acc": 0.3417891743786497,
+          "kappa": 0.20185084312933066,
+          "weighted_f1": 0.35227022508901573,
+          "macro_f1": 0.3246126644575712,
+          "auroc": 0.6897299270772177,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8448264598846436,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.859322726726532
+        },
+        "eeg_bad_channel": {
+          "acc": 0.3752362948960302,
+          "balanced_acc": 0.3227278334588951,
+          "kappa": 0.17959961756614873,
+          "weighted_f1": 0.3338418564496075,
+          "macro_f1": 0.3028637147328917,
+          "auroc": 0.6835423260456586,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.35172510147094727,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.859322726726532
+        },
+        "eeg_drift": {
+          "acc": 0.3733459357277883,
+          "balanced_acc": 0.31302734818962896,
+          "kappa": 0.17102179593389966,
+          "weighted_f1": 0.3218986790538427,
+          "macro_f1": 0.2864207723453126,
+          "auroc": 0.6756356981346021,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.22961004078388214,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.859322726726532
+        },
+        "ecg_saturation": {
+          "acc": 0.4224952741020794,
+          "balanced_acc": 0.39286368938699756,
+          "kappa": 0.25678414780664194,
+          "weighted_f1": 0.3957964526927429,
+          "macro_f1": 0.3751687029287563,
+          "auroc": 0.7092457460931753,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.46802854537963867,
+          "reliability_emg": 0.859322726726532
+        },
+        "ecg_noise": {
+          "acc": 0.40831758034026466,
+          "balanced_acc": 0.3607008064318681,
+          "kappa": 0.2276777905531313,
+          "weighted_f1": 0.3730383896054445,
+          "macro_f1": 0.34490858503123595,
+          "auroc": 0.7014618269363447,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.8097997307777405,
+          "reliability_emg": 0.859322726726532
+        },
+        "emg_dropout": {
+          "acc": 0.3960302457466919,
+          "balanced_acc": 0.36853151260026384,
+          "kappa": 0.22290652284859103,
+          "weighted_f1": 0.38228782888580026,
+          "macro_f1": 0.3629309799813346,
+          "auroc": 0.6893651057218618,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.6162246465682983
+        },
+        "emg_noise": {
+          "acc": 0.4017013232514178,
+          "balanced_acc": 0.38231702762506775,
+          "kappa": 0.2398321014111109,
+          "weighted_f1": 0.38739032845213184,
+          "macro_f1": 0.35971315198751025,
+          "auroc": 0.696525941866151,
+          "n": 1058,
+          "dropped": 0,
+          "reliability_eeg": 0.8821074366569519,
+          "reliability_ecg": 0.8543919324874878,
+          "reliability_emg": 0.764403223991394
+        }
+      }
+    }
+  }
+}

@@ -55,6 +55,24 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_lr3e-4_e38ld"
     },
     {
+      "mode": "ft",
+      "tag": "lr3e-4_e38rows",
+      "test": {
+        "loss": 0.5030823596182676,
+        "acc": 0.9479665940450254,
+        "balanced_acc": 0.9479665940450254,
+        "kappa": 0.9375599128540305,
+        "weighted_f1": 0.947919936326912,
+        "macro_f1": 0.9479199363269118,
+        "auroc": 0.9926673485822959
+      },
+      "lr": 0.0003,
+      "best_val": 0.9637908496732026,
+      "best_epoch": 24,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_lr3e-4_e38rows"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -71,6 +89,24 @@
       "best_epoch": 26,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_probe_lr1e-3_e38"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3_e38rows",
+      "test": {
+        "loss": 0.31210999782741633,
+        "acc": 0.8989469862018882,
+        "balanced_acc": 0.8989469862018881,
+        "kappa": 0.8787363834422658,
+        "weighted_f1": 0.8988082323176845,
+        "macro_f1": 0.8988082323176846,
+        "auroc": 0.9886198652623319
+      },
+      "lr": 0.001,
+      "best_val": 0.9114161220043573,
+      "best_epoch": 29,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_probe_lr1e-3_e38rows"
     },
     {
       "mode": "scratch",
@@ -165,6 +201,24 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_lr3e-4_e38ld"
     },
     {
+      "mode": "ft",
+      "tag": "lr3e-4_e38rows",
+      "test": {
+        "loss": 0.9101931314000393,
+        "acc": 0.9289760348583878,
+        "balanced_acc": 0.9289760348583879,
+        "kappa": 0.9147712418300654,
+        "weighted_f1": 0.9289313011518121,
+        "macro_f1": 0.9289313011518122,
+        "auroc": 0.9852567479744258
+      },
+      "lr": 0.0003,
+      "best_val": 0.9273118279569893,
+      "best_epoch": 29,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_lr3e-4_e38rows"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -181,6 +235,24 @@
       "best_epoch": 21,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_probe_lr1e-3_e38"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3_e38rows",
+      "test": {
+        "loss": 0.3407239055237885,
+        "acc": 0.8975599128540305,
+        "balanced_acc": 0.8975599128540305,
+        "kappa": 0.8770718954248365,
+        "weighted_f1": 0.8975800395477068,
+        "macro_f1": 0.8975800395477068,
+        "auroc": 0.9879326096800375
+      },
+      "lr": 0.001,
+      "best_val": 0.8994623655913978,
+      "best_epoch": 27,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_probe_lr1e-3_e38rows"
     },
     {
       "mode": "scratch",
@@ -275,6 +347,24 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_lr3e-4_e38ld"
     },
     {
+      "mode": "ft",
+      "tag": "lr3e-4_e38rows",
+      "test": {
+        "loss": 1.064453548592333,
+        "acc": 0.8977699606974573,
+        "balanced_acc": 0.8977699606974573,
+        "kappa": 0.8913805832410484,
+        "weighted_f1": 0.8974092756393138,
+        "macro_f1": 0.897409275639314,
+        "auroc": 0.990242187103794
+      },
+      "lr": 0.0003,
+      "best_val": 0.9540203678370573,
+      "best_epoch": 29,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_lr3e-4_e38rows"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -291,6 +381,24 @@
       "best_epoch": 27,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_probe_lr1e-3_e38"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3_e38rows",
+      "test": {
+        "loss": 0.8556471274579418,
+        "acc": 0.8740581503919397,
+        "balanced_acc": 0.8740581503919398,
+        "kappa": 0.866186784791436,
+        "weighted_f1": 0.87435673484221,
+        "macro_f1": 0.87435673484221,
+        "auroc": 0.9925383660264577
+      },
+      "lr": 0.001,
+      "best_val": 0.9211126310989513,
+      "best_epoch": 26,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_probe_lr1e-3_e38rows"
     },
     {
       "mode": "scratch",
@@ -385,6 +493,24 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_lr3e-4_e38ld"
     },
     {
+      "mode": "ft",
+      "tag": "lr3e-4_e38rows",
+      "test": {
+        "loss": 1.6718656518389245,
+        "acc": 0.8090569561157797,
+        "balanced_acc": 0.8090569561157797,
+        "kappa": 0.7971230158730158,
+        "weighted_f1": 0.8067987949963913,
+        "macro_f1": 0.8067987949963913,
+        "auroc": 0.97638332882307
+      },
+      "lr": 0.0003,
+      "best_val": 0.7488847390808175,
+      "best_epoch": 15,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_lr3e-4_e38rows"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -401,6 +527,24 @@
       "best_epoch": 14,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_probe_lr1e-3_e38"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3_e38rows",
+      "test": {
+        "loss": 0.8344730546708289,
+        "acc": 0.8328146073244113,
+        "balanced_acc": 0.8328146073244111,
+        "kappa": 0.8223655202821869,
+        "weighted_f1": 0.832933771959138,
+        "macro_f1": 0.8329337719591381,
+        "auroc": 0.9887501196752135
+      },
+      "lr": 0.001,
+      "best_val": 0.7557319223985891,
+      "best_epoch": 13,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_probe_lr1e-3_e38rows"
     },
     {
       "mode": "scratch",
@@ -533,6 +677,24 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_ft_lr3e-4_e38ld"
     },
     {
+      "mode": "ft",
+      "tag": "lr3e-4_e38rows",
+      "test": {
+        "loss": 2.3591798534222144,
+        "acc": 0.632039542986792,
+        "balanced_acc": 0.6234030899755518,
+        "kappa": 0.6243390302304135,
+        "weighted_f1": 0.6279272389459009,
+        "macro_f1": 0.6193710574015805,
+        "auroc": 0.9667958079429667
+      },
+      "lr": 0.0003,
+      "best_val": 0.5669099756690997,
+      "best_epoch": 28,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_ft_lr3e-4_e38rows"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38ld",
       "test": {
@@ -549,6 +711,24 @@
       "best_epoch": 20,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_probe_lr1e-3_e38ld"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3_e38rows",
+      "test": {
+        "loss": 2.3705434748577963,
+        "acc": 0.3692569483834373,
+        "balanced_acc": 0.3546295437541869,
+        "kappa": 0.3560315262807304,
+        "weighted_f1": 0.3633137825780807,
+        "macro_f1": 0.3492549955526007,
+        "auroc": 0.934785775359452
+      },
+      "lr": 0.001,
+      "best_val": 0.32562854825628545,
+      "best_epoch": 28,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_probe_lr1e-3_e38rows"
     },
     {
       "mode": "scratch",
