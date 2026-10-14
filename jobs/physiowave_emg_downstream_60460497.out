@@ -1,0 +1,30 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  sEMG C1 downstream  (job 60460497, 1 node, 4 GPUs)
+  tasks  epn612 grabmyo epn612_xuser grabmyo_xsubj ninapro_db5
+  modes  ft@3e-4 probe@1e-3
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/epoch38.pth
+  output /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream
+============================================================
+[gpu 0] epn612 ft@3e-4: start 07:45 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_lr3e-4_e38rows.log
+[gpu 1] grabmyo ft@3e-4: start 07:45 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_lr3e-4_e38rows.log
+[gpu 2] epn612_xuser ft@3e-4: start 07:45 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_lr3e-4_e38rows.log
+[gpu 3] grabmyo_xsubj ft@3e-4: start 07:45 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_lr3e-4_e38rows.log
+[gpu 0] epn612 ft@3e-4: done 08:43
+[gpu 0] epn612 probe@1e-3: start 08:43 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_probe_lr1e-3_e38rows.log
+[gpu 2] epn612_xuser ft@3e-4: done 08:48
+[gpu 2] epn612_xuser probe@1e-3: start 08:48 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_probe_lr1e-3_e38rows.log
+[gpu 1] grabmyo ft@3e-4: done 09:04
+[gpu 1] grabmyo probe@1e-3: start 09:04 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_probe_lr1e-3_e38rows.log
+[gpu 3] grabmyo_xsubj ft@3e-4: done 09:11
+[gpu 3] grabmyo_xsubj probe@1e-3: start 09:11 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_probe_lr1e-3_e38rows.log

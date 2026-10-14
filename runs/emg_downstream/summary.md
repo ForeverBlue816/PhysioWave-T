@@ -48,6 +48,20 @@ pretrained - scratch (Acc, each chosen on validation): +0.0451
 |   C1 fine-tuned [e38] | 1e-04 | 0.7903 | 0.7903 | 0.7888 | 0.7772 | 0.7364 | ep 16 |
 |   C1 fine-tuned [e38ld] | 1e-04 | 0.7929 | 0.7929 | 0.7919 | 0.7800 | 0.7002 | ep 27 |
 | ✓ C1 linear probe [e38] | 1e-03 | 0.8321 | 0.8321 | 0.8321 | 0.8216 | 0.7598 | ep 14 |
+| ✓ C1 from scratch [e38] | 1e-04 | 0.7837 | 0.7837 | 0.7805 | 0.7702 | 0.7021 | ep 23 |
+
+pretrained - scratch (Acc, each chosen on validation): +0.0358
+
+## NinaPro DB5, exercises A+B+C, 52 movements + rest, two Myo at 200 Hz (reps 1,3,4,6 / 2,5)
+
+| | lr | Acc | BalAcc | F1-mac | Kappa | val | |
+|---|---|---|---|---|---|---|---|
+| ✓ C1 fine-tuned [e38ld] | 3e-04 | 0.5984 | 0.5886 | 0.5834 | 0.5899 | 0.5361 | ep 28 |
+|   C1 fine-tuned [e38ld] | 1e-04 | 0.5085 | 0.4995 | 0.4899 | 0.4984 | 0.4396 | ep 28 |
+| ✓ C1 linear probe [e38ld] | 1e-03 | 0.3428 | 0.3265 | 0.3216 | 0.3289 | 0.3147 | ep 20 |
+| ✓ C1 from scratch [e38ld] | 1e-04 | 0.5034 | 0.4922 | 0.4869 | 0.4930 | 0.4436 | ep 28 |
+
+pretrained - scratch (Acc, each chosen on validation): +0.0950
 
 ## NinaPro DB2, exercises B+C+D, 49 movements + rest (reps 1,3,4,6 / 2,5)
 
