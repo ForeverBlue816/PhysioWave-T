@@ -72,20 +72,43 @@ def load_eeglab_raw(path: str) -> Tuple[np.ndarray, List[str], float, List[Tuple
     return raw.get_data(), list(raw.ch_names), float(raw.info["sfreq"]), events
 
 
+#: The "Rawdata (Additional)" archive adds five participants in another layout:
+#: additiondrive/sub<k>/<experiment>/<EEG|EMG|GSR>/merged.set. They follow the
+#: main archive's thirty, so sub<k> is subject 30 + k.
+ADDITIONAL_OFFSET = 30
+
+
 def find_files(raw: str) -> Dict[int, Dict[str, Dict[str, str]]]:
-    """``{subject: {experiment: {"eegecg": path, "emg": path}}}``."""
+    """``{subject: {experiment: {"eegecg": path, "emg": path}}}``, both layouts."""
     found: Dict[int, Dict[str, Dict[str, str]]] = {}
+    extra: Dict[Tuple[int, str, str], List[str]] = {}
     for p in glob.glob(os.path.join(raw, "**", "*.set"), recursive=True):
-        m = re.match(r"(\d+)_(brake|throttle|turn|change)\.set$", os.path.basename(p), re.I)
-        if not m:
+        parts = p.replace("\\", "/").split("/")
+        base = parts[-1]
+        m = re.match(r"(\d+)_(brake|throttle|turn|change)\.set$", base, re.I)
+        if m:
+            parent = parts[-2].upper()
+            if "GSR" in parent:
+                continue
+            kind = "emg" if "EMG" in parent else "eegecg" if "EEG" in parent else None
+            if kind:
+                found.setdefault(int(m.group(1)), {}).setdefault(m.group(2).lower(), {})[kind] = p
             continue
-        parent = os.path.basename(os.path.dirname(p)).upper()
-        if "GSR" in parent:
-            continue
-        kind = "emg" if "EMG" in parent else "eegecg" if "EEG" in parent else None
-        if kind is None:
-            continue
-        found.setdefault(int(m.group(1)), {}).setdefault(m.group(2).lower(), {})[kind] = p
+        m = re.search(r"/sub(\d+)/(brake|throttle|turn|change)/(EEG|EMG|GSR)/[^/]+\.set$", p, re.I)
+        if m:
+            kind = {"EEG": "eegecg", "EMG": "emg"}.get(m.group(3).upper())
+            if kind:
+                key = (ADDITIONAL_OFFSET + int(m.group(1)), m.group(2).lower(), kind)
+                extra.setdefault(key, []).append(p)
+    for (subj, exp, kind), paths in extra.items():
+        # one continuous file per folder is what the layout promises; prefer a
+        # file named merged.set, and say so if there is more than one
+        merged = [q for q in paths if os.path.basename(q).lower() == "merged.set"]
+        pick = (merged or sorted(paths))[0]
+        if len(paths) > 1 and not merged:
+            print(f"  subject {subj} {exp} {kind}: {len(paths)} .set files, using "
+                  f"{os.path.basename(pick)}; the others are ignored", flush=True)
+        found.setdefault(subj, {}).setdefault(exp, {})[kind] = pick
     return found
 
 
