@@ -190,6 +190,12 @@ present modality excluded) drops it from that condition; the count is in
 the headline metric (MPDB balanced accuracy, SeizeIT2 AUPRC) per run and
 condition.
 
+Every finished epoch is checkpointed to `latest.pth` (weights, optimizer,
+schedule, history, early-stopping state, RNG). Starting a run in a directory
+that holds one continues after that epoch, so a job the walltime cut off is
+finished by resubmitting the same command; `--fresh` starts over. The file
+is removed once `results.json` is written.
+
 ## Files
 
 | file | what |

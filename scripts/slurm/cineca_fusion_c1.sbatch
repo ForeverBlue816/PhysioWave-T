@@ -7,7 +7,8 @@
 #   sbatch --export=ALL,TASKS=mpdb scripts/slurm/cineca_fusion_c1.sbatch     # MPDB alone
 #
 # GPU i takes runs i, i+4, ... of RUNS. A run whose results.json exists is
-# skipped; resubmit to finish what the walltime cut off. Ends with the table
+# skipped and one with a latest.pth resumes after its last finished epoch, so
+# resubmitting the same command finishes what the walltime cut off. Ends with the table
 # (scripts/collect_fusion.py).
 #
 #   RUNS      "ralf:frozen concat:frozen weighted_logit:frozen ralf:finetune ralf:scratch"
@@ -23,7 +24,7 @@
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32

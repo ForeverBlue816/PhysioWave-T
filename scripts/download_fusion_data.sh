@@ -43,6 +43,13 @@ set -uo pipefail
 FUSION_ROOT="${FUSION_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/fusion}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python}"
+if ! command -v "${PYTHON}" >/dev/null 2>&1; then
+    # a bare login shell: the project environment's python (or any python3)
+    # shellcheck disable=SC1091
+    PYTHON="$(set +u; source "${HERE}/cineca_env.sh" >/dev/null 2>&1; command -v python python3 | head -1)"
+    [[ -n "${PYTHON}" ]] || { echo "ERROR: no python found; source scripts/cineca_env.sh first" >&2; exit 1; }
+    echo "    python: ${PYTHON}"
+fi
 JOBS="${JOBS:-16}"
 SETS="mpdb_raw mpdb seizeit2"
 MPDB_FILES="https://ndownloader.figshare.com/files/39443269|preprocessed_data.rar

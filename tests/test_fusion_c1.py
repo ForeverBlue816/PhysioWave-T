@@ -352,3 +352,23 @@ def test_seizeit2_official_split_train_and_event_evaluation(tmp_path):
     assert "ecg_only" in ev["conditions"]
     z = np.load(run / "predictions" / "sub-097_run-01.npz")
     assert len(z["label"]) == 300 and z["label"].sum() == 30
+    # a cut-off run resumes: the same directory, asked for two epochs, trains one more
+    assert not (run / "latest.pth").exists()                   # removed with results.json
+    h1 = json.load(open(run / "history.json"))
+    (run / "results.json").unlink()
+    assert train(["--config", "fusion/c1_ralf", "--device", "cpu", "--num-workers", "0",
+                  "--progress", "none", "--epochs", "1", "--max-steps", "2", "--keep-latest",
+                  "--output-dir", str(run), "--set", f"data.tasks.seizeit2.dir={sz}",
+                  f"encoders.eeg={enc['eeg']}", f"encoders.ecg={enc['ecg']}",
+                  f"encoders.emg={enc['emg']}", "train.batch_size=4", "train.precision=fp32",
+                  "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4"]) == 0
+    assert (run / "latest.pth").exists()
+    assert train(["--config", "fusion/c1_ralf", "--device", "cpu", "--num-workers", "0",
+                  "--progress", "none", "--epochs", "2", "--max-steps", "2",
+                  "--output-dir", str(run), "--set", f"data.tasks.seizeit2.dir={sz}",
+                  f"encoders.eeg={enc['eeg']}", f"encoders.ecg={enc['ecg']}",
+                  f"encoders.emg={enc['emg']}", "train.batch_size=4", "train.precision=fp32",
+                  "model.embed_dim=32", "model.num_heads=4", "model.summary_heads=4"]) == 0
+    h2 = json.load(open(run / "history.json"))
+    assert len(h2) == 2 and h2[0]["train"] == h1[0]["train"]      # epoch 0 kept, epoch 1 added
+    assert json.load(open(run / "results.json"))["epochs_run"] == 2

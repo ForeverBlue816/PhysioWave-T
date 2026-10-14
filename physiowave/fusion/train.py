@@ -31,6 +31,10 @@ modality alone, each pair, and each modality corrupted at a fixed severity --
 and written to results.json. A condition an item cannot meet (its only
 present modality excluded) drops that item from that condition, and the
 count is recorded.
+
+Every finished epoch goes to latest.pth; a run started again in the same
+directory resumes after it (--fresh starts over), and the file is removed
+once results.json is written (--keep-latest keeps it).
 """
 
 from __future__ import annotations
@@ -88,6 +92,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--max-steps", type=int, default=None, help="per epoch; smoke tests")
     p.add_argument("--num-workers", type=int, default=None)
     p.add_argument("--progress", default="log", choices=["log", "none"])
+    p.add_argument("--fresh", action="store_true",
+                   help="ignore an existing latest.pth and start the run over")
+    p.add_argument("--keep-latest", action="store_true",
+                   help="keep latest.pth after results.json is written")
     return p.parse_args(argv)
 
 
@@ -377,7 +385,36 @@ def main(argv=None) -> int:
     history, best, best_epoch, bad = [], -math.inf, -1, 0
     patience = int(tcfg.get("patience", 0))
     t_run = time.time()
-    for epoch in range(epochs):
+
+    # -- resume: every finished epoch is in latest.pth ------------------------- #
+    latest = os.path.join(out_dir, "latest.pth")
+    start_epoch, stopped_early = 0, False
+    if os.path.isfile(latest) and not args.fresh:
+        st = torch.load(latest, map_location="cpu", weights_only=False)
+        model.load_state_dict(st["model"])
+        optimizer.load_state_dict(st["optimizer"])
+        scheduler.load_state_dict(st["scheduler"])
+        history, best, best_epoch, bad = st["history"], st["best"], st["best_epoch"], st["bad"]
+        start_epoch, stopped_early = int(st["epoch"]) + 1, bool(st.get("stopped_early"))
+        torch.set_rng_state(st["rng"]["torch"])
+        gen.set_state(st["rng"]["gen"])
+        if corruptor.g is not None and st["rng"].get("corruptor") is not None:
+            corruptor.g.set_state(st["rng"]["corruptor"])
+        logger.info("resuming after epoch %d (best %.4f at epoch %d%s)", st["epoch"], best,
+                    best_epoch, "; training had stopped early" if stopped_early else "")
+        t_run -= float(st.get("seconds", 0.0))
+
+    def save_latest(epoch: int, stopped: bool) -> None:
+        state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(),
+                 "scheduler": scheduler.state_dict(), "history": history, "best": best,
+                 "best_epoch": best_epoch, "bad": bad, "epoch": epoch, "stopped_early": stopped,
+                 "seconds": time.time() - t_run,
+                 "rng": {"torch": torch.get_rng_state(), "gen": gen.get_state(),
+                         "corruptor": corruptor.g.get_state() if corruptor.g is not None else None}}
+        torch.save(state, latest + ".tmp")
+        os.replace(latest + ".tmp", latest)
+
+    for epoch in range(epochs if stopped_early else start_epoch, epochs):
         model.train()
         order = [t for t, n in steps_per_task.items() for _ in range(n)]
         rng = np.random.default_rng(int(cfg.get("seed", 42)) + epoch)
@@ -439,9 +476,11 @@ def main(argv=None) -> int:
                         "config": cfg}, os.path.join(out_dir, "best.pth"))
         else:
             bad += 1
-            if patience and bad >= patience:
-                logger.info("no improvement for %d epochs; stopping", patience)
-                break
+        stop = bool(patience and bad >= patience)
+        save_latest(epoch, stop)
+        if stop:
+            logger.info("no improvement for %d epochs; stopping", patience)
+            break
 
     # -- the test matrix, once, at the selected checkpoint -------------------- #
     if best_epoch < 0:
@@ -460,6 +499,7 @@ def main(argv=None) -> int:
     results = {"fusion": model.fusion_name, "encoder_mode": cfg["model"]["encoder_mode"],
                "seed": int(cfg.get("seed", 42)),
                "best_epoch": best_epoch, "best_score": best, "select_by": select_by,
+               "epochs_run": len(history),
                "hparams": {k: tcfg.get(k) for k in ("epochs", "batch_size", "lr", "layer_decay",
                                                     "weight_decay", "modality_dropout",
                                                     "uni_weight", "reliability_weight",
@@ -482,6 +522,8 @@ def main(argv=None) -> int:
     with open(os.path.join(out_dir, "results.json"), "w") as f:
         json.dump(results, f, indent=2, default=str)
     logger.info("wrote %s", os.path.join(out_dir, "results.json"))
+    if os.path.isfile(latest) and not args.keep_latest:
+        os.remove(latest)
     return 0
 
 
