@@ -1,0 +1,48 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+==> mpdb: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb -> /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/mpdb  (17:21)
+mpdb: 35 subject(s) under /leonardo_scratch/large/userexternal/ychen003/bio/fusion/raw/mpdb
+  subject 1: DROPPED -- marker sequences disagree between the three files
+  subject 2: DROPPED -- marker sequences disagree between the three files
+  subject 3: DROPPED -- marker sequences disagree between the three files
+  subject 4: DROPPED -- marker sequences disagree between the three files
+  subject 5: DROPPED -- marker sequences disagree between the three files
+  subject 6: DROPPED -- marker sequences disagree between the three files
+  subject 7: DROPPED -- marker sequences disagree between the three files
+  subject 8: DROPPED -- marker sequences disagree between the three files
+  subject 9: DROPPED -- marker sequences disagree between the three files
+  subject 10: DROPPED -- marker sequences disagree between the three files
+  subject 11: DROPPED -- marker sequences disagree between the three files
+  subject 12: DROPPED -- marker sequences disagree between the three files
+  subject 13: DROPPED -- marker sequences disagree between the three files
+  subject 14: DROPPED -- marker sequences disagree between the three files
+  subject 15: DROPPED -- marker sequences disagree between the three files
+  subject 16: DROPPED -- marker sequences disagree between the three files
+  subject 17: DROPPED -- marker sequences disagree between the three files
+  subject 18: DROPPED -- marker sequences disagree between the three files
+  subject 19: DROPPED -- marker sequences disagree between the three files
+  subject 20: DROPPED -- marker sequences disagree between the three files
+  subject 21: DROPPED -- marker sequences disagree between the three files
+  subject 22: DROPPED -- marker sequences disagree between the three files
+  subject 23: DROPPED -- marker sequences disagree between the three files
+  subject 24: DROPPED -- marker sequences disagree between the three files
+  subject 25: DROPPED -- marker sequences disagree between the three files
+  subject 26: DROPPED -- marker sequences disagree between the three files
+  subject 27: DROPPED -- marker sequences disagree between the three files
+  subject 28: DROPPED -- marker sequences disagree between the three files
+  subject 29: DROPPED -- marker sequences disagree between the three files
+  subject 30: DROPPED -- marker sequences disagree between the three files
+  subject 31: DROPPED -- missing ['ecg']
+  subject 32: DROPPED -- missing ['ecg']
+  subject 33: DROPPED -- missing ['ecg']
+  subject 34: DROPPED -- missing ['ecg']
+  subject 35: DROPPED -- missing ['ecg']

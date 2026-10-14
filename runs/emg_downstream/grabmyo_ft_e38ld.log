@@ -756,3 +756,79 @@ exported encoder (no route) from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/
 2026-10-13 17:06:38,423 INFO epoch 27 step 600/1234 ( 49%) loss 0.0000 acc 1.0000 lr 5.52e-07 eta 1:15
 2026-10-13 17:06:44,290 INFO epoch 27 step 650/1234 ( 53%) loss 0.0000 acc 1.0000 lr 5.40e-07 eta 1:09
 2026-10-13 17:06:50,152 INFO epoch 27 step 700/1234 ( 57%) loss 0.0000 acc 1.0000 lr 5.28e-07 eta 1:03
+2026-10-13 17:06:56,013 INFO epoch 27 step 750/1234 ( 61%) loss 0.0000 acc 1.0000 lr 5.17e-07 eta 0:57
+2026-10-13 17:07:01,881 INFO epoch 27 step 800/1234 ( 65%) loss 0.0000 acc 1.0000 lr 5.06e-07 eta 0:51
+2026-10-13 17:07:07,747 INFO epoch 27 step 850/1234 ( 69%) loss 0.0000 acc 1.0000 lr 4.94e-07 eta 0:45
+2026-10-13 17:07:13,613 INFO epoch 27 step 900/1234 ( 73%) loss 0.0000 acc 1.0000 lr 4.83e-07 eta 0:39
+2026-10-13 17:07:19,474 INFO epoch 27 step 950/1234 ( 77%) loss 0.0000 acc 1.0000 lr 4.73e-07 eta 0:33
+2026-10-13 17:07:25,334 INFO epoch 27 step 1000/1234 ( 81%) loss 0.0000 acc 1.0000 lr 4.62e-07 eta 0:27
+2026-10-13 17:07:31,205 INFO epoch 27 step 1050/1234 ( 85%) loss 0.0000 acc 1.0000 lr 4.52e-07 eta 0:21
+2026-10-13 17:07:37,076 INFO epoch 27 step 1100/1234 ( 89%) loss 0.0000 acc 1.0000 lr 4.42e-07 eta 0:15
+2026-10-13 17:07:42,944 INFO epoch 27 step 1150/1234 ( 93%) loss 0.0000 acc 1.0000 lr 4.32e-07 eta 0:09
+2026-10-13 17:07:48,839 INFO epoch 27 step 1200/1234 ( 97%) loss 0.0000 acc 1.0000 lr 4.22e-07 eta 0:03
+2026-10-13 17:08:01,499 INFO epoch  27/29  train_loss 0.0000  val_loss 0.6977  acc 0.9166  bal 0.9166  kappa 0.9114  auroc 0.9937  eta 5:09  *best
+2026-10-13 17:08:02,594 INFO epoch 28 step 0/1234 (  0%) loss 0.0000 acc 1.0000 lr 4.15e-07 eta 22:25
+2026-10-13 17:08:08,455 INFO epoch 28 step 50/1234 (  4%) loss 0.0000 acc 1.0000 lr 4.06e-07 eta 2:41
+2026-10-13 17:08:14,324 INFO epoch 28 step 100/1234 (  8%) loss 0.0000 acc 1.0000 lr 3.96e-07 eta 2:23
+2026-10-13 17:08:20,198 INFO epoch 28 step 150/1234 ( 12%) loss 0.0000 acc 1.0000 lr 3.87e-07 eta 2:14
+2026-10-13 17:08:26,062 INFO epoch 28 step 200/1234 ( 16%) loss 0.0000 acc 1.0000 lr 3.78e-07 eta 2:06
+2026-10-13 17:08:31,924 INFO epoch 28 step 250/1234 ( 20%) loss 0.0000 acc 1.0000 lr 3.70e-07 eta 1:59
+2026-10-13 17:08:37,795 INFO epoch 28 step 300/1234 ( 24%) loss 0.0000 acc 1.0000 lr 3.61e-07 eta 1:52
+2026-10-13 17:08:43,656 INFO epoch 28 step 350/1234 ( 28%) loss 0.0000 acc 1.0000 lr 3.53e-07 eta 1:46
+2026-10-13 17:08:49,520 INFO epoch 28 step 400/1234 ( 32%) loss 0.0000 acc 1.0000 lr 3.45e-07 eta 1:39
+2026-10-13 17:08:55,381 INFO epoch 28 step 450/1234 ( 37%) loss 0.0000 acc 1.0000 lr 3.37e-07 eta 1:33
+2026-10-13 17:09:01,240 INFO epoch 28 step 500/1234 ( 41%) loss 0.0000 acc 1.0000 lr 3.29e-07 eta 1:27
+2026-10-13 17:09:07,106 INFO epoch 28 step 550/1234 ( 45%) loss 0.0000 acc 1.0000 lr 3.22e-07 eta 1:21
+2026-10-13 17:09:12,970 INFO epoch 28 step 600/1234 ( 49%) loss 0.0000 acc 1.0000 lr 3.14e-07 eta 1:15
+2026-10-13 17:09:18,832 INFO epoch 28 step 650/1234 ( 53%) loss 0.0000 acc 1.0000 lr 3.07e-07 eta 1:09
+2026-10-13 17:09:24,693 INFO epoch 28 step 700/1234 ( 57%) loss 0.0000 acc 1.0000 lr 3.00e-07 eta 1:03
+2026-10-13 17:09:30,557 INFO epoch 28 step 750/1234 ( 61%) loss 0.0000 acc 1.0000 lr 2.93e-07 eta 0:57
+2026-10-13 17:09:36,419 INFO epoch 28 step 800/1234 ( 65%) loss 0.0000 acc 1.0000 lr 2.87e-07 eta 0:51
+2026-10-13 17:09:42,286 INFO epoch 28 step 850/1234 ( 69%) loss 0.0000 acc 1.0000 lr 2.80e-07 eta 0:45
+2026-10-13 17:09:48,148 INFO epoch 28 step 900/1234 ( 73%) loss 0.0000 acc 1.0000 lr 2.74e-07 eta 0:39
+2026-10-13 17:09:54,006 INFO epoch 28 step 950/1234 ( 77%) loss 0.0000 acc 1.0000 lr 2.68e-07 eta 0:33
+2026-10-13 17:09:59,865 INFO epoch 28 step 1000/1234 ( 81%) loss 0.0000 acc 1.0000 lr 2.62e-07 eta 0:27
+2026-10-13 17:10:05,726 INFO epoch 28 step 1050/1234 ( 85%) loss 0.0000 acc 1.0000 lr 2.56e-07 eta 0:21
+2026-10-13 17:10:11,589 INFO epoch 28 step 1100/1234 ( 89%) loss 0.0000 acc 1.0000 lr 2.51e-07 eta 0:15
+2026-10-13 17:10:17,454 INFO epoch 28 step 1150/1234 ( 93%) loss 0.0000 acc 1.0000 lr 2.46e-07 eta 0:09
+2026-10-13 17:10:23,320 INFO epoch 28 step 1200/1234 ( 97%) loss 0.0000 acc 1.0000 lr 2.41e-07 eta 0:03
+2026-10-13 17:10:35,775 INFO epoch  28/29  train_loss 0.0000  val_loss 0.6994  acc 0.9166  bal 0.9166  kappa 0.9114  auroc 0.9937  eta 2:34
+2026-10-13 17:10:36,863 INFO epoch 29 step 0/1234 (  0%) loss 0.0000 acc 1.0000 lr 2.37e-07 eta 22:17
+2026-10-13 17:10:42,726 INFO epoch 29 step 50/1234 (  4%) loss 0.0000 acc 1.0000 lr 2.33e-07 eta 2:41
+2026-10-13 17:10:48,583 INFO epoch 29 step 100/1234 (  8%) loss 0.0000 acc 1.0000 lr 2.28e-07 eta 2:23
+2026-10-13 17:10:54,450 INFO epoch 29 step 150/1234 ( 12%) loss 0.0000 acc 1.0000 lr 2.24e-07 eta 2:13
+2026-10-13 17:11:00,319 INFO epoch 29 step 200/1234 ( 16%) loss 0.0000 acc 1.0000 lr 2.20e-07 eta 2:06
+2026-10-13 17:11:06,193 INFO epoch 29 step 250/1234 ( 20%) loss 0.0000 acc 1.0000 lr 2.16e-07 eta 1:59
+2026-10-13 17:11:12,062 INFO epoch 29 step 300/1234 ( 24%) loss 0.0000 acc 1.0000 lr 2.12e-07 eta 1:52
+2026-10-13 17:11:17,918 INFO epoch 29 step 350/1234 ( 28%) loss 0.0000 acc 1.0000 lr 2.08e-07 eta 1:46
+2026-10-13 17:11:23,775 INFO epoch 29 step 400/1234 ( 32%) loss 0.0000 acc 1.0000 lr 2.05e-07 eta 1:39
+2026-10-13 17:11:29,632 INFO epoch 29 step 450/1234 ( 37%) loss 0.0000 acc 1.0000 lr 2.02e-07 eta 1:33
+2026-10-13 17:11:35,491 INFO epoch 29 step 500/1234 ( 41%) loss 0.0000 acc 1.0000 lr 1.99e-07 eta 1:27
+2026-10-13 17:11:41,348 INFO epoch 29 step 550/1234 ( 45%) loss 0.0000 acc 1.0000 lr 1.96e-07 eta 1:21
+2026-10-13 17:11:47,202 INFO epoch 29 step 600/1234 ( 49%) loss 0.0000 acc 1.0000 lr 1.94e-07 eta 1:15
+2026-10-13 17:11:53,057 INFO epoch 29 step 650/1234 ( 53%) loss 0.0000 acc 1.0000 lr 1.91e-07 eta 1:09
+2026-10-13 17:11:58,925 INFO epoch 29 step 700/1234 ( 57%) loss 0.0000 acc 1.0000 lr 1.89e-07 eta 1:03
+2026-10-13 17:12:04,797 INFO epoch 29 step 750/1234 ( 61%) loss 0.0000 acc 1.0000 lr 1.87e-07 eta 0:57
+2026-10-13 17:12:10,667 INFO epoch 29 step 800/1234 ( 65%) loss 0.0000 acc 1.0000 lr 1.85e-07 eta 0:51
+2026-10-13 17:12:16,535 INFO epoch 29 step 850/1234 ( 69%) loss 0.0000 acc 1.0000 lr 1.84e-07 eta 0:45
+2026-10-13 17:12:22,403 INFO epoch 29 step 900/1234 ( 73%) loss 0.0000 acc 1.0000 lr 1.82e-07 eta 0:39
+2026-10-13 17:12:28,272 INFO epoch 29 step 950/1234 ( 77%) loss 0.0000 acc 1.0000 lr 1.81e-07 eta 0:33
+2026-10-13 17:12:34,140 INFO epoch 29 step 1000/1234 ( 81%) loss 0.0000 acc 1.0000 lr 1.80e-07 eta 0:27
+2026-10-13 17:12:40,012 INFO epoch 29 step 1050/1234 ( 85%) loss 0.0000 acc 1.0000 lr 1.79e-07 eta 0:21
+2026-10-13 17:12:45,882 INFO epoch 29 step 1100/1234 ( 89%) loss 0.0000 acc 1.0000 lr 1.79e-07 eta 0:15
+2026-10-13 17:12:51,751 INFO epoch 29 step 1150/1234 ( 93%) loss 0.0000 acc 1.0000 lr 1.78e-07 eta 0:09
+2026-10-13 17:12:57,625 INFO epoch 29 step 1200/1234 ( 97%) loss 0.0000 acc 1.0000 lr 1.78e-07 eta 0:03
+2026-10-13 17:13:10,057 INFO epoch  29/29  train_loss 0.0000  val_loss 0.6993  acc 0.9162  bal 0.9162  kappa 0.9109  auroc 0.9937  eta 0:00
+2026-10-13 17:13:10,188 INFO Loaded checkpoint: matched 155 tensors
+2026-10-13 17:13:35,808 INFO TEST acc 0.8546 bal 0.8546 kappa 0.8455 wf1 0.8546 auroc 0.9859
+──────────────────────────────────────────────────────────────────────────────
+  grabmyo_ft_e38ld  ·  TEST  ·  finetune/emg_c1_grabmyo  ·  full fine-tune  ·  pretrained  ·  10,910,393 trainable
+──────────────────────────────────────────────────────────────────────────────
+  BalAcc   0.8546  ██████████████████▊                
+  Kappa    0.8455  ██████████████████▋     chance 0.00
+  AUROC    0.9859  █████████████████████▍  chance 0.50
+  W-F1     0.8546  ██████████████████▊                
+  acc 0.8546   loss 1.2498
+──────────────────────────────────────────────────────────────────────────────
+2026-10-13 17:13:35,811 INFO outputs in /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_e38ld
+Done. /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_e38ld/results.json (its 'test' block is the number to report)

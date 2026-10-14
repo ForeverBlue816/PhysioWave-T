@@ -19,6 +19,42 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_e38"
     },
     {
+      "mode": "ft",
+      "tag": "e38ld",
+      "test": {
+        "loss": 0.7441393304798016,
+        "acc": 0.9151053013798112,
+        "balanced_acc": 0.9151053013798113,
+        "kappa": 0.8981263616557734,
+        "weighted_f1": 0.9150507912149495,
+        "macro_f1": 0.9150507912149495,
+        "auroc": 0.9874904096714938
+      },
+      "lr": 0.0001,
+      "best_val": 0.9288453159041394,
+      "best_epoch": 29,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_e38ld"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4_e38ld",
+      "test": {
+        "loss": 0.5733777586425315,
+        "acc": 0.9437545388525781,
+        "balanced_acc": 0.9437545388525782,
+        "kappa": 0.9325054466230936,
+        "weighted_f1": 0.9438593200004151,
+        "macro_f1": 0.943859320000415,
+        "auroc": 0.9934264187721406
+      },
+      "lr": 0.0003,
+      "best_val": 0.9622222222222222,
+      "best_epoch": 28,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_ft_lr3e-4_e38ld"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -91,6 +127,42 @@
       "best_epoch": 16,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_e38"
+    },
+    {
+      "mode": "ft",
+      "tag": "e38ld",
+      "test": {
+        "loss": 0.9311781719660485,
+        "acc": 0.9105446623093681,
+        "balanced_acc": 0.9105446623093684,
+        "kappa": 0.8926535947712418,
+        "weighted_f1": 0.9106531452862184,
+        "macro_f1": 0.9106531452862184,
+        "auroc": 0.9833388223902487
+      },
+      "lr": 0.0001,
+      "best_val": 0.9060215053763441,
+      "best_epoch": 28,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_e38ld"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4_e38ld",
+      "test": {
+        "loss": 0.9053181637050252,
+        "acc": 0.9283877995642702,
+        "balanced_acc": 0.9283877995642702,
+        "kappa": 0.9140653594771242,
+        "weighted_f1": 0.928327016873647,
+        "macro_f1": 0.9283270168736469,
+        "auroc": 0.9863339575946574
+      },
+      "lr": 0.0003,
+      "best_val": 0.9223655913978495,
+      "best_epoch": 28,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/epn612_xuser_ft_lr3e-4_e38ld"
     },
     {
       "mode": "probe",
@@ -167,6 +239,42 @@
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_e38"
     },
     {
+      "mode": "ft",
+      "tag": "e38ld",
+      "test": {
+        "loss": 1.2497551310163473,
+        "acc": 0.8546023060386946,
+        "balanced_acc": 0.8546023060386946,
+        "kappa": 0.845514950166113,
+        "weighted_f1": 0.8546297320444332,
+        "macro_f1": 0.8546297320444333,
+        "auroc": 0.9858688996200208
+      },
+      "lr": 0.0001,
+      "best_val": 0.9166286669706643,
+      "best_epoch": 27,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_e38ld"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4_e38ld",
+      "test": {
+        "loss": 1.086018575990814,
+        "acc": 0.896749397433392,
+        "balanced_acc": 0.896749397433392,
+        "kappa": 0.8902962347729789,
+        "weighted_f1": 0.8965479599758645,
+        "macro_f1": 0.8965479599758646,
+        "auroc": 0.9906619166205031
+      },
+      "lr": 0.0003,
+      "best_val": 0.9454324365405077,
+      "best_epoch": 29,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_ft_lr3e-4_e38ld"
+    },
+    {
       "mode": "probe",
       "tag": "lr1e-3_e38",
       "test": {
@@ -239,6 +347,42 @@
       "best_epoch": 16,
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_e38"
+    },
+    {
+      "mode": "ft",
+      "tag": "e38ld",
+      "test": {
+        "loss": 2.1554117103990174,
+        "acc": 0.7929245772383027,
+        "balanced_acc": 0.7929245772383028,
+        "kappa": 0.7799823633156966,
+        "weighted_f1": 0.7919250383481731,
+        "macro_f1": 0.7919250383481731,
+        "auroc": 0.9712026928970033
+      },
+      "lr": 0.0001,
+      "best_val": 0.7002282394439258,
+      "best_epoch": 27,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_e38ld"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4_e38ld",
+      "test": {
+        "loss": 0.9344044253591998,
+        "acc": 0.819587094096898,
+        "balanced_acc": 0.8195870940968981,
+        "kappa": 0.8083112874779541,
+        "weighted_f1": 0.818320225802184,
+        "macro_f1": 0.818320225802184,
+        "auroc": 0.9837160930330064
+      },
+      "lr": 0.0003,
+      "best_val": 0.7513227513227513,
+      "best_epoch": 6,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/grabmyo_xsubj_ft_lr3e-4_e38ld"
     },
     {
       "mode": "probe",
