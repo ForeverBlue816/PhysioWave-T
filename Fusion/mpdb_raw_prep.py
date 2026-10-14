@@ -73,43 +73,115 @@ def load_eeglab_raw(path: str) -> Tuple[np.ndarray, List[str], float, List[Tuple
 
 
 #: The "Rawdata (Additional)" archive adds five participants in another layout:
-#: additiondrive/sub<k>/<experiment>/<EEG|EMG|GSR>/merged.set. They follow the
-#: main archive's thirty, so sub<k> is subject 30 + k.
+#: additiondrive/sub<k>/<experiment>/<EEG|EMG|GSR>/, each folder a Neuracle
+#: recording -- data.bdf (the signal), evt.bdf (the markers), sometimes a
+#: second, dated .bdf export -- or, where someone already converted it, a
+#: merged.set. They follow the main archive's thirty: sub<k> is subject 30 + k.
 ADDITIONAL_OFFSET = 30
+EMG_NAMES = ("S01", "S05", "S09", "S13")
 
 
 def find_files(raw: str) -> Dict[int, Dict[str, Dict[str, str]]]:
-    """``{subject: {experiment: {"eegecg": path, "emg": path}}}``, both layouts."""
+    """``{subject: {experiment: {"eegecg": source, "emg": source}}}``.
+
+    A source is a .set file (the main archive) or a Neuracle folder (the
+    additional one); ``load_record`` reads either.
+    """
     found: Dict[int, Dict[str, Dict[str, str]]] = {}
-    extra: Dict[Tuple[int, str, str], List[str]] = {}
     for p in glob.glob(os.path.join(raw, "**", "*.set"), recursive=True):
-        parts = p.replace("\\", "/").split("/")
-        base = parts[-1]
-        m = re.match(r"(\d+)_(brake|throttle|turn|change)\.set$", base, re.I)
-        if m:
-            parent = parts[-2].upper()
-            if "GSR" in parent:
-                continue
-            kind = "emg" if "EMG" in parent else "eegecg" if "EEG" in parent else None
-            if kind:
-                found.setdefault(int(m.group(1)), {}).setdefault(m.group(2).lower(), {})[kind] = p
+        m = re.match(r"(\d+)_(brake|throttle|turn|change)\.set$", os.path.basename(p), re.I)
+        if not m:
             continue
-        m = re.search(r"/sub(\d+)/(brake|throttle|turn|change)/(EEG|EMG|GSR)/[^/]+\.set$", p, re.I)
-        if m:
-            kind = {"EEG": "eegecg", "EMG": "emg"}.get(m.group(3).upper())
-            if kind:
-                key = (ADDITIONAL_OFFSET + int(m.group(1)), m.group(2).lower(), kind)
-                extra.setdefault(key, []).append(p)
-    for (subj, exp, kind), paths in extra.items():
-        # one continuous file per folder is what the layout promises; prefer a
-        # file named merged.set, and say so if there is more than one
-        merged = [q for q in paths if os.path.basename(q).lower() == "merged.set"]
-        pick = (merged or sorted(paths))[0]
-        if len(paths) > 1 and not merged:
-            print(f"  subject {subj} {exp} {kind}: {len(paths)} .set files, using "
-                  f"{os.path.basename(pick)}; the others are ignored", flush=True)
-        found.setdefault(subj, {}).setdefault(exp, {})[kind] = pick
+        parent = os.path.basename(os.path.dirname(p)).upper()
+        kind = "emg" if "EMG" in parent else "eegecg" if "EEG" in parent else None
+        if kind:
+            found.setdefault(int(m.group(1)), {}).setdefault(m.group(2).lower(), {})[kind] = p
+    for d in glob.glob(os.path.join(raw, "**", "sub*", "*", "*"), recursive=True):
+        if not os.path.isdir(d):
+            continue
+        m = re.search(r"/sub(\d+)/(brake|throttle|turn|change)/(EEG|EMG)$", d.replace("\\", "/"), re.I)
+        if not m:
+            continue
+        kind = "eegecg" if m.group(3).upper() == "EEG" else "emg"
+        subj, exp = ADDITIONAL_OFFSET + int(m.group(1)), m.group(2).lower()
+        sets = sorted(glob.glob(os.path.join(d, "*.set")))
+        bdfs = [q for q in glob.glob(os.path.join(d, "*.bdf"))
+                if os.path.basename(q).lower() != "evt.bdf"]
+        if bdfs:
+            found.setdefault(subj, {}).setdefault(exp, {})[kind] = d
+        elif sets:
+            merged = [q for q in sets if os.path.basename(q).lower() == "merged.set"]
+            found.setdefault(subj, {}).setdefault(exp, {})[kind] = (merged or sets)[0]
     return found
+
+
+def neuracle_files(folder: str) -> List[dict]:
+    """Every signal .bdf in a Neuracle folder with its channels, rate, length."""
+    import mne
+    out = []
+    for q in sorted(glob.glob(os.path.join(folder, "*.bdf"))):
+        if os.path.basename(q).lower() == "evt.bdf":
+            continue
+        raw = mne.io.read_raw_bdf(q, preload=False, verbose="error")
+        out.append({"path": q, "channels": list(raw.ch_names), "sfreq": float(raw.info["sfreq"]),
+                    "seconds": raw.n_times / float(raw.info["sfreq"]),
+                    "annotations": int(len(raw.annotations))})
+    return out
+
+
+def choose_neuracle(folder: str, kind: str) -> dict:
+    """Which .bdf carries the signal: for EMG the file naming the four
+    electrodes (S01 S05 S09 S13), else the one with the fewest channels; for
+    EEG data.bdf, else the one with the most channels."""
+    files = neuracle_files(folder)
+    if not files:
+        raise FileNotFoundError(f"no signal .bdf in {folder}")
+    if kind == "emg":
+        named = [f for f in files if all(n in f["channels"] for n in EMG_NAMES)]
+        pick = named[0] if named else min(files, key=lambda f: (len(f["channels"]) < 4,
+                                                                len(f["channels"])))
+    else:
+        data = [f for f in files if os.path.basename(f["path"]).lower() == "data.bdf"]
+        pick = data[0] if data else max(files, key=lambda f: len(f["channels"]))
+    return pick
+
+
+def load_neuracle(folder: str, kind: str) -> Tuple[np.ndarray, List[str], float, List[Tuple[float, int]]]:
+    """A Neuracle recording folder -> ``(data [C, T], names, sfreq, [(onset s, code)])``.
+
+    The markers come from evt.bdf (a BDF+ file of annotations) when it has
+    them, else from the signal file's own annotations. An evt.bdf whose
+    recorded start differs from the signal file's is shifted accordingly.
+    """
+    import mne
+    pick = choose_neuracle(folder, kind)
+    raw = mne.io.read_raw_bdf(pick["path"], preload=True, verbose="error")
+
+    def numeric(ann):
+        out = []
+        for on, desc in zip(ann.onset, ann.description):
+            m = re.search(r"(\d+)", str(desc))
+            if m:
+                out.append((float(on), int(m.group(1))))
+        return out
+    events = numeric(raw.annotations)
+    evt = os.path.join(folder, "evt.bdf")
+    if os.path.isfile(evt):
+        ann = mne.read_annotations(evt)
+        shift = 0.0
+        if ann.orig_time is not None and raw.info.get("meas_date") is not None:
+            shift = (ann.orig_time - raw.info["meas_date"]).total_seconds()
+        ev2 = [(t + shift, c) for t, c in numeric(ann)]
+        if len(ev2) > len(events):
+            events = ev2
+    return raw.get_data(), list(raw.ch_names), float(raw.info["sfreq"]), events
+
+
+def load_record(source: str, kind: str) -> Tuple[np.ndarray, List[str], float, List[Tuple[float, int]]]:
+    """A .set file or a Neuracle folder, whichever the archive holds."""
+    if os.path.isdir(source):
+        return load_neuracle(source, kind)
+    return load_eeglab_raw(source)
 
 
 def split_eeg_ecg(data: np.ndarray, names: List[str]) -> Tuple[np.ndarray, List[str], np.ndarray]:
@@ -252,7 +324,7 @@ def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, p
         if "eegecg" not in files:
             en["skipped"] = "no EEG&ECG file"
             continue
-        data, names, fs, ev_a = load_eeglab_raw(files["eegecg"])
+        data, names, fs, ev_a = load_record(files["eegecg"], "eegecg")
         eeg, eeg_names, ecg = split_eeg_ecg(data, names)
         if eeg_names_ref is None:
             eeg_names_ref = eeg_names
@@ -267,8 +339,9 @@ def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, p
             streams["ecg"] = (filter_continuous(ecg, fs, "ecg", MAINS_HZ), fs)
         emg_events: Dict[int, float] = {}
         if "emg" in files:
-            d2, n2, fs2, ev_b = load_eeglab_raw(files["emg"])
-            rows = [i for i, n in enumerate(n2) if not re.search(r"trig|stim|marker", n, re.I)][:4]
+            d2, n2, fs2, ev_b = load_record(files["emg"], "emg")
+            rows = ([n2.index(n) for n in EMG_NAMES] if all(n in n2 for n in EMG_NAMES) else
+                    [i for i, n in enumerate(n2) if not re.search(r"trig|stim|marker", n, re.I)][:4])
             emg = d2[rows]
             kept, how = pair_events(ev_a, ev_b, tol)
             en["emg_pairing"] = how
@@ -321,8 +394,14 @@ def inspect_files(raw: str, n: int, tol: float) -> int:
             print(f"  {exp}: {', '.join(f'{k}={os.path.basename(v)}' for k, v in files.items()) or 'no files'}")
             evs = {}
             for kind, path in files.items():
+                if os.path.isdir(path):
+                    for f in neuracle_files(path):
+                        print(f"    {kind} folder: {os.path.basename(f['path'])}  {len(f['channels'])} ch x "
+                              f"{f['seconds']:.0f} s @ {f['sfreq']:g} Hz, {f['annotations']} annotations; "
+                              f"channels {f['channels'][:8]}{' ...' if len(f['channels']) > 8 else ''}")
+                    print(f"    {kind} folder: using {os.path.basename(choose_neuracle(path, kind)['path'])}")
                 try:
-                    data, names, fs, ev = load_eeglab_raw(path)
+                    data, names, fs, ev = load_record(path, kind)
                 except Exception as exc:  # noqa: BLE001
                     print(f"    {kind}: mne could not read it: {exc!r}")
                     continue
