@@ -4,7 +4,8 @@
 #
 #   source $HOME/pw/bin/activate
 #   bash scripts/download_fusion_data.sh status
-#   bash scripts/download_fusion_data.sh mpdb
+#   bash scripts/download_fusion_data.sh mpdb_raw            # 23 GB, the recommended MPDB source
+#   bash scripts/download_fusion_data.sh mpdb                # 3 GB, the authors' epochs
 #   bash scripts/download_fusion_data.sh seizeit2            # 97.5 GB
 #   SUBJECTS='sub-0(0[1-9]|[1-3][0-9])' bash scripts/download_fusion_data.sh seizeit2   # a subset first
 #
@@ -12,6 +13,10 @@
 # resumable: a finished set carries .complete and is skipped; a rerun fetches
 # only what is missing.
 #
+#   mpdb_raw  The RAW release, figshare 22193119 (CC BY 4.0, 22.9 GB in two
+#             .rar): per subject four continuous EEGLAB .set files per device
+#             (EEG&ECG, EMG, GSR) with the simulator markers and their times.
+#             What Fusion/mpdb_raw_prep.py reads -- the recommended source.
 #   mpdb      The authors' PREPROCESSED release, figshare 22192831 (CC BY 4.0,
 #             3.15 GB in two .rar archives): per subject EEG_n.set, ECG_n.set,
 #             EMG_n.set, GSR_n.set -- EEGLAB epochs of the ten simulator
@@ -22,6 +27,7 @@
 #             movement EDFs are not fetched (not used). 125 subjects, 97.5 GB.
 #
 # LAYOUT (what Fusion/*_prep.py and scripts/slurm/cineca_fusion_prep.sbatch expect):
+#   $FUSION_ROOT/raw/mpdb_raw/**/{n}_{brake,throttle,turn,change}.set
 #   $FUSION_ROOT/raw/mpdb/**/{EEG,ECG,EMG}_{n}.set
 #   $FUSION_ROOT/raw/seizeit2/sub-XXX/ses-01/{eeg,ecg,emg}/...
 #   $FUSION_ROOT/c1/{mpdb,seizeit2}/{train,val,test}.h5     written by the preprocessing
@@ -38,9 +44,11 @@ FUSION_ROOT="${FUSION_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/fu
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python}"
 JOBS="${JOBS:-16}"
-SETS="mpdb seizeit2"
+SETS="mpdb_raw mpdb seizeit2"
 MPDB_FILES="https://ndownloader.figshare.com/files/39443269|preprocessed_data.rar
 https://ndownloader.figshare.com/files/42478284|preprocessed_additional.rar"
+MPDB_RAW_FILES="https://ndownloader.figshare.com/files/39444118|Rawdata.rar
+https://ndownloader.figshare.com/files/42391515|Rawdata_additional.rar"
 
 say()  { echo "==> $*"; }
 warn() { echo "WARNING: $*" >&2; }
@@ -78,6 +86,26 @@ get_mpdb() {
     done
     local n; n=$(find "${d}" -iname 'EEG_*.set' | wc -l)
     echo "    ${n} EEG_n.set files (expected 35), $(find "${d}" -iname 'EMG_*.set' | wc -l) EMG, $(find "${d}" -iname 'ECG_*.set' | wc -l) ECG"
+    [[ ${n} -ge 30 ]]
+}
+
+get_mpdb_raw() {
+    local d list; d="$(raw_dir mpdb_raw)"; list="${d}/.files.tsv"
+    mkdir -p "${d}"
+    : > "${list}"
+    while IFS='|' read -r url name; do
+        [[ -n "${url}" ]] && printf '%s\t%s\n' "${url}" "${d}/${name}" >> "${list}"
+    done <<< "${MPDB_RAW_FILES}"
+    say "figshare 22193119: two archives, 22.9 GB, ${JOBS} connections"
+    "${PYTHON}" "${HERE}/fetch_ranged.py" --list "${list}" --jobs "${JOBS}" || return 1
+    local un; un="$(unrar_cmd)" || { warn "no unrar / 7z / bsdtar (see mpdb above)"; return 1; }
+    local a
+    for a in "${d}"/*.rar; do
+        say "extracting $(basename "${a}") with ${un%% *}"
+        (cd "${d}" && ${un} "${a}") || return 1
+    done
+    local n; n=$(find "${d}" -iname '*_brake.set' | wc -l)
+    echo "    ${n} subjects with a brake experiment (expected 35); .set files: $(find "${d}" -name '*.set' | wc -l)"
     [[ ${n} -ge 30 ]]
 }
 
@@ -151,6 +179,6 @@ status() {
 case "${1:-}" in
     status) status ;;
     all) for ds in ${SETS}; do run_one "${ds}"; done; echo; status ;;
-    mpdb|seizeit2) run_one "$1" ;;
-    *) echo "usage: bash $0 status|all|mpdb|seizeit2" >&2; exit 1 ;;
+    mpdb_raw|mpdb|seizeit2) run_one "$1" ;;
+    *) echo "usage: bash $0 status|all|mpdb_raw|mpdb|seizeit2" >&2; exit 1 ;;
 esac

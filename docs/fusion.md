@@ -9,7 +9,7 @@ encoders and the fusion and keep their own heads:
 
 | task | data | classes | split |
 |---|---|---|---|
-| `mpdb` | MPDB: 35 drivers, 59-ch EEG + chest ECG + 4 limb sEMG, 2 s event epochs | 5 behaviours (smooth, acceleration, deceleration, lane change, turning) | by subject, 25 / 5 / 5 |
+| `mpdb` | MPDB: 35 drivers, 59-ch EEG + chest ECG + 4 limb sEMG, 4 s windows around the simulator events | 5 behaviours (smooth, acceleration, deceleration, lane change, turning) | by subject, 25 / 5 / 5 |
 | `seizeit2` | SeizeIT2: 125 patients, 2 behind-the-ear EEG + ECG + deltoid EMG, 4 s windows | seizure vs background | by patient, 85 / 15 / 25 |
 
 The comparison is three fusion cores under one training loop and one test
@@ -33,7 +33,7 @@ cd ~/PhysioWave-T && git pull && source $HOME/pw/bin/activate
 pip install mne                      # once; the MPDB release is EEGLAB .set files
 
 # 1. data (login node)
-bash scripts/download_fusion_data.sh mpdb                # 3.15 GB, two .rar
+bash scripts/download_fusion_data.sh mpdb_raw            # 23 GB, two .rar; the authors' epochs: mpdb
 SUBJECTS='sub-0(0[1-9]|[1-3][0-9])' bash scripts/download_fusion_data.sh seizeit2   # 39 patients first
 bash scripts/download_fusion_data.sh seizeit2            # all 125, 97.5 GB
 
@@ -54,20 +54,35 @@ three lines that put rarlab's `unrar` in `$HOME/bin`.
 
 ## Data
 
-### MPDB (`Fusion/mpdb_prep.py`)
+### MPDB (`Fusion/mpdb_raw_prep.py`; the authors' epochs via `Fusion/mpdb_prep.py`)
 
-The authors' preprocessed release (figshare 22192831): per subject
-`EEG_n.set`, `ECG_n.set`, `EMG_n.set`, EEGLAB epochs of 2 s (0.5 s before
-the simulator event to 1.5 s after), already band-passed. The marker codes
-of the paper's Table 2 give the five classes: smooth 133; acceleration 135,
-143; deceleration 139, 141, 145; lane change 129, 131; turning 125, 127. A
-subject's three files are aligned by their marker sequences; a subject whose
-files disagree is dropped and listed in `split.json`.
+The source is the RAW release (figshare 22193119, 23 GB): per subject four
+experiments (brake, throttle, turn, change), each a continuous EEGLAB file
+per device -- EEG&ECG (59 electrodes and the chest ECG on one Neuracle
+amplifier) and EMG (four limb channels on a NeuSen WM), 1 kHz, with the
+simulator's markers and their times. The marker codes of the paper's
+Table 2 give the five classes: smooth 133; acceleration 135, 137 (the
+release's code for overtaking), 143; deceleration 139, 141, 145; lane change
+129, 131; turning 125, 127.
 
-Each epoch is resampled to the encoder rates and normalised as that
-pretraining corpus was: EEG 256 Hz, per-channel z-score; ECG 250 Hz and sEMG
-2000 Hz, window-shared (one RMS across channels). The authors' filters stand;
-re-filtering a 2 s epoch at 0.5 Hz would put the transient in the window.
+Windows are 4 s, from 0.5 s before the marker, so the onset sits where the
+authors' 2 s epochs put it and the window is the EEG encoder's pretraining
+length. An EMG window is paired with the EEG/ECG window of the same event:
+within an experiment the two devices' marker sequences are matched in order
+(their LCS when one device missed a trigger) and their inter-event intervals
+compared; a pair whose intervals disagree by more than 50 ms is refused and
+the window keeps EEG/ECG without EMG (`present_emg` False). `split.json`
+records per experiment the pairing counts and the devices' clock offset.
+Each record is filtered whole with its modality's pretraining pipeline, then
+cut, resampled (EEG 256 Hz, ECG 250 Hz, EMG 2000 Hz) and normalised as that
+corpus was. No ICA and no epoch rejection: quality is the reliability
+estimator's problem, which is the point.
+
+The authors' preprocessed release (figshare 22192831: `EEG_n / ECG_n / EMG_n.set`,
+2 s epochs, ICA-pruned) carries no timestamps and its three files differ in
+length, so it can only be aligned by marker order with an ambiguity the
+fusion would inherit. `Fusion/mpdb_prep.py` still reads it (`TASKS=mpdb_release`)
+for comparison; it is not the paper's data.
 
 The sEMG of the pedal leg can carry the label directly. That is why every
 modality subset is reported, not only the complete one.
@@ -141,7 +156,7 @@ condition.
 | file | what |
 |---|---|
 | `scripts/download_fusion_data.sh` | MPDB (figshare, .rar) and SeizeIT2 (OpenNeuro S3) |
-| `Fusion/mpdb_prep.py`, `Fusion/seizeit2_prep.py` | raw -> `{train,val,test}.h5` + `split.json` |
+| `Fusion/mpdb_raw_prep.py`, `Fusion/mpdb_prep.py`, `Fusion/seizeit2_prep.py` | raw -> `{train,val,test}.h5` + `split.json` |
 | `physiowave/fusion/prep_common.py` | rates, windows, per-modality filtering and normalisation, the HDF5 layout, an EDF reader |
 | `physiowave/fusion/{data,encoders,model,train}.py` | dataset, per-task C1 encoders, the three cores, the entry point |
 | `configs/fusion/c1_ralf.yaml` | the run's settings |

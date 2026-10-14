@@ -10,7 +10,7 @@
 # and writes $FUSION_ROOT/c1/<task>/{train,val,test}.h5 + split.json.
 # MPDB needs mne in the venv (pip install mne, on a login node).
 #
-#   TASKS        "mpdb seizeit2"
+#   TASKS        "mpdb seizeit2"   (mpdb = the raw release; mpdb_release = the authors' epochs)
 #   SUBJECTS     seizeit2: regex over sub-XXX (default all)
 #   BG_PER_HOUR  seizeit2 background windows per recorded hour (30)
 #   JOBS         worker processes (16)
@@ -38,13 +38,18 @@ JOBS="${JOBS:-16}"
 rc=0
 for task in ${TASKS}; do
     raw="${FUSION_ROOT}/raw/${task}"; out="${FUSION_ROOT}/c1/${task}"
-    if [[ ! -d "${raw}" ]]; then
+    if [[ "${task}" == "seizeit2" && ! -d "${raw}" ]]; then
         echo "${task}: ${raw} missing -- on a login node: bash scripts/download_fusion_data.sh ${task}"
         rc=1; continue
     fi
     echo "==> ${task}: ${raw} -> ${out}  ($(date +%H:%M))"
     case "${task}" in
-        mpdb)
+        mpdb)                       # the raw release -> c1/mpdb
+            raw="${FUSION_ROOT}/raw/mpdb_raw"
+            [[ -d "${raw}" ]] || { echo "mpdb: ${raw} missing -- bash scripts/download_fusion_data.sh mpdb_raw"; rc=1; continue; }
+            python Fusion/mpdb_raw_prep.py --raw-dir "${raw}" --out-dir "${out}" || rc=1 ;;
+        mpdb_release)               # the authors' epochs -> c1/mpdb_release
+            raw="${FUSION_ROOT}/raw/mpdb"
             python Fusion/mpdb_prep.py --raw-dir "${raw}" --out-dir "${out}" || rc=1 ;;
         seizeit2)
             python Fusion/seizeit2_prep.py --raw-dir "${raw}" --out-dir "${out}" \

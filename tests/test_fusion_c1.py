@@ -138,6 +138,56 @@ def test_mpdb_prep_aligns_epochs_and_splits_by_subject(tmp_path, monkeypatch):
         assert json.loads(f.attrs["ecg_channel_names"]) == ["patch1"]
 
 
+def test_mpdb_raw_pairs_events_across_devices(tmp_path, monkeypatch):
+    """Continuous files: EEG&ECG and EMG on different clocks, one trigger missed."""
+    import mpdb_raw_prep
+    rng = np.random.default_rng(7)
+    fs = 1000.0
+    base = tmp_path / "raw"
+    for subj in (1, 2, 3):
+        for exp in mpdb_raw_prep.EXPERIMENTS:
+            for kind in ("EEG&ECG", "EMG"):
+                d = base / str(subj) / kind
+                d.mkdir(parents=True, exist_ok=True)
+                (d / f"{subj}_{exp}.set").write_bytes(b"")
+    codes = {"brake": [139, 141, 145] * 4, "throttle": [137, 143] * 6, "turn": [125, 127] * 5,
+             "change": [129, 131] * 5 + [133] * 4}
+
+    def fake(path):
+        exp = os.path.basename(path).split("_")[1].split(".")[0]
+        kind = os.path.basename(os.path.dirname(path))
+        ev_codes = codes[exp]
+        times = 10.0 + 20.0 * np.arange(len(ev_codes))          # 20 s apart
+        T = int((times[-1] + 20) * fs)
+        if kind == "EMG":
+            # the EMG device started 3.21 s later and missed the fifth trigger
+            ev = [(t - 3.21, c) for k, (t, c) in enumerate(zip(times, ev_codes)) if k != 4]
+            return rng.normal(0, 30, (4, T)), ["S01", "S05", "S09", "S13"], fs, ev
+        ev = list(zip(times.tolist(), ev_codes))
+        names = EEG8 + ["ECG"]
+        return rng.normal(0, 20, (len(names), T)), names, fs, ev
+
+    monkeypatch.setattr(mpdb_raw_prep, "load_eeglab_raw", fake)
+    out = tmp_path / "out"
+    assert mpdb_raw_prep.main(["--raw-dir", str(base), "--out-dir", str(out),
+                               "--val-subjects", "1", "--test-subjects", "1"]) == 0
+    import h5py
+    info = json.load(open(out / "split.json"))
+    n_events = sum(len(v) for v in codes.values())
+    tot = sum(v["windows"] for v in info["splits"].values())
+    assert tot == 3 * n_events                              # every EEG event is a window
+    present_emg = sum(v["present"]["emg"] for v in info["splits"].values())
+    assert present_emg == 3 * (n_events - 4)                # the missed trigger per experiment
+    pairing = info["subjects"][0]["experiments"]["brake"]["emg_pairing"]
+    assert pairing["paired"] == 11 and pairing["interval_mismatch"] == 0
+    assert abs(pairing["clock_offset_s"][0] + 3.21) < 1e-6
+    with h5py.File(out / "train.h5", "r") as f:
+        assert f["eeg"].shape[1:] == (8, 1024) and f["ecg"].shape[1:] == (1, 1000)
+        assert f["emg"].shape[1:] == (4, 8000)
+        assert json.loads(f.attrs["eeg_channel_names"]) == EEG8
+        assert set(np.unique(f["label"][:]).tolist()) <= {0, 1, 2, 3, 4}
+
+
 # --------------------------------------------------------------------------- #
 # The cores
 # --------------------------------------------------------------------------- #
