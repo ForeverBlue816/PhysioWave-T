@@ -78,7 +78,18 @@ def load_eeglab_raw(path: str) -> Tuple[np.ndarray, List[str], float, List[Tuple
 #: second, dated .bdf export -- or, where someone already converted it, a
 #: merged.set. They follow the main archive's thirty: sub<k> is subject 30 + k.
 ADDITIONAL_OFFSET = 30
-EMG_NAMES = ("S01", "S05", "S09", "S13")
+#: The four EMG channels, as the two archives name them: the .set files S01
+#: S05 S09 S13 (sensor slots), the Neuracle folders EMG1..EMG4 among each
+#: sensor's gyroscope, accelerometer and magnetometer rows.
+EMG_NAME_SETS = (("S01", "S05", "S09", "S13"), ("EMG1", "EMG2", "EMG3", "EMG4"))
+
+
+def emg_rows(names: List[str]) -> List[int]:
+    for want in EMG_NAME_SETS:
+        if all(n in names for n in want):
+            return [names.index(n) for n in want]
+    return [i for i, n in enumerate(names)
+            if not re.search(r"trig|stim|marker|GYR|ACC|MAG", n, re.I)][:4]
 
 
 def find_files(raw: str) -> Dict[int, Dict[str, Dict[str, str]]]:
@@ -130,16 +141,18 @@ def neuracle_files(folder: str) -> List[dict]:
 
 
 def choose_neuracle(folder: str, kind: str) -> dict:
-    """Which .bdf carries the signal: for EMG the file naming the four
-    electrodes (S01 S05 S09 S13), else the one with the fewest channels; for
-    EEG data.bdf, else the one with the most channels."""
+    """Which .bdf carries the signal: for EMG a file naming the four EMG
+    channels, preferring the one that also carries the markers; for EEG
+    data.bdf, else the one with the most channels."""
     files = neuracle_files(folder)
     if not files:
         raise FileNotFoundError(f"no signal .bdf in {folder}")
     if kind == "emg":
-        named = [f for f in files if all(n in f["channels"] for n in EMG_NAMES)]
-        pick = named[0] if named else min(files, key=lambda f: (len(f["channels"]) < 4,
-                                                                len(f["channels"])))
+        named = [f for f in files if any(all(n in f["channels"] for n in want)
+                                         for want in EMG_NAME_SETS)]
+        pool = named or files
+        # the export that carries the markers, else the one with the fewest channels
+        pick = max(pool, key=lambda f: (f["annotations"] > 0, -len(f["channels"])))
     else:
         data = [f for f in files if os.path.basename(f["path"]).lower() == "data.bdf"]
         pick = data[0] if data else max(files, key=lambda f: len(f["channels"]))
@@ -340,8 +353,7 @@ def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, p
         emg_events: Dict[int, float] = {}
         if "emg" in files:
             d2, n2, fs2, ev_b = load_record(files["emg"], "emg")
-            rows = ([n2.index(n) for n in EMG_NAMES] if all(n in n2 for n in EMG_NAMES) else
-                    [i for i, n in enumerate(n2) if not re.search(r"trig|stim|marker", n, re.I)][:4])
+            rows = emg_rows(n2)
             emg = d2[rows]
             kept, how = pair_events(ev_a, ev_b, tol)
             en["emg_pairing"] = how
