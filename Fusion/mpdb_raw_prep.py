@@ -92,8 +92,10 @@ def find_files(raw: str) -> Dict[int, Dict[str, Dict[str, str]]]:
 def split_eeg_ecg(data: np.ndarray, names: List[str]) -> Tuple[np.ndarray, List[str], np.ndarray]:
     """The EEG&ECG file's rows -> (eeg [59, T], eeg names, ecg [1, T])."""
     ecg_rows = [i for i, n in enumerate(names) if "ECG" in n.upper() or "EKG" in n.upper()]
+    # The release's auxiliaries: ECG, and the four EOG channels named HEOR,
+    # HEOL, VEOU, VEOL (horizontal right/left, vertical up/low).
     drop = set(ecg_rows) | {i for i, n in enumerate(names)
-                            if re.search(r"trig|stim|marker|status|hEOG|vEOG|EOG|GSR", n, re.I)}
+                            if re.search(r"trig|stim|marker|status|EOG|GSR|^[HV]EO[RLUD]$", n, re.I)}
     eeg_rows = [i for i in range(len(names)) if i not in drop]
     ecg = data[ecg_rows[:1]] if ecg_rows else None
     return data[eeg_rows], [names[i] for i in eeg_rows], ecg
@@ -118,16 +120,27 @@ def pair_events(a: List[Tuple[float, int]], b: List[Tuple[float, int]], tol: flo
         return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0}
     ta, ca = np.array([t for t, _ in a]), np.array([c for _, c in a])
     tb, cb = np.array([t for t, _ in b]), np.array([c for _, c in b])
-    # 1. a first offset from codes with equal counts, k-th to k-th
+    # 1. the offset, as the mode of all same-code time differences. Right
+    #    pairs pile into one 20 ms bin (drift spreads them over a few); wrong
+    #    pairs scatter over the whole range. k-th-to-k-th pairing is NOT
+    #    robust here: a code that fires every few seconds with one extra
+    #    event in one file shifts every later pair.
     diffs = []
     for c in np.unique(ca):
         ia, ib = np.where(ca == c)[0], np.where(cb == c)[0]
-        if len(ia) and len(ia) == len(ib):
-            diffs.extend((tb[ib] - ta[ia]).tolist())
-    if not diffs:
+        if not len(ib):
+            continue
+        d = (tb[ib][None, :] - ta[ia][:, None]).ravel()
+        diffs.append(d[np.abs(d) < 300.0])
+    diffs = np.concatenate(diffs) if diffs else np.zeros(0)
+    if diffs.size < 3:
         return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0,
-                    "reason": "no code occurs equally often in both files"}
-    off, scale = float(np.median(diffs)), 1.0
+                    "reason": "no shared codes within 300 s of each other"}
+    edges = np.arange(diffs.min() - 0.02, diffs.max() + 0.04, 0.02)
+    hist, _ = np.histogram(diffs, bins=edges)
+    k = int(np.argmax(hist))
+    lo, hi = edges[max(0, k - 2)], edges[min(len(edges) - 1, k + 3)]
+    off, scale = float(np.median(diffs[(diffs >= lo) & (diffs <= hi)])), 1.0
 
     def match(off, scale, tol_):
         used = np.zeros(len(b), bool)
@@ -140,12 +153,15 @@ def pair_events(a: List[Tuple[float, int]], b: List[Tuple[float, int]], tol: flo
                 used[j] = True
                 pairs.append((int(i), j))
         return pairs
-    # 2. refine with a linear fit (drift) over what the first guess explains
-    pairs = match(off, scale, max(tol, 0.5))
-    if len(pairs) >= 3:
-        xa = ta[[i for i, _ in pairs]]
-        xb = tb[[j for _, j in pairs]]
-        scale, off = np.polyfit(xa, xb, 1)
+    # 2. refine with a linear fit (drift) over what the offset explains, at a
+    #    tolerance that admits the drift but not a neighbouring event; then
+    #    the final pairing at the caller's tolerance
+    for tol_ in (0.1, tol):
+        pairs = match(float(off), float(scale), tol_)
+        if len(pairs) >= 3:
+            xa = ta[[i for i, _ in pairs]]
+            xb = tb[[j for _, j in pairs]]
+            scale, off = np.polyfit(xa, xb, 1)
     pairs = match(float(off), float(scale), tol)
     resid = [abs(scale * ta[i] + off - tb[j]) for i, j in pairs]
     return pairs, {"events_eeg": len(a), "events_emg": len(b), "paired": len(pairs),
