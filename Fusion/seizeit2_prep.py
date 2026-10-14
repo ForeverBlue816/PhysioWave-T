@@ -26,8 +26,12 @@ PREPROCESSING per modality on the whole run (physiowave/fusion/prep_common.py),
 then the window is resampled to the encoder rate (EEG stays 256, ECG 250,
 EMG 2000) and normalised as that pretraining corpus was.
 
-SPLIT by patient: 20% test, 12% val (25 and 15 of the 125), the rest train
-(seed 42); --test-subjects / --val-subjects set counts instead. --subjects restricts to a regex over sub-XXX for a first pass.
+SPLIT (--split official, the default): the dataset paper's fixed split
+(github.com/biomedepi/seizeit2, net/datasets/SZ2_*.tsv) -- sub-001..sub-096
+train, sub-097..sub-125 the validation set the paper reports on, which is
+OUR TEST SET; 12% of the training patients (seed 42) are held out for our own
+model selection. --split random draws 20% test / 12% val from the patients
+present instead. --subjects restricts to a regex over sub-XXX for a first pass.
 """
 
 from __future__ import annotations
@@ -61,6 +65,29 @@ ECG_CHANNELS = ["patch1"]                        # one chest derivation: the L1_
 EMG_CHANNELS = ["l_deltoid"]
 MAINS_HZ = 50.0
 SEED = 42
+
+
+#: The dataset paper's fixed split (net/datasets/SZ2_training.tsv and
+#: SZ2_validation.tsv in github.com/biomedepi/seizeit2).
+OFFICIAL_TRAIN = tuple(f"sub-{i:03d}" for i in range(1, 97))
+OFFICIAL_TEST = tuple(f"sub-{i:03d}" for i in range(97, 126))
+
+
+def official_split(subjects, val_fraction: float, seed: int) -> Dict[str, str]:
+    """sub-001..096 train (a fraction held out as our validation), 097..125 test."""
+    train = sorted(s for s in subjects if s in OFFICIAL_TRAIN)
+    rng = np.random.default_rng(seed)
+    n_val = max(1, int(round(val_fraction * len(train)))) if len(train) > 2 else 0
+    val = {train[i] for i in rng.permutation(len(train))[:n_val]}
+    side = {}
+    for s in subjects:
+        if s in OFFICIAL_TEST:
+            side[s] = "test"
+        elif s in OFFICIAL_TRAIN:
+            side[s] = "val" if s in val else "train"
+        else:
+            raise SystemExit(f"{s} is in neither half of the official split")
+    return side
 
 
 def find_runs(raw: str, subject_re: Optional[str]) -> List[dict]:
@@ -189,6 +216,9 @@ def main(argv=None) -> int:
                    help="seconds around a seizure or impedance check no background is cut from")
     p.add_argument("--bg-per-hour", type=float, default=30.0)
     p.add_argument("--subjects", default=None, help="regex over sub-XXX")
+    p.add_argument("--split", choices=["official", "random"], default="official",
+                   help="official: sub-001..096 train (12%% held out for selection), "
+                        "sub-097..125 test, as the dataset paper")
     p.add_argument("--val-fraction", type=float, default=0.12,
                    help="of the subjects present (15 of 125); --val-subjects overrides")
     p.add_argument("--test-fraction", type=float, default=0.20, help="(25 of 125)")
@@ -208,13 +238,20 @@ def main(argv=None) -> int:
     subjects = sorted({r["subject"] for r in runs})
     print(f"seizeit2: {len(runs)} run(s), {len(subjects)} subject(s) under {args.raw_dir}",
           flush=True)
-    # Fractions, so a subset of the patients (a first pass) splits like the
-    # whole set would, instead of 25 test + 15 val leaving one patient to train.
-    n = len(subjects)
-    n_val = args.val_subjects if args.val_subjects is not None else max(1, round(args.val_fraction * n))
-    n_test = args.test_subjects if args.test_subjects is not None else max(1, round(args.test_fraction * n))
-    side = subject_split(subjects, n_val, n_test, args.split_seed)
-    print(f"  split: {n - n_val - n_test} train / {n_val} val / {n_test} test subjects", flush=True)
+    if args.split == "official":
+        side = official_split(subjects, args.val_fraction, args.split_seed)
+        n_val = sum(v == "val" for v in side.values())
+        n_test = sum(v == "test" for v in side.values())
+        n = len(subjects)
+    else:
+        # Fractions, so a subset of the patients (a first pass) splits like the
+        # whole set would, instead of 25 test + 15 val leaving one to train.
+        n = len(subjects)
+        n_val = args.val_subjects if args.val_subjects is not None else max(1, round(args.val_fraction * n))
+        n_test = args.test_subjects if args.test_subjects is not None else max(1, round(args.test_fraction * n))
+        side = subject_split(subjects, n_val, n_test, args.split_seed)
+    print(f"  split ({args.split}): {n - n_val - n_test} train / {n_val} val / {n_test} test "
+          f"subjects", flush=True)
 
     os.makedirs(args.out_dir, exist_ok=True)
     channels = {"eeg": EEG_CHANNELS, "ecg": ECG_CHANNELS, "emg": EMG_CHANNELS}
@@ -245,7 +282,7 @@ def main(argv=None) -> int:
     for w in writers.values():
         w.close()
     summary = {"task": "seizeit2", "classes": CLASSES, "channels": channels,
-               "window_seconds": args.window, "sz_stride": args.sz_stride,
+               "split": args.split, "window_seconds": args.window, "sz_stride": args.sz_stride,
                "guard_seconds": args.guard, "bg_per_hour": args.bg_per_hour,
                "splits": split_summary(stats), "subject_split": side, "runs": notes,
                "seconds": round(time.time() - t0, 1)}

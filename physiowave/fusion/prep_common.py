@@ -108,6 +108,19 @@ def normalise_window(w: np.ndarray, modality: str) -> np.ndarray:
     return np.clip(x, -CLIP_SIGMA, CLIP_SIGMA).astype(np.float32)
 
 
+def normalise_batch(w: np.ndarray, modality: str) -> np.ndarray:
+    """``normalise_window`` over ``[N, C, T]`` at once (continuous inference)."""
+    x = np.asarray(w, dtype=np.float32)
+    x = x - x.mean(axis=-1, keepdims=True)
+    if modality == "eeg":
+        sd = x.std(axis=-1, keepdims=True)
+        x = np.where(sd > EPS, x / np.maximum(sd, EPS), 0.0)
+    else:
+        sd = np.sqrt((x ** 2).mean(axis=(-1, -2), keepdims=True))
+        x = np.where(sd > EPS, x / np.maximum(sd, EPS), 0.0)
+    return np.clip(x, -CLIP_SIGMA, CLIP_SIGMA).astype(np.float32)
+
+
 def cut(x: np.ndarray, fs: float, start_s: float, seconds: float) -> Optional[np.ndarray]:
     """``[C, T]`` from ``start_s`` for ``seconds``, or None if it runs off the end."""
     a = int(round(start_s * fs))
@@ -281,6 +294,26 @@ def read_edf(path: str, want: Optional[Sequence[str]] = None
         signals[lab] = (x - dmin[i]) * gain + pmin[i]
         rates[lab] = nsamp[i] / rec_s if rec_s else float("nan")
     return signals, rates, n_rec * rec_s
+
+
+def edf_units(path: str) -> Dict[str, str]:
+    """``{label: physical dimension}`` from an EDF header ('uV', 'mV', 'V', ...)."""
+    with open(path, "rb") as f:
+        hdr = f.read(256)
+        ns = int(hdr[252:256].decode().strip())
+        ch = f.read(ns * 256)
+    labels = [ch[16 * i:16 * (i + 1)].decode("latin-1").strip() for i in range(ns)]
+    o = 16 * ns + 80 * ns
+    dims = [ch[o + 8 * i:o + 8 * (i + 1)].decode("latin-1").strip() for i in range(ns)]
+    return dict(zip(labels, dims))
+
+
+def to_microvolts(x: np.ndarray, dim: str) -> np.ndarray:
+    d = (dim or "").strip().lower().replace("µ", "u")
+    scale = {"uv": 1.0, "mv": 1e3, "v": 1e6, "nv": 1e-3}.get(d)
+    if scale is None:
+        raise ValueError(f"unknown EEG unit {dim!r}")
+    return x * scale
 
 
 def write_edf(path: str, signals: Dict[str, np.ndarray], fs: float,

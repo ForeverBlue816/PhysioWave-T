@@ -100,6 +100,45 @@ normalised. ECG/EMG missing from a run (3% of the data) is kept as real
 absence. `--bg-per-hour`, `--guard`, `--sz-stride` change the sampling;
 `--subjects` restricts to a regex for a first pass.
 
+**Split.** `--split official` (the default) is the dataset paper's fixed
+split (`net/datasets/SZ2_*.tsv` in github.com/biomedepi/seizeit2):
+sub-001..sub-096 train and sub-097..sub-125 the set the paper reports on,
+which is our test set. 12% of the training patients (seed 42) are held out
+for our own checkpoint selection, so the test patients are never seen before
+the final evaluation.
+
+### SeizeIT2 event-level evaluation (`Fusion/seizeit2_events.py`)
+
+The window-level numbers above sub-sample the background (30 windows per
+hour, seizures ~8% of the windows) and are not comparable with the
+literature. The event-level evaluation runs the selected checkpoint over the
+test patients' complete continuous recordings: 4 s windows every second,
+centred on the second they score, the encoders run once and the fusion core
+under every modality subset. Each second gets a label (its centre inside an
+annotated `sz*` event) and the reference RMS gate (13 < RMS < 150 µV on the
+2 s cross-head EEG window after a 0.5-60 Hz band and a 50 Hz stop; the
+reference code gates on the cross-head channel alone, and so does
+`--gate cross`, the default).
+
+Scoring (`physiowave/fusion/seizure_events.py`) is a port of the reference
+code: threshold, merge predicted events closer than 2 s, drop events shorter
+than 8 s, any-overlap. It reports, at thresholds 0, 0.02, ..., 1:
+
+- the dataset paper's figures, means over recordings: any-overlap
+  sensitivity (whose TP counts overlapping prediction-seizure pairs, as the
+  reference does), any-overlap and epoch FA/h, and the challenge score
+  `100·sens − 0.4·FA_epoch/h`;
+- pooled event figures over all recordings: seizures hit by at least one
+  predicted event / seizures, and FA/24h;
+- the sensitivity reachable at 0.5, 1, 2, 6.22 and 11 FA/h;
+- the pooled per-second AUROC and AUPRC.
+
+`scripts/collect_seizeit2_events.py` puts the runs beside the published
+rows: the dataset paper's SVM (71.1% / 11.0 FA/h / AUROC 0.70 / AUPR 0.081)
+and ChronoNet (84.2% / 100.5 FA/h / 0.79 / 0.104) on bte-EEG with this split
+and scoring, and the Epilepsia Open 2026 bte-EEG + ECG algorithm (78%
+per-patient sensitivity at 6.22 FA/h, its own cohort and protocol; indicative).
+
 ### What transfers
 
 | modality | montage | route | what loads |
@@ -161,7 +200,9 @@ condition.
 | `physiowave/fusion/{data,encoders,model,train}.py` | dataset, per-task C1 encoders, the three cores, the entry point |
 | `configs/fusion/c1_ralf.yaml` | the run's settings |
 | `scripts/slurm/cineca_fusion_prep.sbatch`, `scripts/slurm/cineca_fusion_c1.sbatch` | preprocessing; the five-run comparison |
-| `scripts/collect_fusion.py` | the table |
+| `scripts/collect_fusion.py` | the window-level table |
+| `Fusion/seizeit2_events.py`, `physiowave/fusion/seizure_events.py` | SeizeIT2 continuous inference and event-level scoring |
+| `scripts/slurm/cineca_seizeit2_events.sbatch`, `scripts/collect_seizeit2_events.py` | the evaluation job; the event-level table with the published rows |
 | `tests/test_fusion_c1.py` | both preparations on synthetic files, the three cores, an end-to-end run on smoke encoders |
 
 The earlier legacy path (`physiowave/models/fusion.py`, `configs/fusion/ralf.yaml`,
