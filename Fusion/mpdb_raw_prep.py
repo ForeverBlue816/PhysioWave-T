@@ -336,9 +336,12 @@ def main(argv=None) -> int:
         loaded[subj] = items
         with_emg = sum(1 for it in items if it["emg"] is not None)
         with_ecg = sum(1 for it in items if it["ecg"] is not None)
+        pairing = " ".join(
+            f"{e}:{v.get('windows', 0)}w/emg {v['emg_pairing']['paired']}/{v['emg_pairing']['events_eeg']}"
+            if "emg_pairing" in v else f"{e}:{v.get('windows', 0)}w/{v.get('skipped', v.get('emg_skipped', 'no emg'))}"
+            for e, v in note["experiments"].items())
         print(f"  subject {subj}: {len(items)} windows ({with_ecg} with ECG, {with_emg} with EMG)  "
-              + " ".join(f"{e}:{v.get('windows', 0)}" for e, v in note["experiments"].items()),
-              flush=True)
+              f"{pairing}", flush=True)
     if not loaded:
         raise SystemExit("every subject was dropped; see the notes above")
     side = subject_split([f"mpdb_s{s:02d}" for s in loaded], args.val_subjects,
