@@ -101,31 +101,58 @@ def split_eeg_ecg(data: np.ndarray, names: List[str]) -> Tuple[np.ndarray, List[
 
 def pair_events(a: List[Tuple[float, int]], b: List[Tuple[float, int]], tol: float
                 ) -> Tuple[List[Tuple[int, int]], Dict]:
-    """Indices into ``a`` (EEG file) and ``b`` (EMG file) of the same events.
+    """Indices into ``a`` (EEG&ECG file) and ``b`` (EMG file) of the same events.
 
-    Codes are matched in order (identical sequences, else their LCS); then
-    the two devices' inter-event intervals are compared pair by pair, and a
-    pair whose interval to the previous kept pair differs by more than
-    ``tol`` is dropped. The devices share the simulator's trigger, so their
-    intervals agree to a few milliseconds when the pairing is right.
+    The two devices share the simulator's trigger stream but not a clock:
+    the EMG file is offset by a constant (seconds) plus a drift of a few
+    tens of ppm, and it may hold a few events the other file does not (the
+    raw throttle files carry nine extra). Codes repeat hundreds of times, so
+    order alone is ambiguous; TIME is not. The clock relation
+    ``t_b = s * t_a + o`` is estimated from the codes that occur equally
+    often in both files (the behaviour markers among them), refined by a
+    least-squares fit over the pairs it explains, and every event of ``a``
+    is then paired with the nearest same-code event of ``b`` within ``tol``
+    of its predicted time, each event of ``b`` used once.
     """
-    ca, cb = np.array([c for _, c in a]), np.array([c for _, c in b])
-    pairs = ([(i, i) for i in range(len(a))] if len(a) == len(b) and np.array_equal(ca, cb)
-             else _lcs_pairs(ca, cb))
-    kept, bad, prev = [], 0, None
-    for i, j in pairs:
-        if prev is not None:
-            da = a[i][0] - a[prev[0]][0]
-            db = b[j][0] - b[prev[1]][0]
-            if abs(da - db) > tol:
-                bad += 1
-                continue
-        kept.append((i, j))
-        prev = (i, j)
-    offsets = [b[j][0] - a[i][0] for i, j in kept]
-    return kept, {"events_eeg": len(a), "events_emg": len(b), "paired": len(kept),
-                  "interval_mismatch": bad,
-                  "clock_offset_s": [round(min(offsets), 3), round(max(offsets), 3)] if offsets else None}
+    if not a or not b:
+        return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0}
+    ta, ca = np.array([t for t, _ in a]), np.array([c for _, c in a])
+    tb, cb = np.array([t for t, _ in b]), np.array([c for _, c in b])
+    # 1. a first offset from codes with equal counts, k-th to k-th
+    diffs = []
+    for c in np.unique(ca):
+        ia, ib = np.where(ca == c)[0], np.where(cb == c)[0]
+        if len(ia) and len(ia) == len(ib):
+            diffs.extend((tb[ib] - ta[ia]).tolist())
+    if not diffs:
+        return [], {"events_eeg": len(a), "events_emg": len(b), "paired": 0,
+                    "reason": "no code occurs equally often in both files"}
+    off, scale = float(np.median(diffs)), 1.0
+
+    def match(off, scale, tol_):
+        used = np.zeros(len(b), bool)
+        pairs = []
+        for i in np.argsort(ta):
+            pred = scale * ta[i] + off
+            cand = np.where((cb == ca[i]) & ~used & (np.abs(tb - pred) <= tol_))[0]
+            if cand.size:
+                j = int(cand[np.argmin(np.abs(tb[cand] - pred))])
+                used[j] = True
+                pairs.append((int(i), j))
+        return pairs
+    # 2. refine with a linear fit (drift) over what the first guess explains
+    pairs = match(off, scale, max(tol, 0.5))
+    if len(pairs) >= 3:
+        xa = ta[[i for i, _ in pairs]]
+        xb = tb[[j for _, j in pairs]]
+        scale, off = np.polyfit(xa, xb, 1)
+    pairs = match(float(off), float(scale), tol)
+    resid = [abs(scale * ta[i] + off - tb[j]) for i, j in pairs]
+    return pairs, {"events_eeg": len(a), "events_emg": len(b), "paired": len(pairs),
+                   "unpaired_eeg": len(a) - len(pairs), "unused_emg": len(b) - len(pairs),
+                   "clock_offset_s": round(float(off), 3),
+                   "clock_drift_ppm": round((float(scale) - 1.0) * 1e6, 1),
+                   "max_residual_ms": round(1000 * float(max(resid)), 1) if resid else None}
 
 
 def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, pre: float,
@@ -201,7 +228,7 @@ def subject_windows(subj: int, exps: Dict[str, Dict[str, str]], window: float, p
 
 def inspect_files(raw: str, n: int, tol: float) -> int:
     found = find_files(raw)
-    print(f"{len(found)} subject(s) with raw files under {raw}")
+    print(f"{len(found)} subject(s) with raw files under {raw}: {sorted(found)}")
     for subj in sorted(found)[:n]:
         print(f"subject {subj}")
         for exp in EXPERIMENTS:
@@ -220,7 +247,9 @@ def inspect_files(raw: str, n: int, tol: float) -> int:
                     hist[c] = hist.get(c, 0) + 1
                 print(f"    {kind}: {data.shape[0]} ch x {data.shape[1] / fs:.0f} s @ {fs:g} Hz; "
                       f"events {len(ev)} {dict(sorted(hist.items()))}")
-                print(f"      channels: {names[:12]}{' ...' if len(names) > 12 else ''}")
+                print(f"      channels ({len(names)}): {names}")
+                beh = {c: n for c, n in sorted(hist.items()) if c in MARKER_CLASS}
+                print(f"      behaviour markers: {beh}  (others are simulator state codes)")
                 print(f"      first events (s, code): {[(round(t, 2), c) for t, c in ev[:8]]}")
             if "eegecg" in evs and "emg" in evs:
                 kept, how = pair_events(evs["eegecg"], evs["emg"], tol)

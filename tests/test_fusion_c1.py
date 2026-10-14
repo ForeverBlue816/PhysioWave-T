@@ -160,8 +160,12 @@ def test_mpdb_raw_pairs_events_across_devices(tmp_path, monkeypatch):
         times = 10.0 + 20.0 * np.arange(len(ev_codes))          # 20 s apart
         T = int((times[-1] + 20) * fs)
         if kind == "EMG":
-            # the EMG device started 3.21 s later and missed the fifth trigger
-            ev = [(t - 3.21, c) for k, (t, c) in enumerate(zip(times, ev_codes)) if k != 4]
+            # the EMG device started 3.21 s later, drifts 30 ppm, missed the fifth
+            # trigger and logged three simulator codes the other device did not
+            ev = [(t * (1 + 30e-6) - 3.21, c) for k, (t, c) in enumerate(zip(times, ev_codes))
+                  if k != 4]
+            ev += [(5.0, 77), (times[2] * (1 + 30e-6) - 3.21 + 0.4, 79), (times[-1] + 5, 27)]
+            ev.sort()
             return rng.normal(0, 30, (4, T)), ["S01", "S05", "S09", "S13"], fs, ev
         ev = list(zip(times.tolist(), ev_codes))
         names = EEG8 + ["ECG"]
@@ -179,8 +183,9 @@ def test_mpdb_raw_pairs_events_across_devices(tmp_path, monkeypatch):
     present_emg = sum(v["present"]["emg"] for v in info["splits"].values())
     assert present_emg == 3 * (n_events - 4)                # the missed trigger per experiment
     pairing = info["subjects"][0]["experiments"]["brake"]["emg_pairing"]
-    assert pairing["paired"] == 11 and pairing["interval_mismatch"] == 0
-    assert abs(pairing["clock_offset_s"][0] + 3.21) < 1e-6
+    assert pairing["paired"] == 11 and pairing["unpaired_eeg"] == 1 and pairing["unused_emg"] == 3
+    assert abs(pairing["clock_offset_s"] + 3.21) < 0.01 and abs(pairing["clock_drift_ppm"] - 30) < 5
+    assert pairing["max_residual_ms"] < 5
     with h5py.File(out / "train.h5", "r") as f:
         assert f["eeg"].shape[1:] == (8, 1024) and f["ecg"].shape[1:] == (1, 1000)
         assert f["emg"].shape[1:] == (4, 8000)
