@@ -31,13 +31,13 @@ window  x  [B, C, T]      one route: C electrodes at rate f, T = window seconds 
 | | EEG | ECG | sEMG |
 |---|---|---|---|
 | Transformer width / depth / heads | 512 / 8 / 8 | 512 / 9 / 8 | 384 / 6 / 6 |
-| parameters (total; Transformer) | 30.3 M; 25.2 M | 30.1 M; 28.4 M | 12.1 M; 10.6 M |
+| model parameters (total; of which the Transformer) | 30.3 M; 25.2 M | 30.1 M; 28.4 M | 12.1 M; 10.6 M |
 | routes | E19_256, E32_512, E64_256, E128_512 | L12_500, L1_250 | W16_2000, A24_2000, G64_2000 |
 | window / patch | 4 s / 0.5 s (8 patches per channel) | 10 s / 0.5 s (20) | 1 s / 0.125 s (8) |
 | wavelet bank (initialisation) | sym4, sym5, db6, sym8, db8 | db4, db6, sym4, sym8, coif2 | db2, db4, db7, sym4, sym5 |
 | channel vocabulary | 334 names: 10-20 / 10-10 electrodes and bipolar derivations | 30: the 12 leads, V3R–V9, `patch1` | 234: wristband, forearm rings, HD-grid positions |
 | masking | frequency-guided, 70% | the same, limb leads masked as one group | the same |
-| corpus (windows) | 15.4 M | 7.6 M | 5.1 M |
+| pretraining corpus size (windows, not parameters) | 15.4 M windows (4 s: 17,100 h) | 7.6 M windows (10 s: 21,000 h) | 5.1 M windows (1 s: 1,420 h) |
 | optimizer updates | 60 × 768 = 46,080 | 60 × 1000 = 60,000 | 39 × 1000 = 39,000 (epoch 38 checkpoint, see §7) |
 
 Everything not in the table is identical across the three: 16 taps per
