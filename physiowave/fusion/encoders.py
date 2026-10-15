@@ -111,7 +111,9 @@ def channel_meta(names: Sequence[str]) -> SimpleNamespace:
 
 def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples: int,
                   checkpoint: Optional[str], cache_dir: str, freeze: bool,
-                  dropout: float = 0.0, max_drop: int = 0) -> Tuple[nn.Module, dict]:
+                  dropout: float = 0.0, max_drop: int = 0, arch: str = "c1",
+                  adapter: Optional[Sequence[str]] = None, input_uv: float = 30.0
+                  ) -> Tuple[nn.Module, dict]:
     """A downstream C1 model for this montage, its pretrained parts loaded.
 
     ``checkpoint`` None builds the same architecture from scratch (the
@@ -119,7 +121,28 @@ def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples
     which route, if any, carried the frontend over, and which electrodes were
     left out to reach it (``dropped_channels``; ``keep_index`` selects the
     rows the model takes).
+
+    EEG only: ``arch`` eegpt / labram builds that published encoder instead
+    (physiowave.fusion.baselines), and ``adapter`` -- a list of electrode
+    names -- puts a learned channel adapter from the recorded channels onto
+    those electrodes in front of whichever encoder, C1 included, which is
+    then built for them.
     """
+    if modality != "eeg" and (arch != "c1" or adapter):
+        raise SystemExit(f"{modality}: arch {arch!r} and an adapter are for EEG only")
+    if arch != "c1":
+        from .baselines import DEFAULT_TARGETS, build_baseline
+        return build_baseline(arch, names, fs, window_samples, checkpoint, freeze,
+                              targets=list(adapter or DEFAULT_TARGETS), input_uv=input_uv)
+    if adapter:
+        from .baselines import AdaptedC1Encoder
+        inner, report = build_encoder(modality, list(adapter), fs, window_samples, checkpoint,
+                                      cache_dir, freeze, dropout, 0)
+        enc = AdaptedC1Encoder(inner, len(names), adapter)
+        report.update({"arch": "c1", "adapter": {"from": list(names), "to": list(adapter)},
+                       "summary": f"{report['summary']}; adapter {len(names)} -> "
+                                  f"{'/'.join(adapter)} trains"})
+        return enc, report
     cls = modality_class(modality)
     route_id, dropped = choose_route(modality, names, fs, max_drop)
     all_names = list(names)
@@ -142,7 +165,7 @@ def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples
                 channel_names=list(names), route_id=route_id, dropout=float(dropout),
                 pool="mean", freeze_encoder=bool(freeze), freeze_scope="pretrained",
                 **kwargs)
-    report = {"modality": modality, "route": route_id, "exported": exported,
+    report = {"modality": modality, "arch": "c1", "route": route_id, "exported": exported,
               "embed_dim": int(model.embed_dim), "taken": [], "skipped": [],
               "dropped_channels": list(dropped),
               "keep_index": keep_index if dropped else None}
@@ -163,15 +186,25 @@ def share_core(primary: nn.Module, other: nn.Module) -> None:
 
 
 def encoder_lr_scale(model_names_prefix: str, depth: int, encoder_lr_scale: float,
-                     layer_decay: float):
-    """Layer-wise decay for encoder parameters named ``<prefix>.<task>.<m>.<key>``."""
+                     layer_decay: float, encoders: Optional[Dict[str, Dict[str, nn.Module]]] = None):
+    """Layer-wise decay for encoder parameters named ``<prefix>.<task>.<m>.<key>``.
+
+    An encoder with its own ``layer_lr_scale(key, scale, decay)`` (the
+    baselines, an adapted C1) decides for its parameters; C1 encoders follow
+    ``c1_lr_scale`` at ``depth``.
+    """
     from physiowave.train.finetune_main import c1_lr_scale
     inner = c1_lr_scale(depth, encoder_lr_scale, layer_decay)
 
     def scale(name: str) -> float:
         if not name.startswith(model_names_prefix + "."):
             return 1.0
-        key = name.split(".", 3)[-1]           # encoders.<task>.<m>.<key>
+        _, task, m, key = name.split(".", 3)   # encoders.<task>.<m>.<key>
+        enc = None
+        if encoders is not None and task in encoders and m in encoders[task]:
+            enc = encoders[task][m]
+        if enc is not None and hasattr(enc, "layer_lr_scale"):
+            return float(enc.layer_lr_scale(key, encoder_lr_scale, layer_decay))
         return inner(key)
     return scale
 

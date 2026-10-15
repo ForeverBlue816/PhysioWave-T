@@ -128,7 +128,10 @@ def build_model(cfg: Dict, tasks: Dict[str, Dict[str, MultimodalWindows]], out_d
     mode = mcfg.get("encoder_mode", "frozen")
     if mode not in ("frozen", "finetune", "scratch"):
         raise SystemExit(f"model.encoder_mode must be frozen, finetune or scratch, not {mode!r}")
-    ck = {m: (cfg.get("encoders") or {}).get(m) for m in MODALITIES}
+    ecfg = cfg.get("encoders") or {}
+    ck = {m: ecfg.get(m) for m in MODALITIES}
+    arch = {m: str(ecfg.get(f"{m}_arch") or "c1") for m in MODALITIES}
+    eeg_adapter = mcfg.get("eeg_adapter") or None
     if mode != "scratch" and not any(ck.values()):
         raise SystemExit("encoder_mode is not scratch but no encoders.<m> path is set")
     encoders, metas, reports, keep = {}, {}, {}, {}
@@ -143,10 +146,15 @@ def build_model(cfg: Dict, tasks: Dict[str, Dict[str, MultimodalWindows]], out_d
                 None if mode == "scratch" else ck[m],
                 os.path.join(out_dir, "encoders"), freeze=(mode == "frozen"),
                 dropout=float(mcfg.get("encoder_dropout", 0.0)),
-                max_drop=int(mcfg.get("route_drop_max", 0)))
+                max_drop=int(mcfg.get("route_drop_max", 0)), arch=arch[m],
+                adapter=eeg_adapter if m == "eeg" else None,
+                input_uv=float(ecfg.get("eeg_input_uv", 30.0)))
             keep[t][m] = rep.get("keep_index")
             if rep.get("dropped_channels"):
                 names = [n for n in names if n not in rep["dropped_channels"]]
+            if m in primary and arch[m] != "c1":
+                raise SystemExit(f"{m}: a {arch[m]} encoder is not shared across tasks; "
+                                 "train one task")
             if m in primary:
                 share_core(primary[m], enc)
                 rep["shares_core_with"] = next(tt for tt in encoders if m in encoders[tt])
@@ -370,7 +378,7 @@ def main(argv=None) -> int:
     if cfg["model"]["encoder_mode"] == "finetune":
         lr_scale = encoder_lr_scale("encoders", model.encoder_depth(),
                                     float(tcfg.get("encoder_lr_scale", 1.0)),
-                                    float(tcfg.get("layer_decay", 1.0)))
+                                    float(tcfg.get("layer_decay", 1.0)), model.encoders)
     optimizer = build_optimizer(model, float(tcfg["lr"]), float(tcfg["weight_decay"]),
                                 lr_scale=lr_scale)
     scheduler = build_scheduler(optimizer, int(float(tcfg.get("warmup_ratio", 0.1)) * total_steps),
@@ -491,9 +499,16 @@ def main(argv=None) -> int:
     ck = torch.load(os.path.join(out_dir, "best.pth"), map_location="cpu", weights_only=False)
     model.load_state_dict(ck["model"])
     sev = float((cfg.get("eval") or {}).get("corruption_severity", 0.7))
-    conditions = [(cid, tuple(m for m in keep if m in modalities), corr)
-                  for cid, keep, corr in DEFAULT_CONDITIONS
-                  if all(m in modalities for m in corr) and any(m in modalities for m in keep)]
+    conditions, seen = [], set()
+    for cid, keep, corr in DEFAULT_CONDITIONS:
+        kept = tuple(m for m in keep if m in modalities)
+        if not kept or not all(m in modalities for m in corr):
+            continue
+        key = (kept, tuple(sorted(corr.items())))
+        if key in seen:              # e.g. eeg+ecg on an EEG-only model is eeg alone
+            continue
+        seen.add(key)
+        conditions.append((cid, kept, corr))
     test_corruptor = SignalCorruptor(CorruptionConfig(prob=1.0, kinds=list(CORRUPTIONS)),
                                      torch.Generator().manual_seed(1234))
     results = {"fusion": model.fusion_name, "encoder_mode": cfg["model"]["encoder_mode"],

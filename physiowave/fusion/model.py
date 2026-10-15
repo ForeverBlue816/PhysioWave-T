@@ -283,6 +283,8 @@ class C1Multimodal(nn.Module):
 
     def encoder_depth(self) -> int:
         enc = next(iter(next(iter(self.encoders.values())).values()))
+        if hasattr(enc, "depth"):
+            return int(enc.depth)
         return len(enc.shared_transformer.blocks)
 
 

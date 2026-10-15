@@ -62,7 +62,8 @@ src, repo, wt, max_mb = sys.argv[1], sys.argv[2], sys.argv[3], float(sys.argv[4]
 cap = int(max_mb * 2**20)
 KEEP_NAMES = {"results.json", "history.json", "metrics_epoch.jsonl", "config_resolved.yaml",
               "train_command.txt", "environment.json", "split.json", "dataset_manifest.json",
-              "error_histogram.json", "test_results.json", "training_metrics.json"}
+              "error_histogram.json", "test_results.json", "training_metrics.json",
+              "encoders.json", "events_cross.json", "events_both.json", "events_none.json"}
 KEEP_EXT = (".log", ".txt", ".md", ".csv")
 KEEP_PREFIX = ("summary",)
 SKIP_DIRS = {"figure_data", "tensorboard", "smoke_corpus", "cache", "figures",

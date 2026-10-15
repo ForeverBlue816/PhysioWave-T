@@ -106,6 +106,8 @@ def predict_run(model, task: str, run: dict, window: float, step: float, batch: 
                 device, amp) -> Dict[str, np.ndarray]:
     import torch
     streams, eeg_uv, fs_eeg, T = load_streams(run)
+    # what the model has an encoder for (an EEG-only model scores eeg subsets only)
+    streams = {m: v for m, v in streams.items() if m in model.modalities}
     n_sec = int(T)
     centres = np.arange(0, n_sec, step) + 0.5
     starts = centres - window / 2.0

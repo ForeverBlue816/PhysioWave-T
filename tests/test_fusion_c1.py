@@ -372,3 +372,134 @@ def test_seizeit2_official_split_train_and_event_evaluation(tmp_path):
     h2 = json.load(open(run / "history.json"))
     assert len(h2) == 2 and h2[0]["train"] == h1[0]["train"]      # epoch 0 kept, epoch 1 added
     assert json.load(open(run / "results.json"))["epochs_run"] == 2
+
+
+# --------------------------------------------------------------------------- #
+# EEG baselines: EEGPT and LaBraM under the same protocol
+# --------------------------------------------------------------------------- #
+
+def _write_safetensors(path, sd):
+    import struct
+    header, blobs, off = {}, [], 0
+    for k, v in sd.items():
+        b = v.detach().contiguous().float().numpy().tobytes()
+        header[k] = {"dtype": "F32", "shape": list(v.shape), "data_offsets": [off, off + len(b)]}
+        blobs.append(b)
+        off += len(b)
+    h = json.dumps(header).encode()
+    with open(path, "wb") as f:
+        f.write(struct.pack("<Q", len(h)) + h + b"".join(blobs))
+
+
+def _fake_baseline_checkpoints(tmp_path):
+    """Random backbones saved in the released files' layouts: EEGPT's mcae
+    checkpoint as safetensors (target_encoder.* beside the other three nets),
+    LaBraM's labram-base.pth ({'model': {'student.*', 'lm_head.*', ...}})."""
+    from physiowave.fusion.baselines import EEGPTBackbone, LaBraMBackbone
+    torch.manual_seed(3)
+    e = EEGPTBackbone()
+    sd = {f"target_encoder.{k}": v for k, v in e.state_dict().items()}
+    sd["encoder.summary_token"] = torch.zeros(1, 4, 512)
+    eegpt = tmp_path / "eegpt.safetensors"
+    _write_safetensors(eegpt, sd)
+    lb = LaBraMBackbone()
+    sd = {f"student.{k}": v for k, v in lb.state_dict().items()}
+    sd["student.mask_token"] = torch.zeros(1, 1, 200)
+    sd["student.lm_head.weight"] = torch.zeros(8192, 200)
+    sd["lm_head.weight"] = torch.zeros(8192, 200)
+    labram = tmp_path / "labram-base.pth"
+    torch.save({"model": sd, "epoch": 0}, labram)
+    return {"eegpt": (str(eegpt), e), "labram": (str(labram), lb)}
+
+
+def test_eeg_baselines_load_freeze_and_decay(tmp_path):
+    from physiowave.fusion.baselines import ChannelAdapter, build_baseline
+    fake = _fake_baseline_checkpoints(tmp_path)
+    x = torch.randn(3, 2, 1024)
+    for arch, (path, ref) in fake.items():
+        enc, rep = build_baseline(arch, ["bte_sameside", "bte_other"], 256.0, 1024, path,
+                                  freeze=True)
+        for k, v in ref.state_dict().items():                 # the weights are the file's
+            assert torch.equal(enc.backbone.state_dict()[k], v), (arch, k)
+        tok = enc.encode(x)
+        n = {"eegpt": 16 * 4, "labram": 6 * 4}[arch]           # 16 patches x 4 summary / 6 chans x 4 s
+        assert tok.shape == (3, n, enc.embed_dim)
+        tok.sum().backward()
+        assert all(p.grad is None for p in enc.backbone.parameters())   # frozen
+        assert enc.adapter.weight.grad is not None                     # the adapter trains
+        assert rep["adapter"]["to"] == ["F7", "T7", "P7", "F8", "T8", "P8"]
+        d, depth = 0.5, enc.depth
+        assert enc.layer_lr_scale("adapter.weight", 1.0, d) == 1.0
+        assert enc.layer_lr_scale(f"backbone.blocks.{depth - 1}.mlp.fc1.weight", 1.0, d) == d
+        assert enc.layer_lr_scale("backbone.blocks.0.norm1.weight", 1.0, d) == d ** depth
+        assert enc.layer_lr_scale("backbone.norm.weight", 1.0, d) == 1.0
+        assert enc.layer_lr_scale("backbone.patch_embed.conv1.weight"
+                                  if arch == "labram" else "backbone.chan_embed.weight",
+                                  1.0, d) == d ** (depth + 1)
+    a = ChannelAdapter(2, 6)
+    with torch.no_grad():
+        a.weight.mul_(100)
+    a(torch.randn(1, 2, 8))
+    assert float(a.weight.detach().flatten(1).norm(dim=1).max()) <= 1.0 + 1e-5   # max-norm 1
+    # a checkpoint of the wrong model is refused, not half-loaded
+    with pytest.raises(SystemExit):
+        build_baseline("eegpt", ["a", "b"], 256.0, 1024, fake["labram"][0], freeze=True)
+
+
+@pytest.mark.slow
+def test_seizeit2_eeg_only_c1_eegpt_labram(tmp_path):
+    """Official split -> EEG-only runs of C1 (adapter / native), EEGPT and LaBraM
+    -> continuous event-level evaluation of one of them."""
+    import subprocess
+    from seizeit2_prep import main as sz_main
+    from physiowave.train.pretrain_main import main as pretrain
+    raw = tmp_path / "sz_raw"
+    _bids(raw, subjects=("sub-001", "sub-002", "sub-003", "sub-004", "sub-097", "sub-098"),
+          seconds=300)
+    sz = tmp_path / "c1" / "seizeit2"
+    assert sz_main(["--raw-dir", str(raw), "--out-dir", str(sz), "--jobs", "1",
+                    "--bg-per-hour", "120"]) == 0
+    pre = tmp_path / "pre_eeg"
+    assert pretrain(["--config", "pretrain/eeg_c1_moe", "--smoke-test", "--max-steps", "2",
+                     "--output-dir", str(pre)]) == 0
+    fake = _fake_baseline_checkpoints(tmp_path)
+    from physiowave.fusion.train import main as train
+    common = ["--config", "fusion/seizeit2_eeg", "--device", "cpu", "--num-workers", "0",
+              "--progress", "none", "--epochs", "1", "--max-steps", "2"]
+    small = ["train.batch_size=4", "train.precision=fp32", "model.embed_dim=32",
+             "model.summary_heads=4", f"data.tasks.seizeit2.dir={sz}"]
+    runs = {
+        "c1_frozen": [f"encoders.eeg={pre / 'latest.pth'}", "model.encoder_mode=frozen"],
+        "c1native_frozen": [f"encoders.eeg={pre / 'latest.pth'}", "model.encoder_mode=frozen",
+                            "model.eeg_adapter=null"],
+        "eegpt_frozen": [f"encoders.eeg={fake['eegpt'][0]}", "encoders.eeg_arch=eegpt",
+                         "model.encoder_mode=frozen"],
+        "labram_finetune": [f"encoders.eeg={fake['labram'][0]}", "encoders.eeg_arch=labram",
+                            "model.encoder_mode=finetune"],
+    }
+    for name, sets in runs.items():
+        out = tmp_path / "runs" / name
+        assert train(common + ["--output-dir", str(out), "--set", *small, *sets]) == 0, name
+        res = json.load(open(out / "results.json"))
+        test = res["tasks"]["seizeit2"]["test"]
+        # one modality: complete is eeg alone, and no subset repeats it
+        assert "complete" in test and not {"eeg_only", "eeg_ecg", "ecg_only"} & set(test)
+        assert "auprc" in test["complete"]
+        rep = json.load(open(out / "encoders.json"))["seizeit2"]["eeg"]
+        if name == "c1_frozen":
+            assert rep["route"] == "E19_256" and rep["adapter"]["to"][1] == "T7"
+        if name == "c1native_frozen":
+            assert rep["route"] is None and "adapter" not in rep
+        if name.startswith(("eegpt", "labram")):
+            assert rep["arch"] == name.split("_")[0]
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "Fusion", "seizeit2_events.py"),
+                        "--run-dir", str(tmp_path / "runs" / "eegpt_frozen"),
+                        "--raw-dir", str(raw), "--device", "cpu", "--step", "4", "--batch", "64"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-3000:]
+    ev = json.load(open(tmp_path / "runs" / "eegpt_frozen" / "events_cross.json"))
+    assert ev["n_runs"] == 4 and ev["conditions"]["complete"]["n_seizures"] == 4
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "collect_seizeit2_events.py"),
+                        "--root", str(tmp_path / "runs"), "--condition", "complete"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0 and "eegpt_frozen / complete" in r.stdout, r.stdout + r.stderr

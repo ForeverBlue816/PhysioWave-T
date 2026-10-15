@@ -196,6 +196,60 @@ that holds one continues after that epoch, so a job the walltime cut off is
 finished by resubmitting the same command; `--fresh` starts over. The file
 is removed once `results.json` is written.
 
+## SeizeIT2, EEG alone: C1 against EEGPT and LaBraM
+
+Published EEG foundation models report on their own preprocessing, splits
+and folds, so their numbers do not sit beside ours. Here they are run in
+our setting instead: the official-split windows, one head, one schedule,
+selection on validation AUPRC, the window-level test and the continuous
+event-level scoring above -- the encoder is the only thing that differs.
+
+| encoder | weights | input |
+|---|---|---|
+| C1 | `pretrain_eeg_c1_moe/best.pth` | per-channel z-score, 256 Hz |
+| EEGPT large (NeurIPS 2024) | `eegpt_mcae_58chs_4s_large4E`, target encoder | mV, 256 Hz, 64-sample patches |
+| LaBraM-Base (ICLR 2024) | `labram-base.pth`, student | 0.1 mV, 200 Hz, 200-sample patches |
+
+`physiowave/fusion/baselines.py` re-implements both published encoders
+with the released parameter names. The released weights load strictly,
+and on random input they reproduce the authors' code: EEGPT exactly,
+LaBraM to 7e-5 on outputs of size ~3 (attention kernel rounding).
+
+**Montage.** SeizeIT2's two behind-the-ear channels are electrodes of no
+model's vocabulary. Every encoder, C1 included, gets the same learned 1x1
+channel adapter, EEGPT's own recipe for two-channel data (its Sleep-EDF
+script): a max-norm-1 convolution from the two channels onto F7 T7 P7 /
+F8 T8 P8. Every model knows those six electrodes, and they put C1 on its
+E19_256 route, so its pretrained frontend transfers. The adapter trains
+even when the encoder is frozen. `c1native` runs C1 the way the fusion
+runs do: the raw channel names, new embedding rows, no adapter.
+
+**Amplitude.** The stored windows are z-scored. After the adapter each
+channel is z-scored again, then scaled to its model's pretraining units
+for a 30 uV RMS channel (`encoders.eeg_input_uv`). EEGPT's common-average
+re-reference is not applied, because it is meaningless for two bipolar
+channels.
+
+**Recipe** (`configs/fusion/seizeit2_eeg.yaml`): concat head on 4 summary
+tokens, lr 1e-4 for 15 epochs (patience 5), layer decay 0.75 when
+fine-tuning, no corruption augmentation, no multimodal losses. Both
+`frozen` (the encoder fixed, the adapter and head train) and `finetune`
+are run for each encoder.
+
+```bash
+bash scripts/download_eeg_baselines.sh          # login node, once; SHA-256 checked
+sbatch scripts/slurm/cineca_seizeit2_eeg.sbatch # 8 runs, then their event-level scoring
+```
+
+LaBraM's file comes from the authors' repository at a fixed commit. EEGPT's
+authors release theirs on figshare, which does not serve scripted
+downloads, so the script takes a safetensors conversion of the same file
+from huggingface.co/eeg-telecom-paris/eegpt-large-official at a fixed
+revision. That is a third-party mirror; its target encoder is the one
+checked above. To use the authors' `.ckpt`, pass `EEGPT_CKPT=<path>` to the
+job; both formats load. The tables land in
+`$PW_CKPT_ROOT/fusion/seizeit2_eeg_sze_{windows,events}.txt`.
+
 ## Files
 
 | file | what |
@@ -209,6 +263,8 @@ is removed once `results.json` is written.
 | `scripts/collect_fusion.py` | the window-level table |
 | `Fusion/seizeit2_events.py`, `physiowave/fusion/seizure_events.py` | SeizeIT2 continuous inference and event-level scoring |
 | `scripts/slurm/cineca_seizeit2_events.sbatch`, `scripts/collect_seizeit2_events.py` | the evaluation job; the event-level table with the published rows |
+| `physiowave/fusion/baselines.py`, `configs/fusion/seizeit2_eeg.yaml` | EEGPT and LaBraM encoders, the channel adapter; the EEG-only recipe |
+| `scripts/download_eeg_baselines.sh`, `scripts/slurm/cineca_seizeit2_eeg.sbatch` | the released weights; the eight EEG-only runs and their event-level scoring |
 | `tests/test_fusion_c1.py` | both preparations on synthetic files, the three cores, an end-to-end run on smoke encoders |
 
 The earlier legacy path (`physiowave/models/fusion.py`, `configs/fusion/ralf.yaml`,
