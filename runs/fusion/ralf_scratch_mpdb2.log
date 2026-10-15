@@ -1,0 +1,170 @@
+2026-10-14 21:00:01,239 INFO: MultiHeadGate: 1 channels is not divisible by 4 heads; using 1.
+2026-10-14 21:00:01,980 INFO: mpdb/eeg: route E64_256, from scratch [electrodes left out for the route: ['PO5', 'PO6']]
+2026-10-14 21:00:01,981 INFO: mpdb/ecg: route L1_250, from scratch
+2026-10-14 21:00:01,981 INFO: mpdb/emg: route None, from scratch
+2026-10-14 21:00:01,984 INFO: model 36.63 M parameters, 36.63 M trainable; fusion=ralf encoder_mode=scratch
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/generic.py:462: UserWarning: torch.utils._pytree._register_pytree_node is deprecated. Please use torch.utils._pytree.register_pytree_node instead.
+  _torch_pytree._register_pytree_node(
+/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/transformers/utils/hub.py:124: FutureWarning: Using `TRANSFORMERS_CACHE` is deprecated and will be removed in v5 of Transformers. Use `HF_HOME` instead.
+  warnings.warn(
+2026-10-14 21:00:04,376 INFO: tasks {'mpdb': 5}; steps/epoch {'mpdb': 171}; 60 epochs
+2026-10-14 21:00:08,007 INFO: epoch 0 step 1/171 [mpdb] loss 2.8564 lr 5.85e-07
+2026-10-14 21:00:41,322 INFO: epoch 0 step 51/171 [mpdb] loss 2.6698 lr 1.52e-05
+2026-10-14 21:01:15,695 INFO: epoch 0 step 101/171 [mpdb] loss 2.5670 lr 2.98e-05
+2026-10-14 21:01:46,884 INFO: epoch 0 step 151/171 [mpdb] loss 2.7582 lr 4.44e-05
+2026-10-14 21:01:59,553 INFO: epoch 0 step 171/171 [mpdb] loss 2.7866 lr 5.03e-05
+2026-10-14 21:02:09,083 INFO: epoch 0 done: mpdb: acc=0.2609, balanced_acc=0.2305, auroc=0.5623 | score 0.2305  (best)
+2026-10-14 21:02:10,771 INFO: epoch 1 step 1/171 [mpdb] loss 3.0527 lr 5.06e-05
+2026-10-14 21:02:45,085 INFO: epoch 1 step 51/171 [mpdb] loss 2.5894 lr 6.52e-05
+2026-10-14 21:03:20,817 INFO: epoch 1 step 101/171 [mpdb] loss 2.3352 lr 7.98e-05
+2026-10-14 21:03:53,617 INFO: epoch 1 step 151/171 [mpdb] loss 2.6290 lr 9.44e-05
+2026-10-14 21:04:06,290 INFO: epoch 1 step 171/171 [mpdb] loss 2.5631 lr 1.00e-04
+2026-10-14 21:04:14,478 INFO: epoch 1 done: mpdb: acc=0.3259, balanced_acc=0.2681, auroc=0.6329 | score 0.2681  (best)
+2026-10-14 21:04:16,580 INFO: epoch 2 step 1/171 [mpdb] loss 2.7730 lr 1.01e-04
+2026-10-14 21:04:50,879 INFO: epoch 2 step 51/171 [mpdb] loss 2.5080 lr 1.15e-04
+2026-10-14 21:05:24,832 INFO: epoch 2 step 101/171 [mpdb] loss 2.5959 lr 1.30e-04
+2026-10-14 21:05:59,412 INFO: epoch 2 step 151/171 [mpdb] loss 2.4507 lr 1.44e-04
+2026-10-14 21:06:13,209 INFO: epoch 2 step 171/171 [mpdb] loss 2.1444 lr 1.50e-04
+2026-10-14 21:06:23,408 INFO: epoch 2 done: mpdb: acc=0.2852, balanced_acc=0.2222, auroc=0.6570 | score 0.2222
+2026-10-14 21:06:25,123 INFO: epoch 3 step 1/171 [mpdb] loss 2.6408 lr 1.51e-04
+2026-10-14 21:06:59,738 INFO: epoch 3 step 51/171 [mpdb] loss 2.4118 lr 1.65e-04
+2026-10-14 21:07:34,241 INFO: epoch 3 step 101/171 [mpdb] loss 2.5467 lr 1.80e-04
+2026-10-14 21:08:07,295 INFO: epoch 3 step 151/171 [mpdb] loss 2.4428 lr 1.94e-04
+2026-10-14 21:08:20,391 INFO: epoch 3 step 171/171 [mpdb] loss 2.2594 lr 2.00e-04
+2026-10-14 21:08:29,466 INFO: epoch 3 done: mpdb: acc=0.3754, balanced_acc=0.3253, auroc=0.6726 | score 0.3253  (best)
+2026-10-14 21:08:31,668 INFO: epoch 4 step 1/171 [mpdb] loss 2.4262 lr 2.01e-04
+2026-10-14 21:09:06,336 INFO: epoch 4 step 51/171 [mpdb] loss 2.6465 lr 2.15e-04
+2026-10-14 21:09:40,039 INFO: epoch 4 step 101/171 [mpdb] loss 2.3864 lr 2.30e-04
+2026-10-14 21:10:15,612 INFO: epoch 4 step 151/171 [mpdb] loss 2.5971 lr 2.44e-04
+2026-10-14 21:10:30,342 INFO: epoch 4 step 171/171 [mpdb] loss 2.3624 lr 2.50e-04
+2026-10-14 21:10:39,405 INFO: epoch 4 done: mpdb: acc=0.3899, balanced_acc=0.3176, auroc=0.6561 | score 0.3176
+2026-10-14 21:10:40,864 INFO: epoch 5 step 1/171 [mpdb] loss 2.5435 lr 2.51e-04
+2026-10-14 21:11:11,709 INFO: epoch 5 step 51/171 [mpdb] loss 2.5446 lr 2.65e-04
+2026-10-14 21:11:46,027 INFO: epoch 5 step 101/171 [mpdb] loss 2.5266 lr 2.80e-04
+2026-10-14 21:12:19,957 INFO: epoch 5 step 151/171 [mpdb] loss 2.4571 lr 2.94e-04
+2026-10-14 21:12:33,474 INFO: epoch 5 step 171/171 [mpdb] loss 2.5961 lr 3.00e-04
+2026-10-14 21:12:42,237 INFO: epoch 5 done: mpdb: acc=0.3104, balanced_acc=0.2853, auroc=0.6138 | score 0.2853
+2026-10-14 21:12:43,747 INFO: epoch 6 step 1/171 [mpdb] loss 2.6758 lr 3.00e-04
+2026-10-14 21:13:19,501 INFO: epoch 6 step 51/171 [mpdb] loss 2.2545 lr 3.00e-04
+2026-10-14 21:13:53,181 INFO: epoch 6 step 101/171 [mpdb] loss 2.1517 lr 3.00e-04
+2026-10-14 21:14:29,098 INFO: epoch 6 step 151/171 [mpdb] loss 2.4644 lr 3.00e-04
+2026-10-14 21:14:43,743 INFO: epoch 6 step 171/171 [mpdb] loss 2.3676 lr 3.00e-04
+2026-10-14 21:14:51,318 INFO: epoch 6 done: mpdb: acc=0.3055, balanced_acc=0.2751, auroc=0.6381 | score 0.2751
+2026-10-14 21:14:52,857 INFO: epoch 7 step 1/171 [mpdb] loss 2.3226 lr 3.00e-04
+2026-10-14 21:15:28,373 INFO: epoch 7 step 51/171 [mpdb] loss 2.2208 lr 3.00e-04
+2026-10-14 21:15:59,991 INFO: epoch 7 step 101/171 [mpdb] loss 2.2386 lr 2.99e-04
+2026-10-14 21:16:31,236 INFO: epoch 7 step 151/171 [mpdb] loss 2.0322 lr 2.99e-04
+2026-10-14 21:16:45,117 INFO: epoch 7 step 171/171 [mpdb] loss 2.3820 lr 2.99e-04
+2026-10-14 21:16:53,184 INFO: epoch 7 done: mpdb: acc=0.3133, balanced_acc=0.3173, auroc=0.6421 | score 0.3173
+2026-10-14 21:16:54,933 INFO: epoch 8 step 1/171 [mpdb] loss 2.4654 lr 2.99e-04
+2026-10-14 21:17:29,800 INFO: epoch 8 step 51/171 [mpdb] loss 2.1345 lr 2.99e-04
+2026-10-14 21:18:03,934 INFO: epoch 8 step 101/171 [mpdb] loss 2.0530 lr 2.98e-04
+2026-10-14 21:18:38,225 INFO: epoch 8 step 151/171 [mpdb] loss 2.3507 lr 2.98e-04
+2026-10-14 21:18:52,368 INFO: epoch 8 step 171/171 [mpdb] loss 2.6984 lr 2.98e-04
+2026-10-14 21:18:59,427 INFO: epoch 8 done: mpdb: acc=0.3569, balanced_acc=0.3196, auroc=0.6695 | score 0.3196
+2026-10-14 21:19:00,894 INFO: epoch 9 step 1/171 [mpdb] loss 2.1555 lr 2.98e-04
+2026-10-14 21:19:31,798 INFO: epoch 9 step 51/171 [mpdb] loss 2.2032 lr 2.97e-04
+2026-10-14 21:20:00,471 INFO: epoch 9 step 101/171 [mpdb] loss 2.1927 lr 2.97e-04
+2026-10-14 21:20:30,682 INFO: epoch 9 step 151/171 [mpdb] loss 2.5827 lr 2.96e-04
+2026-10-14 21:20:43,680 INFO: epoch 9 step 171/171 [mpdb] loss 2.1095 lr 2.96e-04
+2026-10-14 21:20:51,040 INFO: epoch 9 done: mpdb: acc=0.3482, balanced_acc=0.3172, auroc=0.6475 | score 0.3172
+2026-10-14 21:20:52,570 INFO: epoch 10 step 1/171 [mpdb] loss 2.0738 lr 2.96e-04
+2026-10-14 21:21:23,312 INFO: epoch 10 step 51/171 [mpdb] loss 2.5005 lr 2.95e-04
+2026-10-14 21:21:55,743 INFO: epoch 10 step 101/171 [mpdb] loss 2.2510 lr 2.95e-04
+2026-10-14 21:22:26,392 INFO: epoch 10 step 151/171 [mpdb] loss 1.8452 lr 2.94e-04
+2026-10-14 21:22:39,492 INFO: epoch 10 step 171/171 [mpdb] loss 2.5665 lr 2.94e-04
+2026-10-14 21:22:47,606 INFO: epoch 10 done: mpdb: acc=0.3802, balanced_acc=0.3499, auroc=0.6685 | score 0.3499  (best)
+2026-10-14 21:22:49,464 INFO: epoch 11 step 1/171 [mpdb] loss 2.3664 lr 2.94e-04
+2026-10-14 21:23:21,223 INFO: epoch 11 step 51/171 [mpdb] loss 2.1084 lr 2.93e-04
+2026-10-14 21:23:53,541 INFO: epoch 11 step 101/171 [mpdb] loss 2.1209 lr 2.92e-04
+2026-10-14 21:24:25,319 INFO: epoch 11 step 151/171 [mpdb] loss 1.7157 lr 2.91e-04
+2026-10-14 21:24:37,263 INFO: epoch 11 step 171/171 [mpdb] loss 2.2974 lr 2.91e-04
+2026-10-14 21:24:45,493 INFO: epoch 11 done: mpdb: acc=0.2939, balanced_acc=0.3192, auroc=0.6533 | score 0.3192
+2026-10-14 21:24:46,885 INFO: epoch 12 step 1/171 [mpdb] loss 2.9811 lr 2.91e-04
+2026-10-14 21:25:17,680 INFO: epoch 12 step 51/171 [mpdb] loss 2.0109 lr 2.90e-04
+2026-10-14 21:25:49,231 INFO: epoch 12 step 101/171 [mpdb] loss 1.7207 lr 2.89e-04
+2026-10-14 21:26:22,030 INFO: epoch 12 step 151/171 [mpdb] loss 1.8075 lr 2.88e-04
+2026-10-14 21:26:34,823 INFO: epoch 12 step 171/171 [mpdb] loss 2.0555 lr 2.88e-04
+2026-10-14 21:26:43,013 INFO: epoch 12 done: mpdb: acc=0.3026, balanced_acc=0.2810, auroc=0.6281 | score 0.2810
+2026-10-14 21:26:44,291 INFO: epoch 13 step 1/171 [mpdb] loss 2.0204 lr 2.88e-04
+2026-10-14 21:27:17,306 INFO: epoch 13 step 51/171 [mpdb] loss 2.0391 lr 2.87e-04
+2026-10-14 21:27:48,552 INFO: epoch 13 step 101/171 [mpdb] loss 2.1575 lr 2.86e-04
+2026-10-14 21:28:20,167 INFO: epoch 13 step 151/171 [mpdb] loss 1.9645 lr 2.85e-04
+2026-10-14 21:28:33,564 INFO: epoch 13 step 171/171 [mpdb] loss 1.4274 lr 2.84e-04
+2026-10-14 21:28:41,258 INFO: epoch 13 done: mpdb: acc=0.3754, balanced_acc=0.3576, auroc=0.6570 | score 0.3576  (best)
+2026-10-14 21:28:43,026 INFO: epoch 14 step 1/171 [mpdb] loss 1.7577 lr 2.84e-04
+2026-10-14 21:29:14,600 INFO: epoch 14 step 51/171 [mpdb] loss 2.0871 lr 2.83e-04
+2026-10-14 21:29:47,059 INFO: epoch 14 step 101/171 [mpdb] loss 1.8678 lr 2.82e-04
+2026-10-14 21:30:19,864 INFO: epoch 14 step 151/171 [mpdb] loss 2.0198 lr 2.81e-04
+2026-10-14 21:30:32,636 INFO: epoch 14 step 171/171 [mpdb] loss 1.8775 lr 2.80e-04
+2026-10-14 21:30:40,623 INFO: epoch 14 done: mpdb: acc=0.3424, balanced_acc=0.3337, auroc=0.6525 | score 0.3337
+2026-10-14 21:30:42,092 INFO: epoch 15 step 1/171 [mpdb] loss 1.9418 lr 2.80e-04
+2026-10-14 21:31:12,881 INFO: epoch 15 step 51/171 [mpdb] loss 1.8522 lr 2.79e-04
+2026-10-14 21:31:45,701 INFO: epoch 15 step 101/171 [mpdb] loss 1.6277 lr 2.77e-04
+2026-10-14 21:32:17,346 INFO: epoch 15 step 151/171 [mpdb] loss 1.8591 lr 2.76e-04
+2026-10-14 21:32:30,392 INFO: epoch 15 step 171/171 [mpdb] loss 2.4400 lr 2.76e-04
+2026-10-14 21:32:38,958 INFO: epoch 15 done: mpdb: acc=0.3628, balanced_acc=0.3299, auroc=0.6596 | score 0.3299
+2026-10-14 21:32:40,420 INFO: epoch 16 step 1/171 [mpdb] loss 1.4137 lr 2.76e-04
+2026-10-14 21:33:11,793 INFO: epoch 16 step 51/171 [mpdb] loss 1.7200 lr 2.74e-04
+2026-10-14 21:33:43,996 INFO: epoch 16 step 101/171 [mpdb] loss 1.5219 lr 2.73e-04
+2026-10-14 21:34:16,168 INFO: epoch 16 step 151/171 [mpdb] loss 1.5772 lr 2.71e-04
+2026-10-14 21:34:28,141 INFO: epoch 16 step 171/171 [mpdb] loss 2.8981 lr 2.71e-04
+2026-10-14 21:34:35,224 INFO: epoch 16 done: mpdb: acc=0.3434, balanced_acc=0.3283, auroc=0.6570 | score 0.3283
+2026-10-14 21:34:36,690 INFO: epoch 17 step 1/171 [mpdb] loss 1.4692 lr 2.71e-04
+2026-10-14 21:35:09,754 INFO: epoch 17 step 51/171 [mpdb] loss 1.8114 lr 2.69e-04
+2026-10-14 21:35:40,493 INFO: epoch 17 step 101/171 [mpdb] loss 1.8988 lr 2.67e-04
+2026-10-14 21:36:11,389 INFO: epoch 17 step 151/171 [mpdb] loss 1.7415 lr 2.66e-04
+2026-10-14 21:36:23,612 INFO: epoch 17 step 171/171 [mpdb] loss 1.3684 lr 2.65e-04
+2026-10-14 21:36:32,484 INFO: epoch 17 done: mpdb: acc=0.3288, balanced_acc=0.3090, auroc=0.6470 | score 0.3090
+2026-10-14 21:36:34,243 INFO: epoch 18 step 1/171 [mpdb] loss 1.7207 lr 2.65e-04
+2026-10-14 21:37:05,475 INFO: epoch 18 step 51/171 [mpdb] loss 1.4340 lr 2.64e-04
+2026-10-14 21:37:37,957 INFO: epoch 18 step 101/171 [mpdb] loss 1.7155 lr 2.62e-04
+2026-10-14 21:38:08,841 INFO: epoch 18 step 151/171 [mpdb] loss 1.3110 lr 2.60e-04
+2026-10-14 21:38:21,624 INFO: epoch 18 step 171/171 [mpdb] loss 2.1371 lr 2.60e-04
+2026-10-14 21:38:28,820 INFO: epoch 18 done: mpdb: acc=0.3317, balanced_acc=0.3343, auroc=0.6440 | score 0.3343
+2026-10-14 21:38:30,758 INFO: epoch 19 step 1/171 [mpdb] loss 1.4524 lr 2.59e-04
+2026-10-14 21:39:02,747 INFO: epoch 19 step 51/171 [mpdb] loss 1.7048 lr 2.58e-04
+2026-10-14 21:39:34,690 INFO: epoch 19 step 101/171 [mpdb] loss 1.6519 lr 2.56e-04
+2026-10-14 21:40:04,746 INFO: epoch 19 step 151/171 [mpdb] loss 1.8828 lr 2.54e-04
+2026-10-14 21:40:17,144 INFO: epoch 19 step 171/171 [mpdb] loss 2.5563 lr 2.53e-04
+2026-10-14 21:40:24,572 INFO: epoch 19 done: mpdb: acc=0.3414, balanced_acc=0.3204, auroc=0.6538 | score 0.3204
+2026-10-14 21:40:26,034 INFO: epoch 20 step 1/171 [mpdb] loss 1.4413 lr 2.53e-04
+2026-10-14 21:40:57,313 INFO: epoch 20 step 51/171 [mpdb] loss 1.6256 lr 2.52e-04
+2026-10-14 21:41:29,522 INFO: epoch 20 step 101/171 [mpdb] loss 1.9604 lr 2.50e-04
+2026-10-14 21:42:02,015 INFO: epoch 20 step 151/171 [mpdb] loss 2.2285 lr 2.48e-04
+2026-10-14 21:42:14,058 INFO: epoch 20 step 171/171 [mpdb] loss 2.1015 lr 2.47e-04
+2026-10-14 21:42:22,840 INFO: epoch 20 done: mpdb: acc=0.3531, balanced_acc=0.3176, auroc=0.6610 | score 0.3176
+2026-10-14 21:42:24,685 INFO: epoch 21 step 1/171 [mpdb] loss 1.1875 lr 2.47e-04
+2026-10-14 21:42:56,661 INFO: epoch 21 step 51/171 [mpdb] loss 1.3077 lr 2.45e-04
+2026-10-14 21:43:29,365 INFO: epoch 21 step 101/171 [mpdb] loss 1.9485 lr 2.43e-04
+2026-10-14 21:44:03,069 INFO: epoch 21 step 151/171 [mpdb] loss 1.7088 lr 2.41e-04
+2026-10-14 21:44:17,137 INFO: epoch 21 step 171/171 [mpdb] loss 1.8012 lr 2.40e-04
+2026-10-14 21:44:25,310 INFO: epoch 21 done: mpdb: acc=0.3841, balanced_acc=0.3461, auroc=0.6766 | score 0.3461
+2026-10-14 21:44:27,240 INFO: epoch 22 step 1/171 [mpdb] loss 1.3671 lr 2.40e-04
+2026-10-14 21:44:59,713 INFO: epoch 22 step 51/171 [mpdb] loss 1.5485 lr 2.38e-04
+2026-10-14 21:45:33,720 INFO: epoch 22 step 101/171 [mpdb] loss 1.7682 lr 2.36e-04
+2026-10-14 21:46:08,596 INFO: epoch 22 step 151/171 [mpdb] loss 1.5715 lr 2.34e-04
+2026-10-14 21:46:23,617 INFO: epoch 22 step 171/171 [mpdb] loss 1.3040 lr 2.33e-04
+2026-10-14 21:46:29,751 INFO: epoch 22 done: mpdb: acc=0.3472, balanced_acc=0.3182, auroc=0.6520 | score 0.3182
+2026-10-14 21:46:31,087 INFO: epoch 23 step 1/171 [mpdb] loss 1.9130 lr 2.33e-04
+2026-10-14 21:47:00,116 INFO: epoch 23 step 51/171 [mpdb] loss 2.0042 lr 2.31e-04
+2026-10-14 21:47:31,440 INFO: epoch 23 step 101/171 [mpdb] loss 1.4574 lr 2.29e-04
+2026-10-14 21:48:02,116 INFO: epoch 23 step 151/171 [mpdb] loss 1.4012 lr 2.27e-04
+2026-10-14 21:48:13,330 INFO: epoch 23 step 171/171 [mpdb] loss 0.9815 lr 2.26e-04
+2026-10-14 21:48:20,945 INFO: epoch 23 done: mpdb: acc=0.3531, balanced_acc=0.3181, auroc=0.6382 | score 0.3181
+2026-10-14 21:48:21,583 INFO: no improvement for 10 epochs; stopping
+2026-10-14 21:48:30,183 INFO: test mpdb/complete: acc=0.3724, balanced_acc=0.3397, macro_f1=0.3386, auroc=0.6745
+2026-10-14 21:48:38,149 INFO: test mpdb/eeg_only: acc=0.3129, balanced_acc=0.2560, macro_f1=0.1743, auroc=0.6000
+2026-10-14 21:48:46,275 INFO: test mpdb/ecg_only: acc=0.2713, balanced_acc=0.2187, macro_f1=0.1447, auroc=0.5095
+2026-10-14 21:48:53,021 INFO: test mpdb/emg_only: acc=0.3590, balanced_acc=0.3428, macro_f1=0.3348, auroc=0.6632
+2026-10-14 21:49:01,518 INFO: test mpdb/eeg_ecg: acc=0.3147, balanced_acc=0.2612, macro_f1=0.2128, auroc=0.5907
+2026-10-14 21:49:09,258 INFO: test mpdb/eeg_emg: acc=0.3677, balanced_acc=0.3355, macro_f1=0.3320, auroc=0.6722
+2026-10-14 21:49:17,194 INFO: test mpdb/ecg_emg: acc=0.3592, balanced_acc=0.3374, macro_f1=0.3318, auroc=0.6575
+2026-10-14 21:49:25,190 INFO: test mpdb/eeg_noise: acc=0.3658, balanced_acc=0.3349, macro_f1=0.3341, auroc=0.6725
+2026-10-14 21:49:33,329 INFO: test mpdb/eeg_bad_channel: acc=0.3743, balanced_acc=0.3494, macro_f1=0.3421, auroc=0.6676
+2026-10-14 21:49:41,179 INFO: test mpdb/eeg_drift: acc=0.3771, balanced_acc=0.3532, macro_f1=0.3483, auroc=0.6626
+2026-10-14 21:49:48,654 INFO: test mpdb/ecg_saturation: acc=0.3677, balanced_acc=0.3373, macro_f1=0.3341, auroc=0.6733
+2026-10-14 21:49:55,506 INFO: test mpdb/ecg_noise: acc=0.3752, balanced_acc=0.3424, macro_f1=0.3404, auroc=0.6751
+2026-10-14 21:50:03,103 INFO: test mpdb/emg_dropout: acc=0.3648, balanced_acc=0.3477, macro_f1=0.3492, auroc=0.6628
+2026-10-14 21:50:10,194 INFO: test mpdb/emg_noise: acc=0.3327, balanced_acc=0.3345, macro_f1=0.3275, auroc=0.6592
+2026-10-14 21:50:10,206 INFO: wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_scratch_mpdb2/results.json
