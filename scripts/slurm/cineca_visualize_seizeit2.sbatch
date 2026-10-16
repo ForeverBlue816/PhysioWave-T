@@ -18,6 +18,8 @@
 #   EEG_RUNS  EEG-only runs         (eeg_c1_finetune_sze eeg_eegpt_frozen_sze
 #                                    eeg_labram_finetune_sze)
 #   EXAMPLE   recording for the example figure (default: the ranked choice)
+#   WINDOW_START  start of the 4 s per-modality input window, seconds from the
+#             seizure onset (default: centred on the seizure)
 #   NAME      docs/runs/<NAME>      (seizeit2_fusion)
 #   FORMAT    svg,pdf (vector, text editable); png also accepted
 #   PAPER     1: no titles/notes/stamp (kept in figure_metadata); 0: working figures
@@ -63,6 +65,7 @@ EEG_DIRS="$(present "${EEG_RUNS}")"
 python scripts/visualize_seizeit2.py --raw-dir "${FUSION_ROOT}/raw/seizeit2" \
     --run-dir "${OUT_ROOT}/${RUN}" --compare ${COMPARE_DIRS} --eeg-runs ${EEG_DIRS} \
     --out-dir "docs/runs/${NAME}" --format "${FORMAT:-svg,pdf}" \
-    ${EXAMPLE:+--example "${EXAMPLE}"} $([[ "${PAPER:-1}" == "1" ]] && echo --paper) || exit 1
+    ${EXAMPLE:+--example "${EXAMPLE}"} ${WINDOW_START:+--window-start "${WINDOW_START}"} \
+    $([[ "${PAPER:-1}" == "1" ]] && echo --paper) || exit 1
 rm -rf "docs/runs/${NAME}/figure_data"          # the arrays: large, redrawable
 echo "figures in docs/runs/${NAME}; on a login node: git add docs/runs/${NAME} && git commit && git push"

@@ -273,8 +273,11 @@ and EMG, the probability under every modality subset, the gate and the
 detection; the recording is chosen by a ranking that is kept in the
 metadata), `fig_sensitivity_fa` (sensitivity against FA/h for every run and
 subset, the published SVM and ChronoNet as points), `fig_modality_subsets`,
-`fig_reliability` (RALF's reliability under each corruption; every run's
-AUPRC under the same), `fig_per_patient`, `fig_learning_curves`. Same style
+`fig_reliability` (RALF's reliability under each corruption; the AUPRC every
+run loses under the same), `fig_per_patient`, `fig_learning_curves`, and per
+modality `fig_signal_<m>` / `fig_window_<m>`: the example's recorded trace
+with scale bars, and one 4 s encoder input window, bare signal in the
+modality's colour for the framework figure and single-modality panels. Same style
 and plumbing as the pretraining figures: Times New Roman bold, Okabe-Ito,
 svg + pdf with editable text, `figure_metadata/` beside each.
 

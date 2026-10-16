@@ -34,6 +34,11 @@ learning curves are history.json.
   fig_per_patient          per test patient: seizures, sensitivity at
                            threshold 0.5, FA/h.
   fig_learning_curves      validation AUPRC per epoch, the selected epoch marked.
+  fig_signal_<m>, fig_window_<m>   (fig_signal) per modality, the example's
+                           recorded trace over the same span with scale bars,
+                           and one 4 s encoder input window: bare signal in the
+                           modality's colour, for the framework figure and for
+                           single-modality panels.
 
 Style and plumbing (Times New Roman bold, Okabe-Ito, svg+pdf with editable
 text, figure_data / figure_metadata beside every figure) are those of
@@ -84,6 +89,25 @@ CORRUPTIONS = [("eeg_noise", "eeg", "noise"), ("eeg_bad_channel", "eeg", "bad ch
                ("emg_noise", "emg", "noise")]
 PUBLISHED = [("SVM (Bhagubai et al.)", 71.1, 11.0, "s"), ("ChronoNet (Bhagubai et al.)", 84.2, 100.5, "D")]
 FA_BUDGET = 11.0
+#: Okabe-Ito without the yellow (#F0E442), which vanishes on white as a line.
+LINE_COLORS = [c for c in OKABE_ITO if c != "#F0E442"]
+WINDOW_S = 4.0
+
+
+def unit_label(u: str) -> str:
+    """EDF physical dimensions as printed: uV -> µV, the rest as written."""
+    return {"uV": "µV", "uv": "µV", "UV": "µV", "mv": "mV", "MV": "mV"}.get(u.strip(), u.strip())
+
+
+def nice(v: float) -> float:
+    """A round scale-bar length not above v: 1, 2, 5 x 10^k."""
+    if v <= 0:
+        return 1.0
+    e = 10 ** np.floor(np.log10(v))
+    for m in (5, 2, 1):
+        if m * e <= v:
+            return float(m * e)
+    return float(e)
 
 
 # --------------------------------------------------------------------------- #
@@ -183,8 +207,10 @@ def choose_example(run: Run, preferred: Optional[str]) -> Tuple[str, List[Dict]]
     return pick["recording"], rows
 
 
-def fig_seizure_example(w: FigureWriter, run: Run, raw_dir: str, preferred: Optional[str],
-                        margin: float):
+def load_example(run: Run, raw_dir: str, preferred: Optional[str], margin: float) -> Dict:
+    """The chosen recording's traces as recorded (filtered as the pipeline
+    filters, at the native rate) from ``margin`` s before the seizure to
+    ``margin`` s after, and the cached per-second predictions."""
     rec, ranking = choose_example(run, preferred)
     subject, runid = rec.split("_run-")
     cand = [r for r in find_runs(raw_dir, subject + "$") if r["run"] == runid]
@@ -199,14 +225,16 @@ def fig_seizure_example(w: FigureWriter, run: Run, raw_dir: str, preferred: Opti
     units = edf_units(r["eeg"])
     t1 = min(float(T), t1)
     names = sorted(sig, key=lambda n: (0 if n.upper().startswith("BTE") else 1, n))[:2]
-    traces = []                                     # (label, t, y, unit, colour)
+    traces = []                   # dicts: modality, label, fs, t (s), y, unit, colour
     fs = float(rates[names[0]])
     eeg = np.stack([to_microvolts(np.asarray(sig[n], np.float64), units.get(n, "uV"))
                     for n in names])
     eeg = filter_continuous(eeg, fs, "eeg", MAINS_HZ)
     a, b = int(t0 * fs), int(t1 * fs)
     for n, row in zip(names, eeg):
-        traces.append((n.replace(" SD", ""), np.arange(a, b) / fs, row[a:b], "µV", MOD_COLOR["eeg"]))
+        traces.append({"modality": "eeg", "label": n.replace(" SD", ""), "fs": fs,
+                       "t": np.arange(a, b) / fs, "y": row[a:b], "unit": "µV",
+                       "color": MOD_COLOR["eeg"]})
     for m in ("ecg", "emg"):
         if not r.get(m) or not os.path.isfile(r[m]):
             continue
@@ -216,7 +244,19 @@ def fig_seizure_example(w: FigureWriter, run: Run, raw_dir: str, preferred: Opti
         f2 = float(r2[lab])
         x = filter_continuous(np.asarray(s2[lab], np.float64)[None], f2, m, MAINS_HZ)[0]
         a2, b2 = int(t0 * f2), int(t1 * f2)
-        traces.append((MOD_LABEL[m], np.arange(a2, b2) / f2, x[a2:b2], u2.get(lab, ""), MOD_COLOR[m]))
+        traces.append({"modality": m, "label": MOD_LABEL[m], "fs": f2, "t": np.arange(a2, b2) / f2,
+                       "y": x[a2:b2], "unit": unit_label(u2.get(lab, "")), "color": MOD_COLOR[m]})
+    return {"rec": rec, "subject": subject, "run": runid, "ranking": ranking, "pick": pick,
+            "z": z, "t0": t0, "t1": t1, "traces": traces, "eeg_file": r["eeg"]}
+
+
+def fig_seizure_example(w: FigureWriter, run: Run, raw_dir: str, preferred: Optional[str],
+                        margin: float, ex: Optional[Dict] = None):
+    ex = ex or load_example(run, raw_dir, preferred, margin)
+    rec, ranking, pick, z = ex["rec"], ex["ranking"], ex["pick"], ex["z"]
+    subject, runid, t0, t1 = ex["subject"], ex["run"], ex["t0"], ex["t1"]
+    traces = [(d["label"], d["t"], d["y"], d["unit"], d["color"]) for d in ex["traces"]]
+    r = {"eeg": ex["eeg_file"]}
     conds = [c for c, _ in SUBSETS if c in ("complete", "eeg_only", "ecg_only", "emg_only")]
     n_rows = len(traces) + 1
     fig, axes = plt.subplots(n_rows, 1, figsize=(7.2, 1.0 * len(traces) + 1.9), sharex=True,
@@ -274,6 +314,82 @@ def fig_seizure_example(w: FigureWriter, run: Run, raw_dir: str, preferred: Opti
                  "n_candidates": len(ranking), "margin_s": margin})
 
 
+def _bare(ax):
+    for side in ("left", "right", "top", "bottom"):
+        ax.spines[side].set_visible(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+
+def _scale_bars(ax, x0, y0, dx, dy, xlab, ylab, color="black"):
+    ax.plot([x0, x0 + dx], [y0, y0], color=color, lw=1.0, solid_capstyle="butt")
+    ax.plot([x0, x0], [y0, y0 + dy], color=color, lw=1.0, solid_capstyle="butt")
+    ax.text(x0 + dx / 2, y0, xlab, ha="center", va="top", fontsize=6)
+    ax.text(x0, y0 + dy / 2, ylab + " ", ha="right", va="center", fontsize=6)
+
+
+def fig_signal_strips(w: FigureWriter, run: Run, ex: Dict, window_start: Optional[float]):
+    """Per modality: the recorded trace(s) over the example span with scale bars
+    and the seizure shaded (fig_signal_<m>), and one encoder input window, the
+    exact samples a 4 s window holds (fig_window_<m>). For the framework figure
+    and for single-modality panels; nothing but the signal, in its colour."""
+    pick, t0, t1 = ex["pick"], ex["t0"], ex["t1"]
+    onset, offset = pick["onset_s"], pick["offset_s"]
+    stamp, w.stamp = w.stamp, False          # a bare signal carries no corner stamp
+    ws = (onset + (offset - onset) / 2 - WINDOW_S / 2) if window_start is None else onset + window_start
+    ws = min(max(ws, t0), t1 - WINDOW_S)
+    for m in MODALITIES:
+        rows = [d for d in ex["traces"] if d["modality"] == m]
+        if not rows:
+            continue
+        unit = rows[0]["unit"]
+        # -- the span
+        fig, axes = plt.subplots(len(rows), 1, figsize=(3.6, 0.6 * len(rows) + 0.45), sharex=True,
+                                 squeeze=False, gridspec_kw={"height_ratios": [1] * (len(rows) - 1) + [1.6]})
+        fig.subplots_adjust(left=0.13, right=0.99, top=0.98, bottom=0.02, hspace=0.05)
+        amp = max(float(np.percentile(np.abs(d["y"]), 99.5)) for d in rows) or 1.0
+        for i, (ax, d) in enumerate(zip(axes[:, 0], rows)):
+            ax.plot(d["t"] - onset, d["y"], color=d["color"], lw=0.45)
+            ax.axvspan(0, offset - onset, color="0.88", lw=0, zorder=0)
+            # the last row keeps room under the trace for the scale bars
+            ax.set_ylim(-amp * (2.0 if i == len(rows) - 1 else 1.15), amp * 1.15)
+            ax.set_xlim(t0 - onset, t1 - onset)
+            _bare(ax)
+            ax.text(-0.01, 0.5 if i < len(rows) - 1 else 0.68, d["label"], transform=ax.transAxes,
+                    fontsize=6, ha="right", va="center", color=d["color"])
+        bar_t, bar_a = nice((t1 - t0) / 6), nice(amp)
+        _scale_bars(axes[-1, 0], t1 - onset - bar_t - 1, -amp * 1.95, bar_t, bar_a,
+                    f"{bar_t:g} s", f"{bar_a:g} {unit}")
+        w.save(fig, f"fig_signal_{m}",
+               data={"t": rows[0]["t"] - onset, **{f"y{i}": d["y"] for i, d in enumerate(rows)},
+                     "onset": 0.0, "offset": offset - onset},
+               meta={"recording": ex["rec"], "modality": m, "labels": [d["label"] for d in rows],
+                     "unit": unit, "fs": rows[0]["fs"], "span_s": [t0 - onset, t1 - onset],
+                     "scale_bar": {"s": bar_t, "amplitude": bar_a}})
+        # -- one input window
+        fig, axes = plt.subplots(len(rows), 1, figsize=(1.8, 0.5 * len(rows) + 0.3), sharex=True,
+                                 squeeze=False, gridspec_kw={"height_ratios": [1] * (len(rows) - 1) + [1.5]})
+        fig.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.02, hspace=0.05)
+        seg = []
+        for i, (ax, d) in enumerate(zip(axes[:, 0], rows)):
+            k = (d["t"] >= ws) & (d["t"] < ws + WINDOW_S)
+            y = d["y"][k]
+            seg.append(y)
+            a = float(np.abs(y).max()) if y.size else 1.0
+            ax.plot(d["t"][k] - ws, y, color=d["color"], lw=0.6)
+            ax.set_ylim(-a * (1.9 if i == len(rows) - 1 else 1.1), a * 1.1)
+            ax.set_xlim(0, WINDOW_S)
+            _bare(ax)
+        a_last = float(np.abs(seg[-1]).max() or 1.0)
+        _scale_bars(axes[-1, 0], WINDOW_S - 1.05, -a_last * 1.6, 1.0, 0.0, "1 s", "")
+        w.save(fig, f"fig_window_{m}", data={f"y{i}": y for i, y in enumerate(seg)},
+               meta={"recording": ex["rec"], "modality": m, "window_start_s": ws,
+                     "window_start_from_onset_s": ws - onset, "seconds": WINDOW_S,
+                     "fs": rows[0]["fs"], "samples": int(len(seg[0])), "unit": unit,
+                     "labels": [d["label"] for d in rows]})
+    w.stamp = stamp
+
+
 def _plot_curve(ax, cur, color, label, lw=1.2, ls="-"):
     fa = np.array([c["official"]["fa_ovlp_h"] for c in cur])
     se = np.array([c["official"]["sens_ovlp"] for c in cur]) * 100
@@ -283,36 +399,40 @@ def _plot_curve(ax, cur, color, label, lw=1.2, ls="-"):
 
 
 def fig_sensitivity_fa(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run]):
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.2, 2.9))
     runs = [main] + others
-    for i, r in enumerate(runs):
-        cur = r.curve("complete")
-        if cur:
-            _plot_curve(a, cur, OKABE_ITO[i % 8], r.label, lw=1.6 if r is main else 1.0)
-    for j, r in enumerate(eeg_runs):
-        cur = r.curve("complete")
-        if cur:
-            _plot_curve(a, cur, OKABE_ITO[(len(runs) + j) % 8], r.label, lw=0.9, ls="--")
-    for lab, s, fa, mk in PUBLISHED:
-        a.plot(fa, s, marker=mk, color="black", ms=5, ls="none", label=lab, zorder=5)
-    for ax in (a, b):
+    panels = [("(a) fusion runs, all modalities present", runs, None)]
+    if eeg_runs:
+        panels.append(("(b) EEG alone: one encoder, one protocol", eeg_runs, None))
+    panels.append((f"({'abc'[len(panels)]}) {main.label}: modality subsets", None, main))
+    fig, axes = plt.subplots(1, len(panels), figsize=(2.45 * len(panels), 2.7), squeeze=False)
+    for ax, (title, rs, sub) in zip(axes[0], panels):
+        if rs is not None:
+            for i, r in enumerate(rs):
+                cur = r.curve("complete")
+                if cur:
+                    _plot_curve(ax, cur, LINE_COLORS[i % len(LINE_COLORS)], r.label,
+                                lw=1.6 if r is main else 1.0)
+            for lab, se, fa, mk in PUBLISHED:
+                ax.plot(fa, se, marker=mk, color="black", ms=4.5, ls="none", label=lab, zorder=5)
+        else:
+            for c, _ in SUBSETS:
+                cur = sub.curve(c)
+                if cur:
+                    _plot_curve(ax, cur, SUBSET_COLOR[c], SUBSET_LABEL[c],
+                                lw=1.6 if c == "complete" else 0.9)
         ax.set_xscale("log")
-        ax.set_xlim(0.05, 300)
+        ax.set_xlim(0.05, 150)
         ax.set_ylim(0, 100)
         ax.axvline(FA_BUDGET, color="0.6", lw=0.6, ls=":")
-        ax.set_xlabel("false alarms per hour (any-overlap, mean over recordings)")
+        ax.set_xlabel("false alarms / h")
         ax.grid(True, which="both", lw=0.3, alpha=0.4)
-    a.set_ylabel("sensitivity (%)")
-    a.set_title("(a) runs, all modalities present")
-    a.legend(frameon=False, fontsize=5.5, loc="lower right")
-    for c, _ in SUBSETS:
-        cur = main.curve(c)
-        if cur:
-            _plot_curve(b, cur, SUBSET_COLOR[c], SUBSET_LABEL[c], lw=1.6 if c == "complete" else 0.9)
-    b.set_title(f"(b) {main.label}: modality subsets")
-    b.legend(frameon=False, fontsize=5.5, loc="lower right")
-    fig.suptitle("SeizeIT2 test patients (sub-097..125), the dataset paper's scoring; dotted: "
-                 f"{FA_BUDGET:g} FA/h, the SVM's operating point", y=1.02)
+        ax.set_title(title, fontsize=7.5)
+        ax.legend(frameon=False, fontsize=5.2, loc="lower right", handlelength=1.6)
+    axes[0][0].set_ylabel("sensitivity (%)")
+    fig.suptitle("SeizeIT2 test patients (sub-097..125), the dataset paper's scoring (means over "
+                 f"recordings, any-overlap); dotted: {FA_BUDGET:g} FA/h, the SVM's operating point",
+                 y=1.04, fontsize=7.5)
+    fig.subplots_adjust(wspace=0.25)
     w.save(fig, "fig_sensitivity_fa",
            data={f"{r.name}_{c}": np.array([[x["th"], x["official"]["fa_ovlp_h"],
                                              x["official"]["sens_ovlp"]] for x in r.curve(c)])
@@ -332,22 +452,26 @@ def fig_modality_subsets(w: FigureWriter, main: Run, others: List[Run]):
         s = [100 * (r.sens_at(c, FA_BUDGET) or 0) for c in subsets]
         p = [r.test().get(c, {}).get("auprc", np.nan) for c in subsets]
         sens[r.name], auprc[r.name] = s, p
-        a.bar(x + (i - (len(runs) - 1) / 2) * width, s, width, color=OKABE_ITO[i % 8])
-        b.bar(x + (i - (len(runs) - 1) / 2) * width, p, width, color=OKABE_ITO[i % 8], label=r.label)
+        col = LINE_COLORS[i % len(LINE_COLORS)]
+        a.bar(x + (i - (len(runs) - 1) / 2) * width, s, width, color=col)
+        b.bar(x + (i - (len(runs) - 1) / 2) * width, p, width, color=col, label=r.label)
     a.axhline(71.1, color="black", lw=0.7, ls="--")
-    a.text(len(subsets) - 0.5, 72, "SVM, bte-EEG: 71.1", fontsize=6, ha="right", va="bottom")
+    a.legend(handles=[Line2D([], [], color="black", lw=0.7, ls="--",
+                             label="SVM, bte-EEG (Bhagubai et al.): 71.1")],
+             frameon=False, fontsize=5.5, loc="lower left", bbox_to_anchor=(0, 1.0),
+             borderaxespad=0)
     for ax in (a, b):
         ax.set_xticks(x)
         ax.set_xticklabels([SUBSET_LABEL[c] for c in subsets], rotation=25, ha="right")
     a.set_ylabel(f"sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-    a.set_title("(a) event-level, continuous recordings")
+    a.set_title("(a) event-level, continuous recordings", pad=14)
     a.set_ylim(0, 100)
     b.set_ylabel("window-level AUPRC")
     b.set_title("(b) window-level test (background sub-sampled)")
     top = np.nanmax([v for vv in auprc.values() for v in vv] + [0.1])
     b.set_ylim(0, top * 1.35)
     b.legend(frameon=False, fontsize=5.5, ncol=1, loc="upper right")
-    fig.suptitle("Modality subsets: which signals carry the detection", y=1.02)
+    fig.suptitle("Modality subsets: which signals carry the detection", y=1.1)
     w.save(fig, "fig_modality_subsets", data={"subsets": np.array(subsets),
                                               **{f"sens_{k}": v for k, v in sens.items()},
                                               **{f"auprc_{k}": v for k, v in auprc.items()}},
@@ -356,7 +480,8 @@ def fig_modality_subsets(w: FigureWriter, main: Run, others: List[Run]):
 
 def fig_reliability(w: FigureWriter, main: Run, others: List[Run]):
     t = main.test()
-    fig, (a, b) = plt.subplots(1, 2, figsize=(7.2, 2.7), gridspec_kw={"width_ratios": [1.15, 1]})
+    fig, (a, b) = plt.subplots(1, 2, figsize=(7.2, 2.7), gridspec_kw={"width_ratios": [1.0, 1.1]})
+    fig.subplots_adjust(wspace=0.35, right=0.82)
     labels, ticks, vals, cols, edges, pos, groups, k = [], [], [], [], [], [], [], 0
     for m in MODALITIES:
         items = [("complete", "clean")] + [(cid, lab) for cid, mm, lab in CORRUPTIONS if mm == m]
@@ -384,24 +509,30 @@ def fig_reliability(w: FigureWriter, main: Run, others: List[Run]):
     a.set_ylabel("predicted reliability (test mean)")
     a.set_title(f"(a) {main.label}: the reliability head", pad=16)
     runs = [main] + others
-    conds = ["complete"] + [cid for cid, _, _ in CORRUPTIONS if any(cid in r.test() for r in runs)]
+    conds = [cid for cid, _, _ in CORRUPTIONS if any(cid in r.test() for r in runs)]
     width = 0.8 / len(runs)
     x = np.arange(len(conds))
-    au = {}
+    au, clean = {}, {}
     for i, r in enumerate(runs):
-        v = [r.test().get(c, {}).get("auprc", np.nan) for c in conds]
+        c0 = r.test().get("complete", {}).get("auprc", np.nan)
+        clean[r.name] = c0
+        v = [c0 - r.test().get(c, {}).get("auprc", np.nan) for c in conds]
         au[r.name] = v
-        b.bar(x + (i - (len(runs) - 1) / 2) * width, v, width, color=OKABE_ITO[i % 8], label=r.label)
+        b.bar(x + (i - (len(runs) - 1) / 2) * width, v, width,
+              color=LINE_COLORS[i % len(LINE_COLORS)], label=f"{r.label} (clean {c0:.3f})")
+    b.axhline(0, color="black", lw=0.6)
     b.set_xticks(x)
-    b.set_xticklabels(["clean"] + [f"{MOD_LABEL[m]} {lab}" for cid, m, lab in CORRUPTIONS
-                                   if cid in conds], rotation=30, ha="right", fontsize=5.5)
-    b.set_ylabel("window-level AUPRC")
-    b.set_title("(b) every run under the same corruptions (severity 0.7)")
-    b.legend(frameon=False, fontsize=5.5)
+    b.set_xticklabels([f"{MOD_LABEL[m]} {lab}" for cid, m, lab in CORRUPTIONS if cid in conds],
+                      rotation=30, ha="right", fontsize=5.5)
+    b.set_ylabel("window AUPRC lost (clean − corrupted)")
+    b.set_title("(b) what each run loses under the same corruption (severity 0.7)", fontsize=7.5)
+    b.legend(frameon=False, fontsize=5.5, loc="upper left", bbox_to_anchor=(1.01, 1.0),
+             borderaxespad=0)
     fig.suptitle("Corrupted inputs: the reliability head notices, and what each fusion keeps", y=1.1)
     w.save(fig, "fig_reliability", data={"reliability_labels": np.array(labels), "reliability": vals,
                                          "conditions": np.array(conds),
-                                         **{f"auprc_{k}": v for k, v in au.items()}},
+                                         **{f"auprc_lost_{k}": v for k, v in au.items()},
+                                         **{f"auprc_clean_{k}": v for k, v in clean.items()}},
            meta={"severity": (main.results or {}).get("corruption_severity")})
 
 
@@ -444,6 +575,7 @@ def fig_learning_curves(w: FigureWriter, main: Run, others: List[Run], eeg_runs:
     groups = [("(a) three modalities", [main] + others), ("(b) EEG alone", eeg_runs)]
     groups = [(t, rs) for t, rs in groups if rs]
     fig, axes = plt.subplots(1, len(groups), figsize=(3.6 * len(groups), 2.6), squeeze=False)
+    from matplotlib.ticker import MaxNLocator
     data = {}
     for ax, (title, rs) in zip(axes[0], groups):
         for i, r in enumerate(rs):
@@ -451,13 +583,16 @@ def fig_learning_curves(w: FigureWriter, main: Run, others: List[Run], eeg_runs:
             if not v:
                 continue
             data[r.name] = v
-            ax.plot(range(len(v)), v, color=OKABE_ITO[i % 8], lw=1.1, label=r.label)
+            col = LINE_COLORS[i % len(LINE_COLORS)]
+            ax.plot(range(len(v)), v, color=col, lw=1.1, label=r.label)
             be = (r.results or {}).get("best_epoch")
             if be is not None and be < len(v):
-                ax.plot(be, v[be], "o", color=OKABE_ITO[i % 8], ms=4)
+                ax.plot(be, v[be], "o", color=col, ms=4)
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.set_xlabel("epoch")
         ax.set_title(title)
-        ax.legend(frameon=False, fontsize=5.5)
+        ax.legend(frameon=False, fontsize=5.5, loc="upper center", bbox_to_anchor=(0.5, -0.3),
+                  ncol=2, borderaxespad=0)
     axes[0][0].set_ylabel("validation AUPRC (windows)")
     fig.suptitle("Learning curves; the dot is the epoch the test figures come from", y=1.03)
     w.save(fig, "fig_learning_curves", data=data,
@@ -475,8 +610,11 @@ def write_readme(out_dir: str, w: FigureWriter, main: Run, args):
     for name in w.written:
         meta = json.load(open(os.path.join(w.meta_dir, f"{name}.json")))
         lines += [f"## {name}", ""]
+        seen = set()
         for t in meta.get("figure_text", []):
-            lines.append(t)
+            if t not in seen:
+                lines.append(t)
+                seen.add(t)
         if name == "fig_seizure_example":
             c = meta["chosen"]
             lines.append(f"\nRecording `{meta['recording']}`, chosen as rank {c['rank']} of "
@@ -500,6 +638,9 @@ def main(argv=None) -> int:
     ap.add_argument("--example", default=None, help="recording for fig_seizure_example, "
                                                      "e.g. sub-101_run-03 (default: ranked)")
     ap.add_argument("--margin", type=float, default=60.0, help="seconds around the seizure")
+    ap.add_argument("--window-start", type=float, default=None,
+                    help="start of the 4 s input window drawn per modality, in seconds from the "
+                         "seizure onset (default: centred on the seizure)")
     ap.add_argument("--only", nargs="*", default=None, help="figure names to draw")
     args = ap.parse_args(argv)
     apply_style()
@@ -521,8 +662,12 @@ def main(argv=None) -> int:
 
     def do(name):
         return want is None or name in want
-    if do("fig_seizure_example") and main_run.predictions():
-        fig_seizure_example(w, main_run, args.raw_dir, args.example, args.margin)
+    if (do("fig_seizure_example") or do("fig_signal")) and main_run.predictions():
+        ex = load_example(main_run, args.raw_dir, args.example, args.margin)
+        if do("fig_seizure_example"):
+            fig_seizure_example(w, main_run, args.raw_dir, args.example, args.margin, ex)
+        if do("fig_signal"):
+            fig_signal_strips(w, main_run, ex, args.window_start)
     if do("fig_sensitivity_fa") and main_run.events:
         fig_sensitivity_fa(w, main_run, others, eeg_runs)
     if do("fig_modality_subsets") and main_run.events:

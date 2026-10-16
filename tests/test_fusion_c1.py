@@ -568,7 +568,9 @@ def test_seizeit2_figures_from_run_artefacts(tmp_path):
                      "--eeg-runs", str(other), "--out-dir", str(out), "--format", "png",
                      "--margin", "30"]) == 0
     names = ["fig_seizure_example", "fig_sensitivity_fa", "fig_modality_subsets",
-             "fig_reliability", "fig_per_patient", "fig_learning_curves"]
+             "fig_reliability", "fig_per_patient", "fig_learning_curves",
+             "fig_signal_eeg", "fig_signal_ecg", "fig_signal_emg",
+             "fig_window_eeg", "fig_window_ecg", "fig_window_emg"]
     for n in names:
         assert (out / "figures" / f"{n}.png").stat().st_size > 1000, n
         assert (out / "figure_metadata" / f"{n}.json").exists(), n
@@ -576,6 +578,9 @@ def test_seizeit2_figures_from_run_artefacts(tmp_path):
     assert meta["n_candidates"] == 4 and meta["chosen"]["rank"] == 1 and meta["chosen"]["detected"]
     assert meta["chosen"]["duration_s"] == 30
     assert "fig_seizure_example" in (out / "README.md").read_text()
+    wm = json.load(open(out / "figure_metadata" / "fig_window_emg.json"))
+    assert wm["samples"] == 4 * 256 and wm["seconds"] == 4.0        # the synthetic EMG is 256 Hz
+    assert 0 <= wm["window_start_from_onset_s"] <= 30 - 4            # inside the 30 s seizure
     # a named recording is honoured, and an unknown one refused
     assert viz.main(["--raw-dir", str(raw), "--run-dir", str(main), "--out-dir", str(out),
                      "--format", "png", "--only", "fig_seizure_example",
