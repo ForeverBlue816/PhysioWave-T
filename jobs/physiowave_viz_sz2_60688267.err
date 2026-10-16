@@ -1,0 +1,22 @@
+Traceback (most recent call last):
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/scripts/visualize_seizeit2.py", line 542, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/scripts/visualize_seizeit2.py", line 525, in main
+    fig_seizure_example(w, main_run, args.raw_dir, args.example, args.margin)
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/scripts/visualize_seizeit2.py", line 268, in fig_seizure_example
+    w.save(fig, "fig_seizure_example",
+  File "/leonardo/home/userexternal/ychen003/PhysioWave-T/scripts/visualize_eeg_pretraining.py", line 234, in save
+    np.savez_compressed(os.path.join(self.data_dir, f"{name}.npz"),
+  File "/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/numpy/lib/npyio.py", line 710, in savez_compressed
+    _savez(file, args, kwds, True)
+  File "/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/numpy/lib/npyio.py", line 736, in _savez
+    zipf = zipfile_factory(file, mode="w", compression=compression)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/leonardo/prod/opt/libraries/cineca-ai/4.3.0/none/cineca-ai-env/lib/python3.11/site-packages/numpy/lib/npyio.py", line 103, in zipfile_factory
+    return zipfile.ZipFile(file, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/leonardo/prod/spack/5.2/install/0.21/linux-rhel8-icelake/gcc-8.5.0/python-3.11.6-i5k3c6ggftqkzgqyymfbkynpgm2lgjtd/lib/python3.11/zipfile.py", line 1284, in __init__
+    self.fp = io.open(file, filemode)
+              ^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'docs/runs/seizeit2_fusion/figure_data/fig_seizure_example.npz'

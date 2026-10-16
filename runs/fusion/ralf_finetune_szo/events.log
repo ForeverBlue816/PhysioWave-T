@@ -785,3 +785,11 @@
   eeg_emg   th0.5: sens_ovlp 0.212  FA/h 0.89 (epoch 11.0)  | pooled sens 0.138 FA/24h 43.8  | AUROC 0.682 AUPRC 0.0029  | sens@1FA/h 0.122
   ecg_emg   th0.5: sens_ovlp 0.303  FA/h 2.33 (epoch 46.2)  | pooled sens 0.235 FA/24h 72.2  | AUROC 0.697 AUPRC 0.0037  | sens@1FA/h 0.120
 wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_finetune_szo/events_cross.json in 10040s
+  complete  th0.5: sens_ovlp 0.310  FA/h 2.60 (epoch 47.7)  | pooled sens 0.215 FA/24h 85.3  | AUROC 0.709 AUPRC 0.0047  | sens@1FA/h 0.127
+  eeg_only  th0.5: sens_ovlp 0.366  FA/h 4.91 (epoch 68.9)  | pooled sens 0.238 FA/24h 121.5  | AUROC 0.676 AUPRC 0.0036  | sens@1FA/h 0.127
+  ecg_only  th0.5: sens_ovlp 0.321  FA/h 2.39 (epoch 47.4)  | pooled sens 0.235 FA/24h 72.1  | AUROC 0.709 AUPRC 0.0042  | sens@1FA/h 0.114
+  emg_only  th0.5: sens_ovlp 0.043  FA/h 0.23 (epoch 3.6)  | pooled sens 0.024 FA/24h 9.1  | AUROC 0.652 AUPRC 0.0016  | sens@1FA/h 0.054
+  eeg_ecg   th0.5: sens_ovlp 0.303  FA/h 2.58 (epoch 47.2)  | pooled sens 0.210 FA/24h 83.9  | AUROC 0.707 AUPRC 0.0054  | sens@1FA/h 0.133
+  eeg_emg   th0.5: sens_ovlp 0.212  FA/h 0.89 (epoch 11.0)  | pooled sens 0.138 FA/24h 43.8  | AUROC 0.682 AUPRC 0.0029  | sens@1FA/h 0.122
+  ecg_emg   th0.5: sens_ovlp 0.303  FA/h 2.33 (epoch 46.2)  | pooled sens 0.235 FA/24h 72.2  | AUROC 0.697 AUPRC 0.0037  | sens@1FA/h 0.120
+wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_finetune_szo/events_cross.json in 465s
