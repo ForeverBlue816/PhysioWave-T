@@ -146,3 +146,41 @@ ghost copy.
 > are the task cross-entropy, the unimodal cross-entropies (0.2), the
 > reliability regression r_m → 1 − ℓ_m, and a consistency term that makes a
 > random modality subset agree with the full prediction.
+
+## v2.1: the visual language of (c) and (d)
+
+The second draft had the right content and read as a block diagram: every
+element a rectangle, every arrow an elbow, the fusion core a grid of boxes.
+These rules replace the "orthogonal elbows" rule for regions (c)–(e) and add
+visual devices; content and word budget are unchanged.
+
+- **Tokens are drawn as tokens.** A summary token is a small rounded square
+  in the lane colour. The pool is four such tokens fanning out of the
+  encoder (four thin curved lines from the encoder's right edge converging
+  on the four squares), not a circle with an icon. After the gate the four
+  squares keep their colour but take their opacity from r (the EEG row at
+  full, one other row visibly paler): the gating is seen, not only labelled.
+- **Reliability is a dial.** Each r is a small semicircular gauge in purple
+  with a needle, positioned above its lane; a thin purple line drops to the
+  ⊗. The purple label `r_m ∈ [0, 1]` appears once.
+- **Cross-attention is attention.** The eight fusion tokens are a column of
+  eight small grey squares on the left of the core; the twelve gated tokens
+  stand in a column on the right; a fan of thin curved lines connects a few
+  fusion tokens to several gated tokens, with line weight suggesting
+  attention weight. `2 ×` is written once beside the column. No box with a
+  grid inside it.
+- **Arrows curve.** From (c) onwards, lines are smooth cubic curves with a
+  single bend (no S-shapes), 0.8 pt, in the lane colour where they carry one
+  modality and grey where they carry the fused signal. Elbows remain in (b).
+- **The residual is a braid.** The three z_m lines approach the ⊕ as three
+  thin coloured curves that merge into one grey line; the equation sits
+  under the ⊕ in math type, nothing else near it.
+- **Whitespace is part of the design.** Regions (c) and (d) together take
+  half the width; nothing in (d) touches the box edge; the core's box has a
+  2 mm inner margin and a 1.5 mm corner radius like every other block.
+- **(e) shows a result.** The probability trace is a real one (take it from
+  `fig_seizure_example`'s bottom panel, a 60 s excerpt), with the dashed 0.5
+  line and a short black bar over the detected event.
+- **Icons, if any, are three.** The four words inside an encoder may carry
+  one glyph each only if the glyphs share one stroke weight and one height;
+  otherwise use the words alone. No other icon anywhere.
