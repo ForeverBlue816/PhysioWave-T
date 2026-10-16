@@ -2,12 +2,12 @@
   "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_szo/best.pth",
   "epoch": 5,
   "run": "ralf_frozen_szo",
-  "git_commit": "c98eb6f373c0858ea67ca090d3cd013dbd6e95f4",
+  "git_commit": "dee0de2e333e08cd85e2068e234f7aaf6489b058",
   "figure": "fig_sensitivity_fa",
-  "generated_utc": "2026-10-16T06:43:17.347621+00:00",
+  "generated_utc": "2026-10-16T08:12:01.806986+00:00",
   "figure_text": [
-    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring; dotted: 11 FA/h, the SVM's operating point",
-    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring; dotted: 11 FA/h, the SVM's operating point"
+    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring (means over recordings, any-overlap); dotted: 11 FA/h, the SVM's operating point",
+    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring (means over recordings, any-overlap); dotted: 11 FA/h, the SVM's operating point"
   ],
   "paper_mode": true,
   "runs": [

@@ -2,9 +2,9 @@
   "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_szo/best.pth",
   "epoch": 5,
   "run": "ralf_frozen_szo",
-  "git_commit": "c98eb6f373c0858ea67ca090d3cd013dbd6e95f4",
+  "git_commit": "dee0de2e333e08cd85e2068e234f7aaf6489b058",
   "figure": "fig_seizure_example",
-  "generated_utc": "2026-10-16T06:43:16.323377+00:00",
+  "generated_utc": "2026-10-16T08:11:59.633431+00:00",
   "figure_text": [
     "ralf / frozen: sub-102 run-01, seizure 1 of 166 ranked candidates (49 s)",
     "ralf / frozen: sub-102 run-01, seizure 1 of 166 ranked candidates (49 s)",
