@@ -1,0 +1,73 @@
+run / condition                               sens%   FA/h  FAep/h   score | pool sens  FA/24h | s@1FA/h  s@6.2 |  AUROC  AUPRC
+-------------------------------------------------------------------------------------------------------------------------------
+concat_frozen_szo / complete                   50.1   5.21    97.3    11.2 |     0.370   165.8 |   0.127  0.331 |  0.715 0.0108
+concat_frozen_szo / eeg_only                   24.7   0.77     8.9    21.1 |     0.166    30.0 |   0.138  0.215 |  0.676 0.0043
+concat_frozen_szo / ecg_only                   41.0   4.66    92.1     4.2 |     0.307   142.7 |   0.084  0.319 |  0.706 0.0038
+concat_frozen_szo / emg_only                   31.4   3.70    50.6    11.1 |     0.211   172.6 |   0.018  0.187 |  0.658 0.0016
+concat_frozen_szo / eeg_ecg                    44.7   4.49    86.2    10.2 |     0.331   141.8 |   0.110  0.337 |  0.713 0.0132
+concat_frozen_szo / eeg_emg                    36.2   2.02    23.9    26.7 |     0.249    93.4 |   0.160  0.276 |  0.685 0.0035
+concat_frozen_szo / ecg_emg                    50.3   5.74   109.1     6.7 |     0.361   177.7 |   0.084  0.295 |  0.706 0.0039
+eeg_c1_finetune_sze / complete                 57.3   9.06   131.0     4.9 |     0.403   302.9 |   0.122  0.282 |  0.703 0.0066
+eeg_c1_finetune_sze / eeg_only                 57.3   9.06   131.0     4.9 |     0.403   302.9 |   0.122  0.282 |  0.703 0.0066
+eeg_c1_finetune_sze / eeg_ecg                  57.3   9.06   131.0     4.9 |     0.403   302.9 |   0.122  0.282 |  0.703 0.0066
+eeg_c1_finetune_sze / eeg_emg                  57.3   9.06   131.0     4.9 |     0.403   302.9 |   0.122  0.282 |  0.703 0.0066
+eeg_c1_frozen_sze / complete                   38.7   3.40    41.4    22.2 |     0.276   134.5 |   0.144  0.276 |  0.694 0.0056
+eeg_c1_frozen_sze / eeg_only                   38.7   3.40    41.4    22.2 |     0.276   134.5 |   0.144  0.276 |  0.694 0.0056
+eeg_c1_frozen_sze / eeg_ecg                    38.7   3.40    41.4    22.2 |     0.276   134.5 |   0.144  0.276 |  0.694 0.0056
+eeg_c1_frozen_sze / eeg_emg                    38.7   3.40    41.4    22.2 |     0.276   134.5 |   0.144  0.276 |  0.694 0.0056
+eeg_c1native_finetune_sze / complete           35.6   3.08    38.0    20.4 |     0.227   102.1 |   0.099  0.249 |  0.676 0.0027
+eeg_c1native_finetune_sze / eeg_only           35.6   3.08    38.0    20.4 |     0.227   102.1 |   0.099  0.249 |  0.676 0.0027
+eeg_c1native_finetune_sze / eeg_ecg            35.6   3.08    38.0    20.4 |     0.227   102.1 |   0.099  0.249 |  0.676 0.0027
+eeg_c1native_finetune_sze / eeg_emg            35.6   3.08    38.0    20.4 |     0.227   102.1 |   0.099  0.249 |  0.676 0.0027
+eeg_c1native_frozen_sze / complete             33.7   2.03    26.7    23.1 |     0.221    70.0 |   0.138  0.243 |  0.679 0.0027
+eeg_c1native_frozen_sze / eeg_only             33.7   2.03    26.7    23.1 |     0.221    70.0 |   0.138  0.243 |  0.679 0.0027
+eeg_c1native_frozen_sze / eeg_ecg              33.7   2.03    26.7    23.1 |     0.221    70.0 |   0.138  0.243 |  0.679 0.0027
+eeg_c1native_frozen_sze / eeg_emg              33.7   2.03    26.7    23.1 |     0.221    70.0 |   0.138  0.243 |  0.679 0.0027
+eeg_eegpt_finetune_sze / complete              23.5   2.42    26.5    12.9 |     0.166    55.5 |   0.110  0.282 |  0.683 0.0031
+eeg_eegpt_finetune_sze / eeg_only              23.5   2.42    26.5    12.9 |     0.166    55.5 |   0.110  0.282 |  0.683 0.0031
+eeg_eegpt_finetune_sze / eeg_ecg               23.5   2.42    26.5    12.9 |     0.166    55.5 |   0.110  0.282 |  0.683 0.0031
+eeg_eegpt_finetune_sze / eeg_emg               23.5   2.42    26.5    12.9 |     0.166    55.5 |   0.110  0.282 |  0.683 0.0031
+eeg_eegpt_frozen_sze / complete                42.3   4.95    63.8    16.8 |     0.326   167.5 |   0.149  0.282 |  0.698 0.0053
+eeg_eegpt_frozen_sze / eeg_only                42.3   4.95    63.8    16.8 |     0.326   167.5 |   0.149  0.282 |  0.698 0.0053
+eeg_eegpt_frozen_sze / eeg_ecg                 42.3   4.95    63.8    16.8 |     0.326   167.5 |   0.149  0.282 |  0.698 0.0053
+eeg_eegpt_frozen_sze / eeg_emg                 42.3   4.95    63.8    16.8 |     0.326   167.5 |   0.149  0.282 |  0.698 0.0053
+eeg_labram_finetune_sze / complete             40.7   2.46    30.3    28.6 |     0.282    99.1 |   0.144  0.309 |  0.706 0.0070
+eeg_labram_finetune_sze / eeg_only             40.7   2.46    30.3    28.6 |     0.282    99.1 |   0.144  0.309 |  0.706 0.0070
+eeg_labram_finetune_sze / eeg_ecg              40.7   2.46    30.3    28.6 |     0.282    99.1 |   0.144  0.309 |  0.706 0.0070
+eeg_labram_finetune_sze / eeg_emg              40.7   2.46    30.3    28.6 |     0.282    99.1 |   0.144  0.309 |  0.706 0.0070
+eeg_labram_frozen_sze / complete               28.0   2.04    22.8    18.9 |     0.177    91.1 |   0.105  0.232 |  0.681 0.0041
+eeg_labram_frozen_sze / eeg_only               28.0   2.04    22.8    18.9 |     0.177    91.1 |   0.105  0.232 |  0.681 0.0041
+eeg_labram_frozen_sze / eeg_ecg                28.0   2.04    22.8    18.9 |     0.177    91.1 |   0.105  0.232 |  0.681 0.0041
+eeg_labram_frozen_sze / eeg_emg                28.0   2.04    22.8    18.9 |     0.177    91.1 |   0.105  0.232 |  0.681 0.0041
+ralf_finetune_szo / complete                   31.0   2.60    47.7    11.9 |     0.215    85.3 |   0.127  0.304 |  0.709 0.0047
+ralf_finetune_szo / eeg_only                   36.6   4.91    68.9     9.0 |     0.238   121.5 |   0.127  0.249 |  0.676 0.0036
+ralf_finetune_szo / ecg_only                   32.1   2.39    47.4    13.2 |     0.235    72.1 |   0.114  0.331 |  0.709 0.0042
+ralf_finetune_szo / emg_only                    4.3   0.23     3.6     2.8 |     0.024     9.1 |   0.054  0.181 |  0.652 0.0016
+ralf_finetune_szo / eeg_ecg                    30.3   2.58    47.2    11.4 |     0.210    83.9 |   0.133  0.293 |  0.707 0.0054
+ralf_finetune_szo / eeg_emg                    21.2   0.89    11.0    16.8 |     0.138    43.8 |   0.122  0.249 |  0.682 0.0029
+ralf_finetune_szo / ecg_emg                    30.3   2.33    46.2    11.8 |     0.235    72.2 |   0.120  0.343 |  0.697 0.0037
+ralf_frozen_szo / complete                     43.9   3.00    52.6    22.8 |     0.320   106.9 |   0.127  0.365 |  0.717 0.0066
+ralf_frozen_szo / eeg_only                     31.0   1.52    18.3    23.7 |     0.204    59.6 |   0.144  0.232 |  0.675 0.0024
+ralf_frozen_szo / ecg_only                     39.6   2.66    53.3    18.3 |     0.265    87.6 |   0.114  0.373 |  0.710 0.0047
+ralf_frozen_szo / emg_only                     35.8   3.19    43.7    18.4 |     0.265   140.3 |   0.078  0.265 |  0.655 0.0017
+ralf_frozen_szo / eeg_ecg                      41.3   3.06    55.0    19.3 |     0.287   104.6 |   0.133  0.320 |  0.716 0.0072
+ralf_frozen_szo / eeg_emg                      33.9   2.52    32.1    21.1 |     0.221   110.5 |   0.072  0.276 |  0.676 0.0020
+ralf_frozen_szo / ecg_emg                      42.0   3.24    59.4    18.2 |     0.331   119.2 |   0.114  0.386 |  0.707 0.0051
+ralf_scratch_szo / complete                    43.0   2.97    51.3    22.5 |     0.276   102.0 |   0.133  0.320 |  0.713 0.0076
+ralf_scratch_szo / eeg_only                    26.8   2.31    37.4    11.9 |     0.182    89.7 |   0.055  0.215 |  0.661 0.0021
+ralf_scratch_szo / ecg_only                    36.6   2.62    46.4    18.0 |     0.241    85.8 |   0.114  0.349 |  0.704 0.0056
+ralf_scratch_szo / emg_only                     0.0   0.02     0.2    -0.1 |     0.000     0.6 |   0.072  0.271 |  0.665 0.0018
+ralf_scratch_szo / eeg_ecg                     44.3   2.94    50.8    24.0 |     0.282    98.1 |   0.138  0.320 |  0.708 0.0065
+ralf_scratch_szo / eeg_emg                     22.6   1.57    24.7    12.7 |     0.149    69.0 |   0.061  0.232 |  0.676 0.0023
+ralf_scratch_szo / ecg_emg                     42.0   2.53    44.5    24.2 |     0.265    85.7 |   0.108  0.361 |  0.707 0.0055
+weighted_logit_frozen_szo / complete           38.1   3.81    67.3    11.2 |     0.276   129.8 |   0.122  0.309 |  0.718 0.0054
+weighted_logit_frozen_szo / eeg_only           35.2   3.79    50.3    15.1 |     0.238   104.3 |   0.155  0.254 |  0.668 0.0031
+weighted_logit_frozen_szo / ecg_only           51.9   4.72    88.9    16.3 |     0.373   154.9 |   0.102  0.361 |  0.714 0.0050
+weighted_logit_frozen_szo / emg_only           57.2   7.14   123.4     7.8 |     0.506   331.1 |   0.072  0.259 |  0.657 0.0018
+weighted_logit_frozen_szo / eeg_ecg            42.4   3.85    69.9    14.4 |     0.298   129.5 |   0.133  0.315 |  0.719 0.0062
+weighted_logit_frozen_szo / eeg_emg            38.2   3.50    48.7    18.7 |     0.276   144.3 |   0.149  0.276 |  0.680 0.0029
+weighted_logit_frozen_szo / ecg_emg            49.2   4.65    87.0    14.5 |     0.386   163.2 |   0.120  0.355 |  0.713 0.0055
+-------------------------------------------------------------------------------------------------------------------------------
+SVM, bte-EEG (Bhagubai et al., Sci. Data 202   71.1  11.00                 |                   |                |  0.700 0.0810   (same split and scoring)
+ChronoNet, bte-EEG (Bhagubai et al., Sci. Da   84.2 100.50                 |                   |                |  0.792 0.1042   (same split and scoring)
+bte-EEG + ECG algorithm (Swinnen et al., Epi   78.0   6.22                 |                   |                |    -      -     (per-patient mean, own cohort and protocol)

@@ -36,3 +36,34 @@ output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_<encoder>
 [gpu 2] c1native:frozen: events 05:37
 [gpu 3] c1native:finetune: events 05:43
 [gpu 0] labram:frozen: events 06:01
+[gpu 2] c1native:frozen: done 06:31
+[gpu 3] c1native:finetune: done 06:37
+[gpu 0] labram:frozen: done 06:52
+======================================================================
+seizeit2: test auprc under each condition (val-selected checkpoint)
+----------------------------------------------------------------------
+  run                                   alleeg~noiseeeg~badcheeg~drift
+  concat/finetune [eeg_c1_finetune   0.3206   0.2431   0.2030   0.1518
+  concat/finetune [eeg_c1native_fi   0.2632   0.1989   0.1147   0.1239
+  concat/finetune [eeg_eegpt_finet   0.2577   0.2032   0.1445   0.1333
+  concat/finetune [eeg_labram_fine   0.3446   0.1716   0.2031   0.1872
+  concat/frozen [eeg_c1_frozen_sze   0.3218   0.2204   0.2045   0.1501
+  concat/frozen [eeg_c1native_froz   0.2840   0.2147   0.0950   0.1529
+  concat/frozen [eeg_eegpt_frozen_   0.3015   0.2739   0.1424   0.1525
+  concat/frozen [eeg_labram_frozen   0.2758   0.1305   0.1957   0.1463
+============================================================
+  conditions: a modality name alone = only that modality kept; ~ = corrupted at the run's severity on top of the complete set.
+run / condition                               sens%   FA/h  FAep/h   score | pool sens  FA/24h | s@1FA/h  s@6.2 |  AUROC  AUPRC
+-------------------------------------------------------------------------------------------------------------------------------
+eeg_c1_finetune_sze / complete                 57.3   9.06   131.0     4.9 |     0.403   302.9 |   0.122  0.282 |  0.703 0.0066
+eeg_c1_frozen_sze / complete                   38.7   3.40    41.4    22.2 |     0.276   134.5 |   0.144  0.276 |  0.694 0.0056
+eeg_c1native_finetune_sze / complete           35.6   3.08    38.0    20.4 |     0.227   102.1 |   0.099  0.249 |  0.676 0.0027
+eeg_c1native_frozen_sze / complete             33.7   2.03    26.7    23.1 |     0.221    70.0 |   0.138  0.243 |  0.679 0.0027
+eeg_eegpt_finetune_sze / complete              23.5   2.42    26.5    12.9 |     0.166    55.5 |   0.110  0.282 |  0.683 0.0031
+eeg_eegpt_frozen_sze / complete                42.3   4.95    63.8    16.8 |     0.326   167.5 |   0.149  0.282 |  0.698 0.0053
+eeg_labram_finetune_sze / complete             40.7   2.46    30.3    28.6 |     0.282    99.1 |   0.144  0.309 |  0.706 0.0070
+eeg_labram_frozen_sze / complete               28.0   2.04    22.8    18.9 |     0.177    91.1 |   0.105  0.232 |  0.681 0.0041
+-------------------------------------------------------------------------------------------------------------------------------
+SVM, bte-EEG (Bhagubai et al., Sci. Data 202   71.1  11.00                 |                   |                |  0.700 0.0810   (same split and scoring)
+ChronoNet, bte-EEG (Bhagubai et al., Sci. Da   84.2 100.50                 |                   |                |  0.792 0.1042   (same split and scoring)
+bte-EEG + ECG algorithm (Swinnen et al., Epi   78.0   6.22                 |                   |                |    -      -     (per-patient mean, own cohort and protocol)

@@ -1,0 +1,14 @@
+======================================================================
+seizeit2: test auprc under each condition (val-selected checkpoint)
+----------------------------------------------------------------------
+  run                                   alleeg~noiseeeg~badcheeg~drift
+  concat/finetune [eeg_c1_finetune   0.3206   0.2431   0.2030   0.1518
+  concat/finetune [eeg_c1native_fi   0.2632   0.1989   0.1147   0.1239
+  concat/finetune [eeg_eegpt_finet   0.2577   0.2032   0.1445   0.1333
+  concat/finetune [eeg_labram_fine   0.3446   0.1716   0.2031   0.1872
+  concat/frozen [eeg_c1_frozen_sze   0.3218   0.2204   0.2045   0.1501
+  concat/frozen [eeg_c1native_froz   0.2840   0.2147   0.0950   0.1529
+  concat/frozen [eeg_eegpt_frozen_   0.3015   0.2739   0.1424   0.1525
+  concat/frozen [eeg_labram_frozen   0.2758   0.1305   0.1957   0.1463
+============================================================
+  conditions: a modality name alone = only that modality kept; ~ = corrupted at the run's severity on top of the complete set.

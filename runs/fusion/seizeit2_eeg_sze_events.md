@@ -1,0 +1,18 @@
+# SeizeIT2, event-level, official split (test = sub-097..125)
+
+RMS gate: cross. Threshold 0.5 unless stated.
+
+| run / condition | sens % | FA/h | FA epoch/h | score | pooled sens | FA/24h | sens @1 FA/h | sens @6.22 FA/h | AUROC | AUPRC |
+|---|---|---|---|---|---|---|---|---|---|---|
+| eeg_c1_finetune_sze / complete | 57.3 | 9.06 | 131.0 | 4.9 | 0.403 | 302.9 | 0.122 | 0.282 | 0.703 | 0.0066 |
+| eeg_c1_frozen_sze / complete | 38.7 | 3.40 | 41.4 | 22.2 | 0.276 | 134.5 | 0.144 | 0.276 | 0.694 | 0.0056 |
+| eeg_c1native_finetune_sze / complete | 35.6 | 3.08 | 38.0 | 20.4 | 0.227 | 102.1 | 0.099 | 0.249 | 0.676 | 0.0027 |
+| eeg_c1native_frozen_sze / complete | 33.7 | 2.03 | 26.7 | 23.1 | 0.221 | 70.0 | 0.138 | 0.243 | 0.679 | 0.0027 |
+| eeg_eegpt_finetune_sze / complete | 23.5 | 2.42 | 26.5 | 12.9 | 0.166 | 55.5 | 0.110 | 0.282 | 0.683 | 0.0031 |
+| eeg_eegpt_frozen_sze / complete | 42.3 | 4.95 | 63.8 | 16.8 | 0.326 | 167.5 | 0.149 | 0.282 | 0.698 | 0.0053 |
+| eeg_labram_finetune_sze / complete | 40.7 | 2.46 | 30.3 | 28.6 | 0.282 | 99.1 | 0.144 | 0.309 | 0.706 | 0.0070 |
+| eeg_labram_frozen_sze / complete | 28.0 | 2.04 | 22.8 | 18.9 | 0.177 | 91.1 | 0.105 | 0.232 | 0.681 | 0.0041 |
+| **published** | | | | | | | | | | |
+| SVM, bte-EEG (Bhagubai et al., Sci. Data 2025) (same split and scoring) | 71.1 | 11.00 | | | | | | | 0.700 | 0.0810 |
+| ChronoNet, bte-EEG (Bhagubai et al., Sci. Data 2025) (same split and scoring) | 84.2 | 100.50 | | | | | | | 0.792 | 0.1042 |
+| bte-EEG + ECG algorithm (Swinnen et al., Epilepsia Open 2026) (per-patient mean, own cohort and protocol) | 78.0 | 6.22 | | | | | | |   -   |   -   |

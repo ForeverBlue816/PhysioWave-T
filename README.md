@@ -1,6 +1,6 @@
 # Cluster results snapshot
 
-Updated 2026-10-16 06:02 CEST from `/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs` and the Slurm logs in `/leonardo/home/userexternal/ychen003/PhysioWave-T` by `scripts/sync_results.sh`.
+Updated 2026-10-16 08:36 CEST from `/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs` and the Slurm logs in `/leonardo/home/userexternal/ychen003/PhysioWave-T` by `scripts/sync_results.sh`.
 
 Text only: results, histories, summaries, configs, logs (capped at 5 MB, progress bars collapsed). No checkpoints, data or figures.
 
