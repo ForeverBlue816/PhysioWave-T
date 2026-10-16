@@ -1,0 +1,39 @@
+{
+  "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_szo/best.pth",
+  "epoch": 5,
+  "run": "ralf_frozen_szo",
+  "git_commit": "c98eb6f373c0858ea67ca090d3cd013dbd6e95f4",
+  "figure": "fig_sensitivity_fa",
+  "generated_utc": "2026-10-16T06:43:17.347621+00:00",
+  "figure_text": [
+    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring; dotted: 11 FA/h, the SVM's operating point",
+    "SeizeIT2 test patients (sub-097..125), the dataset paper's scoring; dotted: 11 FA/h, the SVM's operating point"
+  ],
+  "paper_mode": true,
+  "runs": [
+    "ralf_frozen_szo",
+    "concat_frozen_szo",
+    "weighted_logit_frozen_szo",
+    "ralf_finetune_szo",
+    "ralf_scratch_szo"
+  ],
+  "eeg_runs": [
+    "eeg_c1_finetune_sze",
+    "eeg_eegpt_frozen_sze",
+    "eeg_labram_finetune_sze"
+  ],
+  "published": [
+    [
+      "SVM (Bhagubai et al.)",
+      71.1,
+      11.0,
+      "s"
+    ],
+    [
+      "ChronoNet (Bhagubai et al.)",
+      84.2,
+      100.5,
+      "D"
+    ]
+  ]
+}
