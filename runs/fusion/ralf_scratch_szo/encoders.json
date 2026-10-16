@@ -1,0 +1,37 @@
+{
+  "seizeit2": {
+    "eeg": {
+      "modality": "eeg",
+      "route": null,
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "from scratch"
+    },
+    "ecg": {
+      "modality": "ecg",
+      "route": "L1_250",
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "from scratch"
+    },
+    "emg": {
+      "modality": "emg",
+      "route": null,
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "from scratch"
+    }
+  }
+}

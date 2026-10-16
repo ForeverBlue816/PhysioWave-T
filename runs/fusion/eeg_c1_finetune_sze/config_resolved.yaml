@@ -1,0 +1,68 @@
+corruption:
+  enabled: false
+  kinds:
+  - noise
+  - drift
+  - saturation
+  - bad_channel
+  - dropout
+  max_level: 1.0
+  prob: 0.5
+data:
+  modalities:
+  - eeg
+  num_workers: 4
+  tasks:
+    mpdb:
+      dir: null
+      select_by: balanced_acc
+    seizeit2:
+      dir: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/seizeit2
+      select_by: auprc
+encoders:
+  ecg: null
+  eeg: /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  eeg_arch: c1
+  eeg_input_uv: 30.0
+  emg: null
+eval:
+  corruption_severity: 0.7
+model:
+  depth: 2
+  dropout: 0.1
+  eeg_adapter:
+  - F7
+  - T7
+  - P7
+  - F8
+  - T8
+  - P8
+  embed_dim: 256
+  encoder_dropout: 0.0
+  encoder_mode: finetune
+  fusion: concat
+  num_fusion_tokens: 8
+  num_heads: 8
+  residual_weight: 0.5
+  route_drop_max: 2
+  summary_heads: 4
+  summary_tokens: 4
+run_name: seizeit2_eeg
+seed: 42
+train:
+  batch_size: 32
+  class_weight: sqrt
+  consistency_weight: 0.0
+  encoder_lr_scale: 1.0
+  epochs: 15
+  grad_clip: 1.0
+  layer_decay: 0.75
+  lr: 0.0001
+  min_lr_ratio: 0.01
+  modality_dropout: 0.3
+  patience: 5
+  precision: bf16
+  reliability_weight: 0.0
+  uni_weight: 0.0
+  warmup_ratio: 0.1
+  weight_decay: 0.05

@@ -2247,3 +2247,18 @@
 2026-10-15 14:35:49,102 INFO: epoch 12 step 8494/8494 [seizeit2] loss 0.1783 lr 2.88e-04
 2026-10-15 14:38:37,711 INFO: epoch 12 done: seizeit2: acc=0.8632, auroc=0.7115, auprc=0.3305 | score 0.3305
 2026-10-15 14:38:38,082 INFO: no improvement for 10 epochs; stopping
+2026-10-15 14:46:38,555 INFO: test seizeit2/complete: acc=0.8352, balanced_acc=0.6482, macro_f1=0.6216, auroc=0.7487, auprc=0.3467
+2026-10-15 14:55:20,837 INFO: test seizeit2/eeg_only: acc=0.8867, balanced_acc=0.5784, macro_f1=0.5970, auroc=0.6730, auprc=0.2489
+2026-10-15 15:04:18,037 INFO: test seizeit2/ecg_only: acc=0.8348, balanced_acc=0.6253, macro_f1=0.6086, auroc=0.7185, auprc=0.2534
+2026-10-15 15:13:16,792 INFO: test seizeit2/emg_only: acc=0.8456, balanced_acc=0.5633, macro_f1=0.5659, auroc=0.6273, auprc=0.1773
+2026-10-15 15:23:06,023 INFO: test seizeit2/eeg_ecg: acc=0.8408, balanced_acc=0.6385, macro_f1=0.6193, auroc=0.7406, auprc=0.3305
+2026-10-15 15:32:45,178 INFO: test seizeit2/eeg_emg: acc=0.8690, balanced_acc=0.6061, macro_f1=0.6136, auroc=0.7010, auprc=0.2838
+2026-10-15 15:41:34,320 INFO: test seizeit2/ecg_emg: acc=0.8219, balanced_acc=0.6361, macro_f1=0.6078, auroc=0.7231, auprc=0.2578
+2026-10-15 15:51:20,807 INFO: test seizeit2/eeg_noise: acc=0.8420, balanced_acc=0.6408, macro_f1=0.6215, auroc=0.7436, auprc=0.3435
+2026-10-15 16:01:02,235 INFO: test seizeit2/eeg_bad_channel: acc=0.8328, balanced_acc=0.6410, macro_f1=0.6157, auroc=0.7372, auprc=0.3101
+2026-10-15 16:10:52,682 INFO: test seizeit2/eeg_drift: acc=0.8384, balanced_acc=0.6285, macro_f1=0.6113, auroc=0.7249, auprc=0.2565
+2026-10-15 16:20:55,473 INFO: test seizeit2/ecg_saturation: acc=0.8683, balanced_acc=0.6626, macro_f1=0.6550, auroc=0.7681, auprc=0.3920
+2026-10-15 16:30:30,495 INFO: test seizeit2/ecg_noise: acc=0.8298, balanced_acc=0.6625, macro_f1=0.6262, auroc=0.7498, auprc=0.3716
+2026-10-15 16:40:19,202 INFO: test seizeit2/emg_dropout: acc=0.8359, balanced_acc=0.6451, macro_f1=0.6202, auroc=0.7426, auprc=0.3390
+2026-10-15 16:50:15,875 INFO: test seizeit2/emg_noise: acc=0.8370, balanced_acc=0.6488, macro_f1=0.6231, auroc=0.7496, auprc=0.3402
+2026-10-15 16:50:15,888 INFO: wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/concat_frozen_szo/results.json

@@ -1,0 +1,38 @@
+{
+  "seizeit2": {
+    "eeg": {
+      "modality": "eeg",
+      "arch": "eegpt",
+      "route": null,
+      "exported": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors",
+      "embed_dim": 512,
+      "adapter": {
+        "from": [
+          "bte_sameside",
+          "bte_other"
+        ],
+        "to": [
+          "F7",
+          "T7",
+          "P7",
+          "F8",
+          "T8",
+          "P8"
+        ]
+      },
+      "input_uv": 30.0,
+      "taken": [
+        "blocks",
+        "chan_embed",
+        "norm",
+        "patch_embed",
+        "summary_token"
+      ],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "eegpt loaded from eegpt_mcae_58chs_4s_large4E.safetensors; adapter 2 -> F7/T7/P7/F8/T8/P8 trains",
+      "trainable_params": 18
+    }
+  }
+}

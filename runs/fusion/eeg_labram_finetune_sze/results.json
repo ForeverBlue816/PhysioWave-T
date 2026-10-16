@@ -1,0 +1,144 @@
+{
+  "fusion": "concat",
+  "encoder_mode": "finetune",
+  "seed": 42,
+  "best_epoch": 1,
+  "best_score": 0.3699499652449699,
+  "select_by": {
+    "seizeit2": "auprc"
+  },
+  "epochs_run": 7,
+  "hparams": {
+    "epochs": 15,
+    "batch_size": 32,
+    "lr": 0.0001,
+    "layer_decay": 0.75,
+    "weight_decay": 0.05,
+    "modality_dropout": 0.3,
+    "uni_weight": 0.0,
+    "reliability_weight": 0.0,
+    "consistency_weight": 0.0,
+    "class_weight": "sqrt"
+  },
+  "corruption_severity": 0.7,
+  "encoders": {
+    "seizeit2": {
+      "eeg": {
+        "modality": "eeg",
+        "arch": "labram",
+        "route": null,
+        "exported": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/labram/labram-base.pth",
+        "embed_dim": 200,
+        "adapter": {
+          "from": [
+            "bte_sameside",
+            "bte_other"
+          ],
+          "to": [
+            "F7",
+            "T7",
+            "P7",
+            "F8",
+            "T8",
+            "P8"
+          ]
+        },
+        "input_uv": 30.0,
+        "taken": [
+          "blocks",
+          "cls_token",
+          "norm",
+          "patch_embed",
+          "pos_embed",
+          "time_embed"
+        ],
+        "skipped": [],
+        "dropped_channels": [],
+        "keep_index": null,
+        "summary": "labram loaded from labram-base.pth; adapter 2 -> F7/T7/P7/F8/T8/P8 trains",
+        "trainable_params": 5819954
+      }
+    }
+  },
+  "seconds": 3321.595405817032,
+  "tasks": {
+    "seizeit2": {
+      "classes": [
+        "background",
+        "seizure"
+      ],
+      "val": {
+        "acc": 0.8396016330570333,
+        "balanced_acc": 0.6189026300108926,
+        "kappa": 0.25579910904720227,
+        "weighted_f1": 0.8333415270715885,
+        "macro_f1": 0.6274709860669223,
+        "auroc": 0.7951747036489034,
+        "auprc": 0.3699499652449699,
+        "sensitivity": 0.3175410214929512,
+        "specificity": 0.9202642385288341,
+        "n": 32332,
+        "dropped": 0,
+        "reliability_eeg": 1.0
+      },
+      "test": {
+        "complete": {
+          "acc": 0.8707803358251159,
+          "balanced_acc": 0.6205581886992076,
+          "kappa": 0.25372991731695216,
+          "weighted_f1": 0.8673509473262353,
+          "macro_f1": 0.6267258084269473,
+          "auroc": 0.742919742900208,
+          "auprc": 0.3445813279528306,
+          "sensitivity": 0.3067951318458418,
+          "specificity": 0.9343997803027703,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_noise": {
+          "acc": 0.8835717150113621,
+          "balanced_acc": 0.5321195558084834,
+          "kappa": 0.09135127094587148,
+          "weighted_f1": 0.8564244449225954,
+          "macro_f1": 0.5373689209279998,
+          "auroc": 0.6105835663566243,
+          "auprc": 0.171589003715049,
+          "sensitivity": 0.09127789046653144,
+          "specificity": 0.9729383360223359,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_bad_channel": {
+          "acc": 0.867644185783472,
+          "balanced_acc": 0.549935563626006,
+          "kappa": 0.12087221445007246,
+          "weighted_f1": 0.852958086870359,
+          "macro_f1": 0.5581219120825806,
+          "auroc": 0.6083708471877137,
+          "auprc": 0.20314516143054737,
+          "sensitivity": 0.15152129817444218,
+          "specificity": 0.9484398063918162,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_drift": {
+          "acc": 0.8349665305954572,
+          "balanced_acc": 0.567474323106768,
+          "kappa": 0.12967480483326232,
+          "weighted_f1": 0.8381544408845807,
+          "macro_f1": 0.5647382368507239,
+          "auroc": 0.6646623333003518,
+          "auprc": 0.1871826645651195,
+          "sensitivity": 0.231947261663286,
+          "specificity": 0.9029441717300013,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        }
+      }
+    }
+  }
+}

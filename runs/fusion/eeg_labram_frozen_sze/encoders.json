@@ -1,0 +1,39 @@
+{
+  "seizeit2": {
+    "eeg": {
+      "modality": "eeg",
+      "arch": "labram",
+      "route": null,
+      "exported": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/labram/labram-base.pth",
+      "embed_dim": 200,
+      "adapter": {
+        "from": [
+          "bte_sameside",
+          "bte_other"
+        ],
+        "to": [
+          "F7",
+          "T7",
+          "P7",
+          "F8",
+          "T8",
+          "P8"
+        ]
+      },
+      "input_uv": 30.0,
+      "taken": [
+        "blocks",
+        "cls_token",
+        "norm",
+        "patch_embed",
+        "pos_embed",
+        "time_embed"
+      ],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "labram loaded from labram-base.pth; adapter 2 -> F7/T7/P7/F8/T8/P8 trains",
+      "trainable_params": 18
+    }
+  }
+}

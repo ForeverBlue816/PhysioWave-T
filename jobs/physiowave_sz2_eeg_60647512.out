@@ -1,0 +1,38 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+runs    c1:frozen c1:finetune eegpt:frozen eegpt:finetune labram:frozen labram:finetune c1native:frozen c1native:finetune
+data    /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/seizeit2
+c1      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+eegpt   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors
+labram  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/labram/labram-base.pth
+output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_<encoder>_<mode>_sze
+[gpu 2] eegpt:frozen: train 22:44 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_eegpt_frozen_sze.log
+[gpu 0] c1:frozen: train 22:44 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1_frozen_sze.log
+[gpu 1] c1:finetune: train 22:44 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1_finetune_sze.log
+[gpu 3] eegpt:finetune: train 22:44 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_eegpt_finetune_sze.log
+[gpu 3] eegpt:finetune: events 23:41
+[gpu 2] eegpt:frozen: events 23:46
+[gpu 1] c1:finetune: events 00:53
+[gpu 3] eegpt:finetune: done 01:25
+[gpu 3] c1native:finetune: train 01:25 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1native_finetune_sze.log
+[gpu 2] eegpt:frozen: done 01:28
+[gpu 2] c1native:frozen: train 01:28 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1native_frozen_sze.log
+[gpu 1] c1:finetune: done 03:07
+[gpu 1] labram:finetune: train 03:07 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_labram_finetune_sze.log
+[gpu 0] c1:frozen: events 03:24
+[gpu 1] labram:finetune: events 04:07
+[gpu 1] labram:finetune: done 05:08
+[gpu 0] c1:frozen: done 05:11
+[gpu 0] labram:frozen: train 05:11 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_labram_frozen_sze.log
+[gpu 2] c1native:frozen: events 05:37
+[gpu 3] c1native:finetune: events 05:43
+[gpu 0] labram:frozen: events 06:01

@@ -1,0 +1,4 @@
+778 run(s) of 29 patient(s); checkpoint epoch 5
+  [1/778] sub-097 run-01: 2.1 h, 0 seizure s, present [True, False, False]  (2s)
+  [2/778] sub-097 run-02: 19.1 h, 11 seizure s, present [True, False, False]  (12s)
+  [3/778] sub-097 run-03: 2.4 h, 0 seizure s, present [True, False, False]  (1s)

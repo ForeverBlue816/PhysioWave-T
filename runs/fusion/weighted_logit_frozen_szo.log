@@ -2206,3 +2206,59 @@
 2026-10-15 14:38:51,883 INFO: epoch 12 step 6451/8494 [seizeit2] loss 0.7389 lr 2.89e-04
 2026-10-15 14:39:09,284 INFO: epoch 12 step 6501/8494 [seizeit2] loss 0.7905 lr 2.89e-04
 2026-10-15 14:39:26,698 INFO: epoch 12 step 6551/8494 [seizeit2] loss 0.3034 lr 2.89e-04
+2026-10-15 14:39:43,305 INFO: epoch 12 step 6601/8494 [seizeit2] loss 0.5398 lr 2.89e-04
+2026-10-15 14:40:00,803 INFO: epoch 12 step 6651/8494 [seizeit2] loss 0.5971 lr 2.89e-04
+2026-10-15 14:40:20,452 INFO: epoch 12 step 6701/8494 [seizeit2] loss 0.5114 lr 2.89e-04
+2026-10-15 14:40:38,928 INFO: epoch 12 step 6751/8494 [seizeit2] loss 0.3397 lr 2.89e-04
+2026-10-15 14:40:58,527 INFO: epoch 12 step 6801/8494 [seizeit2] loss 0.5394 lr 2.89e-04
+2026-10-15 14:41:16,500 INFO: epoch 12 step 6851/8494 [seizeit2] loss 0.8421 lr 2.89e-04
+2026-10-15 14:41:34,738 INFO: epoch 12 step 6901/8494 [seizeit2] loss 0.6382 lr 2.88e-04
+2026-10-15 14:41:53,943 INFO: epoch 12 step 6951/8494 [seizeit2] loss 0.5604 lr 2.88e-04
+2026-10-15 14:42:12,763 INFO: epoch 12 step 7001/8494 [seizeit2] loss 0.4623 lr 2.88e-04
+2026-10-15 14:42:30,256 INFO: epoch 12 step 7051/8494 [seizeit2] loss 0.4497 lr 2.88e-04
+2026-10-15 14:42:50,052 INFO: epoch 12 step 7101/8494 [seizeit2] loss 0.5190 lr 2.88e-04
+2026-10-15 14:43:06,922 INFO: epoch 12 step 7151/8494 [seizeit2] loss 0.6519 lr 2.88e-04
+2026-10-15 14:43:26,792 INFO: epoch 12 step 7201/8494 [seizeit2] loss 0.1648 lr 2.88e-04
+2026-10-15 14:43:45,719 INFO: epoch 12 step 7251/8494 [seizeit2] loss 0.4627 lr 2.88e-04
+2026-10-15 14:44:04,301 INFO: epoch 12 step 7301/8494 [seizeit2] loss 0.3666 lr 2.88e-04
+2026-10-15 14:44:22,296 INFO: epoch 12 step 7351/8494 [seizeit2] loss 0.4485 lr 2.88e-04
+2026-10-15 14:44:42,658 INFO: epoch 12 step 7401/8494 [seizeit2] loss 0.5321 lr 2.88e-04
+2026-10-15 14:45:03,111 INFO: epoch 12 step 7451/8494 [seizeit2] loss 0.1793 lr 2.88e-04
+2026-10-15 14:45:21,201 INFO: epoch 12 step 7501/8494 [seizeit2] loss 0.9674 lr 2.88e-04
+2026-10-15 14:45:40,331 INFO: epoch 12 step 7551/8494 [seizeit2] loss 0.5314 lr 2.88e-04
+2026-10-15 14:46:00,289 INFO: epoch 12 step 7601/8494 [seizeit2] loss 0.5905 lr 2.88e-04
+2026-10-15 14:46:19,039 INFO: epoch 12 step 7651/8494 [seizeit2] loss 0.4503 lr 2.88e-04
+2026-10-15 14:46:38,911 INFO: epoch 12 step 7701/8494 [seizeit2] loss 0.2912 lr 2.88e-04
+2026-10-15 14:46:58,234 INFO: epoch 12 step 7751/8494 [seizeit2] loss 0.6470 lr 2.88e-04
+2026-10-15 14:47:15,842 INFO: epoch 12 step 7801/8494 [seizeit2] loss 0.7007 lr 2.88e-04
+2026-10-15 14:47:35,969 INFO: epoch 12 step 7851/8494 [seizeit2] loss 0.3956 lr 2.88e-04
+2026-10-15 14:47:54,594 INFO: epoch 12 step 7901/8494 [seizeit2] loss 0.4175 lr 2.88e-04
+2026-10-15 14:48:11,376 INFO: epoch 12 step 7951/8494 [seizeit2] loss 0.6525 lr 2.88e-04
+2026-10-15 14:48:31,732 INFO: epoch 12 step 8001/8494 [seizeit2] loss 0.3902 lr 2.88e-04
+2026-10-15 14:48:51,944 INFO: epoch 12 step 8051/8494 [seizeit2] loss 0.3023 lr 2.88e-04
+2026-10-15 14:49:10,768 INFO: epoch 12 step 8101/8494 [seizeit2] loss 0.2815 lr 2.88e-04
+2026-10-15 14:49:27,801 INFO: epoch 12 step 8151/8494 [seizeit2] loss 0.5783 lr 2.88e-04
+2026-10-15 14:49:46,540 INFO: epoch 12 step 8201/8494 [seizeit2] loss 0.2357 lr 2.88e-04
+2026-10-15 14:50:02,959 INFO: epoch 12 step 8251/8494 [seizeit2] loss 0.7768 lr 2.88e-04
+2026-10-15 14:50:20,616 INFO: epoch 12 step 8301/8494 [seizeit2] loss 0.4153 lr 2.88e-04
+2026-10-15 14:50:40,032 INFO: epoch 12 step 8351/8494 [seizeit2] loss 0.6792 lr 2.88e-04
+2026-10-15 14:50:59,770 INFO: epoch 12 step 8401/8494 [seizeit2] loss 0.6183 lr 2.88e-04
+2026-10-15 14:51:18,633 INFO: epoch 12 step 8451/8494 [seizeit2] loss 0.4635 lr 2.88e-04
+2026-10-15 14:51:34,502 INFO: epoch 12 step 8494/8494 [seizeit2] loss 0.4133 lr 2.88e-04
+2026-10-15 14:54:47,456 INFO: epoch 12 done: seizeit2: acc=0.8486, auroc=0.7387, auprc=0.3340 | score 0.3340
+2026-10-15 14:54:47,877 INFO: no improvement for 10 epochs; stopping
+2026-10-15 15:04:06,350 INFO: test seizeit2/complete: acc=0.8724, balanced_acc=0.6567, macro_f1=0.6546, auroc=0.7736, auprc=0.3723
+2026-10-15 15:13:25,154 INFO: test seizeit2/eeg_only: acc=0.8474, balanced_acc=0.6037, macro_f1=0.5991, auroc=0.6634, auprc=0.2679
+2026-10-15 15:22:47,608 INFO: test seizeit2/ecg_only: acc=0.8491, balanced_acc=0.6583, macro_f1=0.6391, auroc=0.7585, auprc=0.3353
+2026-10-15 15:32:07,613 INFO: test seizeit2/emg_only: acc=0.7870, balanced_acc=0.5901, macro_f1=0.5625, auroc=0.6208, auprc=0.1907
+2026-10-15 15:41:33,607 INFO: test seizeit2/eeg_ecg: acc=0.8686, balanced_acc=0.6614, macro_f1=0.6545, auroc=0.7721, auprc=0.3713
+2026-10-15 15:50:50,910 INFO: test seizeit2/eeg_emg: acc=0.8577, balanced_acc=0.6181, macro_f1=0.6161, auroc=0.6961, auprc=0.2845
+2026-10-15 15:59:41,767 INFO: test seizeit2/ecg_emg: acc=0.8580, balanced_acc=0.6594, macro_f1=0.6465, auroc=0.7607, auprc=0.3475
+2026-10-15 16:09:27,074 INFO: test seizeit2/eeg_noise: acc=0.8791, balanced_acc=0.6501, macro_f1=0.6557, auroc=0.7690, auprc=0.3741
+2026-10-15 16:18:48,567 INFO: test seizeit2/eeg_bad_channel: acc=0.8762, balanced_acc=0.6472, macro_f1=0.6511, auroc=0.7629, auprc=0.3506
+2026-10-15 16:28:35,537 INFO: test seizeit2/eeg_drift: acc=0.8701, balanced_acc=0.6447, macro_f1=0.6443, auroc=0.7545, auprc=0.3390
+2026-10-15 16:39:03,498 INFO: test seizeit2/ecg_saturation: acc=0.8843, balanced_acc=0.6385, macro_f1=0.6514, auroc=0.7660, auprc=0.3681
+2026-10-15 16:48:32,931 INFO: test seizeit2/ecg_noise: acc=0.8681, balanced_acc=0.6599, macro_f1=0.6531, auroc=0.7577, auprc=0.3607
+2026-10-15 16:56:22,408 INFO: test seizeit2/emg_dropout: acc=0.8704, balanced_acc=0.6566, macro_f1=0.6528, auroc=0.7714, auprc=0.3684
+2026-10-15 17:03:34,016 INFO: test seizeit2/emg_noise: acc=0.8766, balanced_acc=0.6523, macro_f1=0.6551, auroc=0.7732, auprc=0.3684
+2026-10-15 17:03:34,039 INFO: wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/weighted_logit_frozen_szo/results.json

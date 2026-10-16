@@ -1,0 +1,31 @@
+{
+  "mpdb": {
+    "eeg": {
+      "modality": "eeg",
+      "route": null,
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "summary": "from scratch"
+    },
+    "ecg": {
+      "modality": "ecg",
+      "route": "L1_250",
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "summary": "from scratch"
+    },
+    "emg": {
+      "modality": "emg",
+      "route": null,
+      "exported": null,
+      "embed_dim": 384,
+      "taken": [],
+      "skipped": [],
+      "summary": "from scratch"
+    }
+  }
+}
