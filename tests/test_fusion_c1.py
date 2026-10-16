@@ -11,7 +11,7 @@ import pytest
 import torch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for p in (ROOT, os.path.join(ROOT, "Fusion")):
+for p in (ROOT, os.path.join(ROOT, "Fusion"), os.path.join(ROOT, "scripts")):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -511,3 +511,76 @@ def test_seizeit2_eeg_only_c1_eegpt_labram(tmp_path):
                         "--root", str(tmp_path / "runs"), "--condition", "complete"],
                        capture_output=True, text=True)
     assert r.returncode == 0 and "eegpt_frozen / complete" in r.stdout, r.stdout + r.stderr
+
+
+# --------------------------------------------------------------------------- #
+# SeizeIT2 figures
+# --------------------------------------------------------------------------- #
+
+def _fake_fusion_run(path, raw, fusion="ralf", seed=0):
+    """A run directory as train.py + seizeit2_events.py leave it, from synthetic
+    recordings: predictions/*.npz, events_cross.json, results.json, history.json."""
+    from seizeit2_events import SUBSETS, score, second_labels
+    from seizeit2_prep import find_runs, read_events
+    rng = np.random.default_rng(seed)
+    pred = path / "predictions"
+    pred.mkdir(parents=True)
+    for r in find_runs(str(raw), "sub-09[78]"):
+        n = 300
+        y = second_labels(read_events(r["events"]), n)
+        base = np.clip(0.1 + 0.7 * y + rng.normal(0, 0.1, n), 0, 1).astype(np.float32)
+        d = {"label": y, "gate_cross": np.ones(n, bool), "gate_both": np.ones(n, bool),
+             "present": np.array([True, True, True])}
+        for c, keep in SUBSETS:
+            d[f"prob_{c}"] = np.clip(base * (0.5 + 0.5 * len(keep) / 3), 0, 1).astype(np.float32)
+        np.savez_compressed(pred / f"{r['subject']}_run-{r['run']}.npz", **d)
+    ev = score(str(pred), "cross")
+    json.dump(ev, open(path / "events_cross.json", "w"), default=float)
+    conds = ["complete", "eeg_only", "ecg_only", "emg_only", "eeg_ecg", "eeg_emg", "ecg_emg",
+             "eeg_noise", "eeg_bad_channel", "eeg_drift", "ecg_saturation", "ecg_noise",
+             "emg_dropout", "emg_noise"]
+    test = {}
+    for i, c in enumerate(conds):
+        row = {"auprc": 0.4 - 0.01 * i, "auroc": 0.75, "n": 100}
+        for m in ("eeg", "ecg", "emg"):
+            corrupted = c.startswith(m + "_") and c != f"{m}_only" and c[len(m) + 1:] not in (
+                "ecg", "emg")                                   # eeg_noise yes, eeg_ecg no
+            row[f"reliability_{m}"] = 0.3 if corrupted else 0.9
+        test[c] = row
+    json.dump({"fusion": fusion, "encoder_mode": "frozen", "best_epoch": 1, "seed": 42,
+               "corruption_severity": 0.7,
+               "tasks": {"seizeit2": {"classes": ["bckg", "sz"], "test": test}}},
+              open(path / "results.json", "w"))
+    json.dump([{"epoch": e, "val": {"seizeit2": {"auprc": 0.2 + 0.1 * e}}} for e in range(3)],
+              open(path / "history.json", "w"))
+
+
+def test_seizeit2_figures_from_run_artefacts(tmp_path):
+    import visualize_seizeit2 as viz
+    raw = tmp_path / "raw"
+    _bids(raw, subjects=("sub-097", "sub-098"), seconds=300)
+    main = tmp_path / "ralf_frozen_x"
+    other = tmp_path / "concat_frozen_x"
+    _fake_fusion_run(main, raw)
+    _fake_fusion_run(other, raw, fusion="concat", seed=1)
+    out = tmp_path / "figs"
+    assert viz.main(["--raw-dir", str(raw), "--run-dir", str(main), "--compare", str(other),
+                     "--eeg-runs", str(other), "--out-dir", str(out), "--format", "png",
+                     "--margin", "30"]) == 0
+    names = ["fig_seizure_example", "fig_sensitivity_fa", "fig_modality_subsets",
+             "fig_reliability", "fig_per_patient", "fig_learning_curves"]
+    for n in names:
+        assert (out / "figures" / f"{n}.png").stat().st_size > 1000, n
+        assert (out / "figure_metadata" / f"{n}.json").exists(), n
+    meta = json.load(open(out / "figure_metadata" / "fig_seizure_example.json"))
+    assert meta["n_candidates"] == 4 and meta["chosen"]["rank"] == 1 and meta["chosen"]["detected"]
+    assert meta["chosen"]["duration_s"] == 30
+    assert "fig_seizure_example" in (out / "README.md").read_text()
+    # a named recording is honoured, and an unknown one refused
+    assert viz.main(["--raw-dir", str(raw), "--run-dir", str(main), "--out-dir", str(out),
+                     "--format", "png", "--only", "fig_seizure_example",
+                     "--example", "sub-098_run-02"]) == 0
+    assert json.load(open(out / "figure_metadata" / "fig_seizure_example.json"))["recording"] == "sub-098_run-02"
+    with pytest.raises(SystemExit):
+        viz.main(["--raw-dir", str(raw), "--run-dir", str(main), "--out-dir", str(out),
+                  "--format", "png", "--only", "fig_seizure_example", "--example", "sub-001_run-01"])

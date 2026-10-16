@@ -264,6 +264,29 @@ checked above. To use the authors' `.ckpt`, pass `EEGPT_CKPT=<path>` to the
 job; both formats load. The tables land in
 `$PW_CKPT_ROOT/fusion/seizeit2_eeg_sze_{windows,events}.txt`.
 
+## Figures (`scripts/visualize_seizeit2.py`)
+
+Six paper figures from the runs' own artefacts: the cached per-second
+probabilities, `events_cross.json`, `results.json`, `history.json` and one
+test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG
+and EMG, the probability under every modality subset, the gate and the
+detection; the recording is chosen by a ranking that is kept in the
+metadata), `fig_sensitivity_fa` (sensitivity against FA/h for every run and
+subset, the published SVM and ChronoNet as points), `fig_modality_subsets`,
+`fig_reliability` (RALF's reliability under each corruption; every run's
+AUPRC under the same), `fig_per_patient`, `fig_learning_curves`. Same style
+and plumbing as the pretraining figures: Times New Roman bold, Okabe-Ito,
+svg + pdf with editable text, `figure_metadata/` beside each.
+
+```bash
+sbatch scripts/slurm/cineca_visualize_seizeit2.sbatch       # -> docs/runs/seizeit2_fusion
+git add docs/runs/seizeit2_fusion && git commit -m "seizeit2_fusion: figures" && git push
+```
+
+`EXAMPLE=sub-101_run-03` picks the recording for the example figure;
+`RUN`, `COMPARE`, `EEG_RUNS` choose the runs. The framework (architecture)
+figure is drawn by hand from `docs/fusion_framework_figure_brief.md`.
+
 ## Files
 
 | file | what |
@@ -279,6 +302,8 @@ job; both formats load. The tables land in
 | `scripts/slurm/cineca_seizeit2_events.sbatch`, `scripts/collect_seizeit2_events.py` | the evaluation job; the event-level table with the published rows |
 | `physiowave/fusion/baselines.py`, `configs/fusion/seizeit2_eeg.yaml` | EEGPT and LaBraM encoders, the channel adapter; the EEG-only recipe |
 | `scripts/download_eeg_baselines.sh`, `scripts/slurm/cineca_seizeit2_eeg.sbatch` | the released weights; the eight EEG-only runs and their event-level scoring |
+| `scripts/visualize_seizeit2.py`, `scripts/slurm/cineca_visualize_seizeit2.sbatch` | the SeizeIT2 figures, from the runs' artefacts |
+| `docs/fusion_framework_figure_brief.md` | the specification of the RALF framework figure |
 | `tests/test_fusion_c1.py` | both preparations on synthetic files, the three cores, an end-to-end run on smoke encoders |
 
 The earlier legacy path (`physiowave/models/fusion.py`, `configs/fusion/ralf.yaml`,
