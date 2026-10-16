@@ -21,8 +21,23 @@ Two scorers over the same per-second probabilities:
               one predicted event / seizures, FA/24h = predicted events touching
               no seizure per 24 h of recording. Same post-processing.
 
-Both report a sensitivity -- false-alarm curve over thresholds, and the
-pooled epoch-based AUROC and AUPRC (every gated second of every recording).
+Both report a sensitivity -- false-alarm curve over thresholds. Two kinds of
+area under a curve, which are NOT the same quantity:
+
+``auroc_paper`` / ``aupr_paper``  the dataset paper's (Bhagubai et al., Sci.
+              Data 2025, Table 2): "derived from metrics calculated using the
+              traditional epoch-based method for computing sensitivity/recall,
+              specificity and precision", i.e. after the gate and the
+              post-processing, per recording, averaged over recordings, at
+              the 51 thresholds -- the area under mean (1 - specificity,
+              sensitivity) and under mean (recall, precision). The released
+              code does not compute them; this is the reading of that sentence
+              that uses the code's own per-threshold metrics. Comparable with
+              the paper's AUROC / AUPR, with that caveat.
+``auroc_epoch`` / ``auprc_epoch``  pooled over every gated second of every
+              recording, before post-processing. A model-quality number of our
+              own; its AUPRC sits at the per-second seizure prevalence
+              (~0.1%), far below the paper's AUPR, and is not comparable with it.
 """
 
 from __future__ import annotations
@@ -98,9 +113,11 @@ def score_recording(prob: np.ndarray, label: np.ndarray, th: float, fs: float = 
     prec = tp_pairs / (tp_pairs + fp) if has_sz and (tp_pairs + fp) else np.nan
     f1 = (2 * prec * sens / (prec + sens)) if has_sz and prec == prec and (prec + sens) else np.nan
     sens_e = tp_e / (tp_e + fn_e) if has_sz else np.nan
+    prec_e = tp_e / (tp_e + fp_e) if (tp_e + fp_e) else np.nan
     return {"sens_ovlp": sens, "prec_ovlp": prec, "f1_ovlp": f1,
             "fa_ovlp_h": fp / hours if hours else np.nan,
-            "sens_epoch": sens_e, "spec_epoch": tn_e / (tn_e + fp_e) if (tn_e + fp_e) else np.nan,
+            "sens_epoch": sens_e, "prec_epoch": prec_e,
+            "spec_epoch": tn_e / (tn_e + fp_e) if (tn_e + fp_e) else np.nan,
             "fa_epoch_h": fp_e / hours if hours else np.nan,
             # pooled-event counts
             "n_seizures": len(t_ev), "hit": hit, "false_events": fp, "hours": hours}
@@ -125,7 +142,7 @@ def evaluate(recordings: Sequence[Tuple[np.ndarray, np.ndarray]],
             warnings.simplefilter("ignore", RuntimeWarning)     # all-nan columns stay nan
             mean = {k: float(np.nanmean([r[k] for r in rows]))
                     for k in ("sens_ovlp", "prec_ovlp", "f1_ovlp", "fa_ovlp_h", "sens_epoch",
-                              "spec_epoch", "fa_epoch_h")}
+                              "prec_epoch", "spec_epoch", "fa_epoch_h")}
         n_sz = sum(r["n_seizures"] for r in rows)
         hit = sum(r["hit"] for r in rows)
         fpe = sum(r["false_events"] for r in rows)
@@ -145,6 +162,7 @@ def evaluate(recordings: Sequence[Tuple[np.ndarray, np.ndarray]],
         ok = [r[curve_key][sens_key] for r in per_th
               if r[curve_key][fa_key] == r[curve_key][fa_key] and r[curve_key][fa_key] <= budget]
         return float(max(ok)) if ok else 0.0
+    auroc_p, aupr_p = paper_areas(per_th)
     at05 = next(r for r in per_th if abs(r["th"] - 0.5) < 1e-9) if any(
         abs(r["th"] - 0.5) < 1e-9 for r in per_th) else per_th[len(per_th) // 2]
     return {
@@ -153,11 +171,34 @@ def evaluate(recordings: Sequence[Tuple[np.ndarray, np.ndarray]],
         "hours": float(sum(len(p) for p, _ in recordings) / fs / 3600.0),
         "seizure_seconds_fraction": float(labels.mean()) if labels.size else float("nan"),
         "auroc_epoch": auroc, "auprc_epoch": auprc,
+        "auroc_paper": auroc_p, "aupr_paper": aupr_p,
         "at_0.5": at05,
         "sens_at_fa_official": {str(b): best_at("official", "sens_ovlp", "fa_ovlp_h", b) for b in fa_grid},
         "sens_at_fa_events": {str(b): best_at("events", "sens", "fa_h", b) for b in fa_grid},
         "curve": per_th,
     }
+
+
+def paper_areas(curve: Sequence[dict]) -> Tuple[float, float]:
+    """The dataset paper's AUROC and AUPR from a per-threshold curve (``evaluate``'s
+    ``curve``): areas under the recording-mean epoch-based (1 - spec, sens) and
+    (recall, precision) points. ROC is closed at (0, 0) and (1, 1); PR runs
+    over the thresholds where precision is defined and is extended flat from
+    its lowest recall down to recall 0 (so a perfect detector scores 1).
+    Older curves without ``prec_epoch`` give AUPR nan."""
+    def trap(x, y):
+        x, y = np.asarray(x, float), np.asarray(y, float)
+        return float(np.sum((x[1:] - x[:-1]) * (y[1:] + y[:-1]) / 2.0))
+    roc = [(1.0 - c["official"]["spec_epoch"], c["official"]["sens_epoch"]) for c in curve]
+    roc = sorted([p for p in roc if p[0] == p[0] and p[1] == p[1]] + [(0.0, 0.0), (1.0, 1.0)])
+    auroc = trap([p[0] for p in roc], [p[1] for p in roc])
+    pr = [(c["official"]["sens_epoch"], c["official"].get("prec_epoch", float("nan")))
+          for c in curve]
+    pr = sorted(p for p in pr if p[0] == p[0] and p[1] == p[1])
+    if pr and pr[0][0] > 0:
+        pr = [(0.0, pr[0][1])] + pr
+    aupr = trap([p[0] for p in pr], [p[1] for p in pr]) if len(pr) > 1 else float("nan")
+    return auroc, aupr
 
 
 def rms_gate(eeg_uv: Dict[str, np.ndarray], fs: float, n_seconds: int, mode: str = "cross"
@@ -210,5 +251,5 @@ def rms_gate(eeg_uv: Dict[str, np.ndarray], fs: float, n_seconds: int, mode: str
     raise ValueError(mode)
 
 
-__all__ = ["THRESHOLDS", "post_process", "score_recording", "evaluate", "rms_gate",
+__all__ = ["THRESHOLDS", "post_process", "score_recording", "evaluate", "rms_gate", "paper_areas",
            "mask_to_events", "events_to_mask"]

@@ -131,7 +131,21 @@ than 8 s, any-overlap. It reports, at thresholds 0, 0.02, ..., 1:
 - pooled event figures over all recordings: seizures hit by at least one
   predicted event / seizures, and FA/24h;
 - the sensitivity reachable at 0.5, 1, 2, 6.22 and 11 FA/h;
-- the pooled per-second AUROC and AUPRC.
+- the paper's AUROC and AUPR (`auroc_paper`, `aupr_paper`). The paper
+  derives them "from metrics calculated using the traditional epoch-based
+  method for computing sensitivity/recall, specificity and precision". So
+  they are taken after the gate and post-processing, per recording,
+  averaged over recordings, as areas over the 51 thresholds. The released
+  code does not compute them, so this is a reading of that sentence;
+- the pooled per-second AUROC and AUPRC, before post-processing. These are
+  ours. The AUPRC sits near the per-second seizure prevalence (~0.1%), an
+  order of magnitude under the paper's AUPR, and is **not** comparable with
+  it.
+
+A change to the scoring needs no new inference. The per-second
+probabilities are cached in `<run>/predictions/*.npz`, and
+`SCORE_ONLY=1 sbatch scripts/slurm/cineca_seizeit2_events.sbatch` re-scores
+every run from them in parallel.
 
 `scripts/collect_seizeit2_events.py` puts the runs beside the published
 rows: the dataset paper's SVM (71.1% / 11.0 FA/h / AUROC 0.70 / AUPR 0.081)

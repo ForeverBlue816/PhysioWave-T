@@ -115,6 +115,14 @@ def test_event_scoring_matches_the_reference_rules():
     ev = out["at_0.5"]["events"]
     assert ev["sens"] == 0.5 and abs(ev["fa_24h"] - 16.0) < 1e-9          # 1 FA in 1.5 h
     assert out["n_seizures"] == 2 and len(out["curve"]) == 51
+    # epoch precision after post-processing: 45 s inside the seizure, 20 s outside
+    assert abs(r["prec_epoch"] - 45 / 65) < 1e-12
+    # the paper's areas: a perfect detector scores 1, one that never fires 0.5 / nan
+    yy = np.zeros(600, bool); yy[100:160] = True
+    perfect = evaluate([(yy * 0.99, yy)])
+    assert abs(perfect["auroc_paper"] - 1.0) < 1e-9 and abs(perfect["aupr_paper"] - 1.0) < 1e-9
+    silent = evaluate([(np.zeros(600), yy)])
+    assert abs(silent["auroc_paper"] - 0.5) < 1e-9 and silent["aupr_paper"] != silent["aupr_paper"]
 
 
 # --------------------------------------------------------------------------- #
