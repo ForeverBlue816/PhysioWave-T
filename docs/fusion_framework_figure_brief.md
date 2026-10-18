@@ -204,3 +204,38 @@ visual devices; content and word budget are unchanged.
   No grids, no cubes. If any of the four cannot be drawn to that standard,
   use the four words alone.
 - **The pool is the four-token fan** of v2.1, not a circle with an icon.
+
+## v2.3: the training signals dissolve into the figure; math is typeset
+
+- **No region (f).** The dashed band is removed. `corrupt` becomes a small
+  dashed-outline tag `corrupt (train)` sitting on the three input arrows
+  between (a) and (b). The four losses become small orange tags, each at
+  the element it trains, joined to it by a short dashed orange leader:
+  `L_task` at the ⊕, `L_uni` at the z_m column, `L_rel` at the dials,
+  `L_cons` at the cross-attention. Tags carry the symbol only; what each
+  loss does is in the caption.
+- **Math is typeset, not typed.** Every formula is set as mathematics (LaTeX
+  via the drawing tool, or MathJax/KaTeX to SVG, then placed): italic
+  variables, upright text subscripts, no spaces before subscripts, a real
+  fraction. The one equation in the figure is
+
+  `y = z_fus + ½ · (Σ_m r_m z_m) / (Σ_m r_m)`   set as
+  $y = z_{\mathrm{fus}} + \tfrac{1}{2}\,\dfrac{\sum_m r_m z_m}{\sum_m r_m}$
+
+  and the loss tags are $\mathcal{L}_{\mathrm{task}}$,
+  $\mathcal{L}_{\mathrm{uni}}$, $\mathcal{L}_{\mathrm{rel}}$,
+  $\mathcal{L}_{\mathrm{cons}}$. Symbols in running labels ($r_m$, $z_m$,
+  $\ell_m$) are set the same way.
+- **Text pared to the names.** Remaining text on the figure, and nothing
+  else: the panel letters (a)–(e); `4 s window`; the three input lines; per
+  lane `EEG encoder` / `ECG encoder` / `EMG encoder` with the four words
+  inside and the size line under it; `(b) C1 encoders (frozen)`; `pool`
+  once, `[4, 256]` once; `(d) RALF`; `$r_m$` once by the dials;
+  `fusion tokens`; `2 × cross-attention`; `absent → masked` once; the three
+  `$z_m$` blocks (`EEG`, `ECG`, `EMG` + $z_m$); the equation; `P(seizure)`;
+  `60 s` under the trace; the five tags of this section. Everything else
+  (`[C·P, D]`, `4-query summary`, `r_m ∈ [0, 1]`, `per 4 s window`,
+  `level ℓ_m`) goes.
+- **Attention fan: fewer edges.** Each fusion token connects to two or
+  three gated tokens, 20 edges at most, so the fan reads as attention and
+  not as wiring.
