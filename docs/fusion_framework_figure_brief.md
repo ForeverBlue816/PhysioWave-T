@@ -184,3 +184,23 @@ visual devices; content and word budget are unchanged.
 - **Icons, if any, are three.** The four words inside an encoder may carry
   one glyph each only if the glyphs share one stroke weight and one height;
   otherwise use the words alone. No other icon anywhere.
+
+## v2.2: colour in (d)–(e), and the encoder glyphs
+
+- **The fusion core is not monochrome.** Colour follows the signal: a line,
+  token or attention edge keeps its modality colour until the ⊕. So inside
+  RALF the gated tokens, the attention fan (each edge in the colour of the
+  gated token it comes from), the three z_m blocks and the three curves
+  into the ⊕ are blue / vermilion / green; the dials are purple; only the
+  eight fusion tokens, the fused line after the ⊕ and the P(seizure) block
+  are the neutral `#4D4D4D`. The RALF box gets a 4 % grey fill so the region
+  reads as one unit. In (e) the probability trace is drawn in `#4D4D4D` with
+  the detected-event bar in black.
+- **Encoder glyphs: one set or none.** If glyphs are kept, they are these
+  four, one stroke weight (0.8 pt), one height (2.5 mm), in the lane colour:
+  wavelet = one Morlet-like wavelet; fold = four short horizontal lines
+  converging to one (a ⟩ shape of lines); patch = one horizontal strip cut
+  into 8 cells; Transformer = three stacked rounded rectangles (layers).
+  No grids, no cubes. If any of the four cannot be drawn to that standard,
+  use the four words alone.
+- **The pool is the four-token fan** of v2.1, not a circle with an icon.
