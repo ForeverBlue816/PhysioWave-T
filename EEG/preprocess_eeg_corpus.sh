@@ -63,8 +63,8 @@ PW_VARS_ONLY=1 source "$(pwd)/scripts/cineca_env.sh"
 
 DATASET="${DATASET:-}"
 case "${DATASET}" in
-    faced|tdbrain|physionet_mi|m3cv|hbn|hgd) ;;
-    "")  echo "ERROR: set DATASET. One of: faced tdbrain physionet_mi m3cv hbn hgd" >&2
+    faced|tdbrain|physionet_mi|m3cv|hbn|hgd|siena) ;;
+    "")  echo "ERROR: set DATASET. One of: faced tdbrain physionet_mi m3cv hbn hgd siena" >&2
          echo "       (TUEG has its own script: EEG/preprocess_tueg.sh)" >&2
          exit 1 ;;
     tueg) echo "ERROR: TUEG uses EEG/preprocess_tueg.sh -- it needs the cached" >&2
@@ -84,6 +84,7 @@ case "${DATASET}" in
     m3cv)         DIRNAME=M3CV;        ROUTE="E64_256   64 x 1024 @ 256 Hz, 512 tokens" ;;
     hbn)          DIRNAME=HBN;         ROUTE="E128_512  128 x 2048 @ 512 Hz, 1024 tokens" ;;
     hgd)          DIRNAME=HGD;         ROUTE="E128_512  128 x 2048 @ 512 Hz, 1024 tokens" ;;
+    siena)        DIRNAME=Siena;       ROUTE="E19_256   19 x 1024 @ 256 Hz, 152 tokens (continuation corpus)" ;;
 esac
 
 EEG_ROOT="${EEG_ROOT:-${PW_DATA_EEG}}"

@@ -51,8 +51,8 @@ def _registry(modality: str):
         from physiowave.emg_c1.routes import DOWNSTREAM_ONLY
         from physiowave.emg_c1.routes import PRETRAIN_DATASETS as EMG
         return EMG, DOWNSTREAM_ONLY
-    from physiowave.eeg_c1.routes import DOWNSTREAM_ONLY
-    return PRETRAIN_DATASETS, DOWNSTREAM_ONLY
+    from physiowave.eeg_c1.routes import DOWNSTREAM_ONLY, EEG_DATASETS
+    return EEG_DATASETS, DOWNSTREAM_ONLY            # the seven plus continuation corpora
 
 
 #: How much of a shard to actually read. ``meta`` is the shape and attributes

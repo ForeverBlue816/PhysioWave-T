@@ -69,7 +69,7 @@ from .model import MultiRouteEEGPretrainer, masked_reconstruction_loss
 from .objective import (objective_banner, objective_equation,
                         resolve_eeg_c1_objective, resume_incompatibilities,
                         resume_refusal_message)
-from .routes import PRETRAIN_DATASETS, ROUTES
+from .routes import PRETRAIN_DATASETS, ROUTES, datasets_with
 from ..train.utils import (fmt_eta, make_grad_scaler, progress,
                            resolve_progress, set_postfix)
 
@@ -405,6 +405,12 @@ class EEGC1Trainer:
         tcfg = cfg.get("train", {})
         mcfg = cfg.get("model", {})
         dcfg = cfg.get("data", {})
+        # Continued pretraining may add corpora outside the original seven
+        # (routes.CONTINUATION_DATASETS), only when the config names them.
+        if dcfg.get("continuation_datasets"):
+            if self.datasets_table is not PRETRAIN_DATASETS:
+                raise SystemExit("data.continuation_datasets is for the EEG corpus only")
+            self.datasets_table = datasets_with(dcfg["continuation_datasets"])
 
         self.epochs = int(tcfg.get("epochs", 10))
         self.grad_accum = int(tcfg.get("grad_accumulation_steps", 1))
@@ -485,7 +491,9 @@ class EEGC1Trainer:
             batch_by_route=self.batch_by_route,
             num_replicas=getattr(info, "world_size", 1),
             rank=getattr(info, "rank", 0),
-            routes=self.routes_table, datasets=self.datasets_table)
+            routes=self.routes_table, datasets=self.datasets_table,
+            fixed_weights=dcfg.get("weights_fixed"),
+            epoch_pass_of=tcfg.get("epoch_pass_of"))
         # train.corpus_passes_per_run: size the epoch so the whole run reads
         # the corpus that many times over, instead of fixing steps by hand.
         # Only when steps_per_epoch is not given; an explicit one wins.
@@ -516,8 +524,9 @@ class EEGC1Trainer:
             weight_decay=float(tcfg.get("weight_decay", 0.05)),
             betas=(0.9, 0.95))
         total_steps = max(1, self.epochs * len(self.schedule) // self.grad_accum)
-        warmup = int(tcfg.get("warmup_epochs", 1)) * max(
-            1, len(self.schedule) // self.grad_accum)
+        # Fractions allowed: a two-epoch continuation warms up over a tenth of one.
+        warmup = int(float(tcfg.get("warmup_epochs", 1)) * max(
+            1, len(self.schedule) // self.grad_accum))
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(
             self.optimizer, lambda s: self._lr_lambda(s, warmup, total_steps,
                                                       float(tcfg.get("min_lr_ratio", 0.01))))

@@ -47,7 +47,7 @@ from physiowave.eeg_c1.preprocess import (                # noqa: E402
     PreprocessConfig, PreprocessError, detrend, highpass, map_to_slots, notch,
     place_on_slots, resample_to, split_subjects, subject_split_side,
     to_microvolts, window_qc, window_signal, write_shard, zscore_windows)
-from physiowave.eeg_c1.routes import PRETRAIN_DATASETS, ROUTES  # noqa: E402
+from physiowave.eeg_c1.routes import EEG_DATASETS, PRETRAIN_DATASETS, ROUTES  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -638,7 +638,7 @@ def adapt_smoke(root: str, args) -> Iterator[Recording]:
     ``"synthetic": true`` in its provenance so a smoke run can never be mistaken
     for a real one in a manifest or a figure.
     """
-    spec = PRETRAIN_DATASETS[args.smoke_as]
+    spec = EEG_DATASETS[args.smoke_as]
     route = spec.route
     rng = np.random.default_rng(args.seed)
     n_src = len(spec.slots)
@@ -656,10 +656,43 @@ def adapt_smoke(root: str, args) -> Iterator[Recording]:
             )
 
 
+SIENA_SUBJECT = re.compile(r"(PN\d+)", re.IGNORECASE)
+
+
+def adapt_siena(root: str, args) -> Iterator[Recording]:
+    """Siena Scalp EEG Database (PhysioNet siena-scalp-eeg 1.0.0, ODC-By 1.0).
+
+    Layout as published: ``<root>/PNxx/PNxx-k.edf``, one directory per patient
+    (14 adults with focal epilepsy), EDF at 512 Hz. Labels arrive as ``EEG Fp1``
+    / ``EEG T3``; normalize_channel_name maps them, T3/T4/T5/T6 included, onto
+    E19_256's 19 slots, all of which every recording fills. The extra
+    electrodes (Fc1, Cp5, F9, ...), EKG, SPO2, HR and the marker channels match
+    no slot and are dropped by map_to_slots, which names them in provenance.
+
+    Subject identity is the patient directory, so the train/val split is by
+    patient. The seizure annotations (Seizures-list-PNxx.txt) are not read:
+    this is self-supervised pretraining, and every window, ictal or not, is a
+    window. Recorded in Siena, Italy: 50 Hz mains (registry).
+    """
+    for path in _walk(root, (".edf",), cache=getattr(args, "file_list", None)):
+        m = SIENA_SUBJECT.search(os.path.basename(path)) or SIENA_SUBJECT.search(path)
+        subject = m.group(1).upper() if m else os.path.basename(os.path.dirname(path))
+        if not owns(subject, args):
+            continue
+        raw = read_raw_any(path)
+        yield Recording(
+            recording_id=os.path.relpath(path, root),
+            subject_id=subject,
+            data=raw.get_data(), channel_names=list(raw.ch_names),
+            sampling_rate=float(raw.info["sfreq"]), unit="V",
+            mains_hz=mains_for("siena", args),
+        )
+
+
 ADAPTERS: Dict[str, Callable] = {
     "tueg": adapt_tueg, "faced": adapt_faced, "tdbrain": adapt_tdbrain,
     "physionet_mi": adapt_physionet_mi, "m3cv": adapt_m3cv,
-    "hbn": adapt_hbn, "hgd": adapt_hgd,
+    "hbn": adapt_hbn, "hgd": adapt_hgd, "siena": adapt_siena,
 }
 
 
@@ -1411,7 +1444,7 @@ def main(argv=None) -> int:
     p.add_argument("--smoke-test", action="store_true",
                    help="synthetic data; the ONLY path that fabricates signal")
     p.add_argument("--smoke-as", default="tdbrain",
-                   choices=sorted(PRETRAIN_DATASETS))
+                   choices=sorted(EEG_DATASETS))
     p.add_argument("--smoke-subjects", type=int, default=6)
     p.add_argument("--smoke-recordings", type=int, default=2)
     p.add_argument("--smoke-windows", type=int, default=8)
@@ -1433,7 +1466,7 @@ def main(argv=None) -> int:
         if not os.path.isdir(args.root):
             return _fail(f"--root {args.root} does not exist.")
 
-    spec = PRETRAIN_DATASETS[dataset_id]
+    spec = EEG_DATASETS[dataset_id]
     route = ROUTES[spec.route_id]
     slots = spec.slots
 

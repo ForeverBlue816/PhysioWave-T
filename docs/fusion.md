@@ -302,6 +302,39 @@ git add docs/runs/seizeit2_fusion && git commit -m "seizeit2_fusion: figures" &&
 `RUN`, `COMPARE`, `EEG_RUNS` choose the runs. The framework (architecture)
 figure is drawn by hand from `docs/fusion_framework_figure_brief.md`.
 
+### C1 continued on Siena
+
+Continued pretraining from the original run's `latest.pth`
+(`configs/pretrain/eeg_c1_siena.yaml`). The Siena Scalp EEG Database
+(PhysioNet, 14 adults with focal epilepsy, 512 Hz, about 22 GB) is mixed with
+the seven original corpora. Siena takes a fixed 0.3 of the steps, and the
+rest go to the original corpora under the original `temperature:0.5`
+policy, so the encoder keeps rehearsing what it learned. An epoch is one
+read of Siena at that share, and two epochs read it about twice. The
+learning rate restarts at 1e-4, warms up over a tenth of an epoch from a
+fresh optimizer, and decays to 1e-5. Siena is registered as a continuation
+corpus (`routes.CONTINUATION_DATASETS`), so the original seven-corpus
+definition is unchanged, and a run uses Siena only when its config names it.
+
+```bash
+bash scripts/download_siena.sh                                    # login node
+sbatch --export=ALL,DATASET=siena --array=0-3 scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
+source scripts/cineca_env.sh && python scripts/build_eeg_c1_manifest.py \
+    --corpus-root $PW_DATA_EEG/eeg_c1_corpus --allow-missing \
+    --datasets tueg,faced,tdbrain,physionet_mi,m3cv,hbn,hgd,siena \
+    --out-dir $PW_DATA_EEG/eeg_c1_corpus/merged_siena
+sbatch --nodes=1 --export=ALL,CONFIG=pretrain/eeg_c1_siena,INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/latest.pth,MANIFEST_TRAIN=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_train.jsonl,MANIFEST_VAL=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_val.jsonl,OUTPUT_DIR=$PW_CKPT_ROOT/pretrain_eeg_c1_siena \
+    scripts/slurm/cineca_eeg_c1_moe_pretrain.sbatch
+sbatch --export=ALL,RUNS="c1siena:finetune:5e-5 c1siena:frozen c1:finetune:5e-5 c1siena:finetune" \
+    scripts/slurm/cineca_seizeit2_eeg.sbatch
+```
+
+The last job is a 2 x 2 on the fine-tuned runs, Siena or not by learning
+rate 5e-5 or the original 1e-4, so the two effects separate. `c1:finetune`
+at 1e-4 is the existing run, and `c1siena:frozen` is compared with the
+existing `c1:frozen`. An `encoder:mode:lr` entry in `RUNS` sets `train.lr`
+for that run and adds `_lr<lr>` to its directory.
+
 ## Files
 
 | file | what |
@@ -319,6 +352,7 @@ figure is drawn by hand from `docs/fusion_framework_figure_brief.md`.
 | `scripts/download_eeg_baselines.sh`, `scripts/slurm/cineca_seizeit2_eeg.sbatch` | the released weights; the eight EEG-only runs and their event-level scoring |
 | `scripts/visualize_seizeit2.py`, `scripts/slurm/cineca_visualize_seizeit2.sbatch` | the SeizeIT2 figures, from the runs' artefacts |
 | `docs/fusion_framework_figure_brief.md` | the specification of the RALF framework figure |
+| `configs/pretrain/eeg_c1_siena.yaml`, `scripts/download_siena.sh` | C1 continued on Siena mixed with the original corpora |
 | `tests/test_fusion_c1.py` | both preparations on synthetic files, the three cores, an end-to-end run on smoke encoders |
 
 The earlier legacy path (`physiowave/models/fusion.py`, `configs/fusion/ralf.yaml`,

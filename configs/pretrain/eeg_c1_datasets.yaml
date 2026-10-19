@@ -125,6 +125,16 @@ hgd:
     is repeated EXECUTED movement, not pure imagery, whatever the BIDS task
     label says.
 
+siena:
+  # Continued pretraining only (routes.CONTINUATION_DATASETS).
+  route: E19_256
+  powerline_hz: 50
+  verify_powerline_by_psd: true
+  expected_sampling_rates: [512.0]
+  notes: >-
+    Siena Scalp EEG Database, PhysioNet 1.0.0 (ODC-By): 14 adults with focal
+    epilepsy recorded at the University of Siena, Italy; 50 Hz mains.
+
 tueg:
   route: E19_256
   powerline_hz: 60

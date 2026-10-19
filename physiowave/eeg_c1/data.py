@@ -334,8 +334,12 @@ class RouteSchedule:
                  batch_by_route: Optional[Dict[str, int]] = None,
                  num_replicas: int = 1, rank: int = 0,
                  routes: Optional[Dict[str, Route]] = None,
-                 datasets: Optional[Dict[str, object]] = None):
+                 datasets: Optional[Dict[str, object]] = None,
+                 fixed_weights: Optional[Dict[str, float]] = None,
+                 epoch_pass_of: Optional[str] = None):
         self.index = index
+        self.fixed_weights = dict(fixed_weights or {})
+        self.epoch_pass_of = epoch_pass_of or None
         # The registry this schedule draws from. Defaults to the EEG corpus;
         # physiowave.ecg_c1 passes its own routes and datasets, and nothing
         # below reads the module-level tables directly.
@@ -437,10 +441,37 @@ class RouteSchedule:
                 f"{sorted(available)}{hint}")
         total = sum(w.values())
         self.weights = {k: v / total for k, v in w.items()}
+        # Fixed step shares for named corpora (continued pretraining: Siena at
+        # 0.3 of the steps); the policy above shares out what is left among the
+        # rest in its own proportions.
+        fixed = {k: float(v) for k, v in (self.fixed_weights or {}).items() if float(v) > 0}
+        if fixed:
+            missing = sorted(set(fixed) - set(available))
+            if missing:
+                raise SystemExit(f"weights_fixed names {missing}, which the manifest "
+                                 f"does not hold; present: {sorted(available)}")
+            if sum(fixed.values()) >= 1.0:
+                raise SystemExit(f"weights_fixed sums to {sum(fixed.values()):g}; it must "
+                                 "leave a share for the other corpora")
+            rest = {k: v for k, v in self.weights.items() if k not in fixed}
+            r_total = sum(rest.values())
+            if r_total <= 0:
+                raise SystemExit("weights_fixed leaves no other corpus to share the rest")
+            left = 1.0 - sum(fixed.values())
+            self.weights = {**{k: v / r_total * left for k, v in rest.items()}, **fixed}
+            self.weight_policy = f"{self.weight_policy} + fixed {fixed}"
         self.dataset_ids = sorted(self.weights)
         self.probs = np.array([self.weights[d] for d in self.dataset_ids],
                               dtype=np.float64)
 
+        if steps_per_epoch is None and self.epoch_pass_of:
+            # An epoch is one read of the named corpus at its share of the steps.
+            d = self.epoch_pass_of
+            if d not in self.weights:
+                raise SystemExit(f"epoch_pass_of={d!r} is not in the mixture "
+                                 f"{sorted(self.weights)}")
+            per = self.batch_by_route[self.datasets[d].route_id] * self.num_replicas
+            steps_per_epoch = int(max(1, np.ceil(counts.get(d, 0) / (self.weights[d] * per))))
         if steps_per_epoch is None:
             # One pass over the corpus in expectation: the dataset whose share
             # of the mixture is smallest relative to its size sets the length,

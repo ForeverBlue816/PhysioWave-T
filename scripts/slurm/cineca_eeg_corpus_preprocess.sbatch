@@ -13,6 +13,7 @@
 #     sbatch --export=ALL,DATASET=hgd          --array=0-3  scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
 #     sbatch --export=ALL,DATASET=tdbrain      --array=0-15 scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
 #     sbatch --export=ALL,DATASET=hbn          --array=0-63 scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
+#     sbatch --export=ALL,DATASET=siena        --array=0-3  scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
 #
 # THE ARRAY LENGTH IS A GUESS UNTIL YOU MEASURE IT. --inspect prints a per-file
 # cost projection from the headers it reads; divide by the tasks you want and
@@ -49,7 +50,7 @@ set -uo pipefail
 
 DATASET="${DATASET:-}"
 case "${DATASET}" in
-    faced|tdbrain|physionet_mi|m3cv|hbn|hgd) ;;
+    faced|tdbrain|physionet_mi|m3cv|hbn|hgd|siena) ;;
     tueg) echo "ERROR: TUEG uses cineca_tueg_preprocess.sbatch." >&2; exit 1 ;;
     "")  echo "ERROR: name the corpus:" >&2
          echo "  sbatch --export=ALL,DATASET=hbn --array=0-63 \\" >&2

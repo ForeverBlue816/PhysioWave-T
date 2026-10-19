@@ -23,7 +23,7 @@ the sequence length changes, the meaning of a position does not.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # --------------------------------------------------------------------------- #
 # Canonical electrode slots
@@ -254,6 +254,34 @@ PRETRAIN_DATASETS: Dict[str, DatasetSpec] = {
 }
 
 DATASET_IDS: Tuple[str, ...] = tuple(PRETRAIN_DATASETS)
+
+#: Corpora for CONTINUED pretraining only: not part of the seven the released
+#: encoder was pretrained on, so a run draws from one only when its config names
+#: it (``data.continuation_datasets``) and ``PRETRAIN_DATASETS`` keeps meaning
+#: what the original run read.
+CONTINUATION_DATASETS: Dict[str, DatasetSpec] = {
+    d.dataset_id: d
+    for d in (
+        DatasetSpec("siena", "E19_256", 512.0, 29, SLOTS_19,
+                    "Siena Scalp EEG (PhysioNet, ODC-By): 14 adults with focal "
+                    "epilepsy, 10-20 + extras at 512 Hz; the 19 10-20 electrodes "
+                    "kept; 512 -> 256; continued pretraining only"),
+    )
+}
+
+#: Every EEG corpus a run may draw from.
+EEG_DATASETS: Dict[str, DatasetSpec] = {**PRETRAIN_DATASETS, **CONTINUATION_DATASETS}
+
+
+def datasets_with(continuation: Optional[Sequence[str]] = None) -> Dict[str, DatasetSpec]:
+    """The seven pretraining corpora plus the named continuation corpora."""
+    out = dict(PRETRAIN_DATASETS)
+    for name in continuation or ():
+        if name not in CONTINUATION_DATASETS:
+            raise SystemExit(f"unknown continuation corpus {name!r}; known: "
+                             f"{sorted(CONTINUATION_DATASETS)}")
+        out[name] = CONTINUATION_DATASETS[name]
+    return out
 
 #: Never pretrained on. Named rather than merely omitted so the refusal is
 #: testable and survives someone adding datasets later.

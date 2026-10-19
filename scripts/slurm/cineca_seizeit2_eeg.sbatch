@@ -13,11 +13,14 @@
 #              labram:finetune c1native:frozen c1native:finetune"
 #             also luna_base / luna_large / luna_huge (LUNA, NeurIPS 2025), e.g.
 #             RUNS="luna_large:frozen luna_large:finetune luna_huge:frozen luna_huge:finetune"
-#             encoder:mode. c1 = C1 behind the same channel adapter as the
+#             encoder:mode[:lr]. c1 = C1 behind the same channel adapter as the
 #             baselines (on its E19_256 route); c1native = C1 on the two raw
-#             channel names with new embedding rows, as in the fusion runs.
-#   TAG       directory suffix (default sze): $OUT_ROOT/eeg_<encoder>_<mode>_<TAG>
+#             channel names with new embedding rows, as in the fusion runs;
+#             c1siena = C1 after the Siena continuation (C1_SIENA_CKPT). An lr
+#             overrides train.lr for that run, e.g. c1siena:finetune:5e-5.
+#   TAG       directory suffix (default sze): $OUT_ROOT/eeg_<encoder>_<mode>[_lr<lr>]_<TAG>
 #   EEG_CKPT / EEGPT_CKPT / LABRAM_CKPT / LUNA_DIR   the checkpoints
+#   C1_SIENA_CKPT  $PW_CKPT_ROOT/pretrain_eeg_c1_siena/latest.pth
 #   STEP      seconds between windows in the event evaluation (1)
 #   SET       extra --set overrides, space separated
 # A finished run (results.json, events_cross.json) is skipped; a cut-off one
@@ -52,6 +55,7 @@ EEG_CKPT="${EEG_CKPT:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
 EEGPT_CKPT="${EEGPT_CKPT:-${PW_CKPT_ROOT}/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors}"
 LABRAM_CKPT="${LABRAM_CKPT:-${PW_CKPT_ROOT}/baselines/labram/labram-base.pth}"
 LUNA_DIR="${LUNA_DIR:-${PW_CKPT_ROOT}/baselines/luna}"
+C1_SIENA_CKPT="${C1_SIENA_CKPT:-${PW_CKPT_ROOT}/pretrain_eeg_c1_siena/latest.pth}"
 N_GPUS=4
 read -r -a RUN_LIST <<< "${RUNS}"
 
@@ -63,6 +67,7 @@ for spec in ${RUNS}; do
     e="${spec%%:*}"
     case "${e}" in
         c1|c1native) need C1 "${EEG_CKPT}" ;;
+        c1siena) need "C1 (Siena continuation)" "${C1_SIENA_CKPT}" ;;
         eegpt) need EEGPT "${EEGPT_CKPT}" ;;
         labram) need LaBraM "${LABRAM_CKPT}" ;;
         luna_base|luna_large|luna_huge) need LUNA "${LUNA_DIR}/LUNA_${e#luna_}.safetensors" ;;
@@ -74,16 +79,18 @@ echo "runs    ${RUNS}"
 echo "data    ${DATA}"
 echo "c1      ${EEG_CKPT}"; echo "eegpt   ${EEGPT_CKPT}"; echo "labram  ${LABRAM_CKPT}"
 echo "luna    ${LUNA_DIR}"
+echo "c1siena ${C1_SIENA_CKPT}"
 echo "output  ${OUT_ROOT}/eeg_<encoder>_<mode>_${TAG}"
 
 worker() {
     local gpu="$1" i spec enc mode out log rc=0
     local -a sets
     for ((i = gpu; i < ${#RUN_LIST[@]}; i += N_GPUS)); do
-        spec="${RUN_LIST[$i]}"; enc="${spec%%:*}"; mode="${spec#*:}"
-        out="${OUT_ROOT}/eeg_${enc}_${mode}_${TAG}"; log="${out}.log"; mkdir -p "${out}"
+        spec="${RUN_LIST[$i]}"; IFS=: read -r enc mode lr <<< "${spec}"
+        out="${OUT_ROOT}/eeg_${enc}_${mode}${lr:+_lr${lr}}_${TAG}"; log="${out}.log"; mkdir -p "${out}"
         case "${enc}" in
             c1)       sets=("encoders.eeg=${EEG_CKPT}" "encoders.eeg_arch=c1") ;;
+            c1siena)  sets=("encoders.eeg=${C1_SIENA_CKPT}" "encoders.eeg_arch=c1") ;;
             c1native) sets=("encoders.eeg=${EEG_CKPT}" "encoders.eeg_arch=c1" "model.eeg_adapter=null") ;;
             eegpt)    sets=("encoders.eeg=${EEGPT_CKPT}" "encoders.eeg_arch=eegpt") ;;
             labram)   sets=("encoders.eeg=${LABRAM_CKPT}" "encoders.eeg_arch=labram") ;;
@@ -91,6 +98,7 @@ worker() {
                       sets=("encoders.eeg=${LUNA_DIR}/LUNA_${enc#luna_}.safetensors" "encoders.eeg_arch=${enc}") ;;
             *) echo "[gpu ${gpu}] ${spec}: unknown encoder"; rc=1; continue ;;
         esac
+        [[ -n "${lr}" ]] && sets+=("train.lr=${lr}")
         if [[ -f "${out}/results.json" ]]; then
             echo "[gpu ${gpu}] ${spec}: trained, skipped"
         else
