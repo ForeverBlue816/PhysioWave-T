@@ -135,9 +135,10 @@ class Run:
         for suf in ("_szo", "_sze"):
             n = n.replace(suf, "")
         if n.startswith("eeg_"):
-            enc = {"c1": "C1", "c1native": "C1 (native)", "eegpt": "EEGPT", "labram": "LaBraM"}
-            parts = n.split("_")
-            return f"{enc.get(parts[1], parts[1])} {parts[2]}, EEG"
+            enc = {"c1": "C1", "c1native": "C1 (native)", "eegpt": "EEGPT", "labram": "LaBraM",
+                   "luna_base": "LUNA-B", "luna_large": "LUNA-L", "luna_huge": "LUNA-H"}
+            key, mode = n[len("eeg_"):].rsplit("_", 1)        # eeg_<encoder>_<mode>
+            return f"{enc.get(key, key)} {mode}, EEG"
         return f"{self.fusion.replace('weighted_logit', 'weighted logit')} / {self.mode}"
 
     def test(self) -> Dict[str, Dict]:

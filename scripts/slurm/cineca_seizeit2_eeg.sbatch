@@ -11,11 +11,13 @@
 #
 #   RUNS      "c1:frozen c1:finetune eegpt:frozen eegpt:finetune labram:frozen
 #              labram:finetune c1native:frozen c1native:finetune"
+#             also luna_base / luna_large / luna_huge (LUNA, NeurIPS 2025), e.g.
+#             RUNS="luna_large:frozen luna_large:finetune luna_huge:frozen luna_huge:finetune"
 #             encoder:mode. c1 = C1 behind the same channel adapter as the
 #             baselines (on its E19_256 route); c1native = C1 on the two raw
 #             channel names with new embedding rows, as in the fusion runs.
 #   TAG       directory suffix (default sze): $OUT_ROOT/eeg_<encoder>_<mode>_<TAG>
-#   EEG_CKPT / EEGPT_CKPT / LABRAM_CKPT   the three checkpoints
+#   EEG_CKPT / EEGPT_CKPT / LABRAM_CKPT / LUNA_DIR   the checkpoints
 #   STEP      seconds between windows in the event evaluation (1)
 #   SET       extra --set overrides, space separated
 # A finished run (results.json, events_cross.json) is skipped; a cut-off one
@@ -49,19 +51,29 @@ RUNS="${RUNS:-c1:frozen c1:finetune eegpt:frozen eegpt:finetune labram:frozen la
 EEG_CKPT="${EEG_CKPT:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
 EEGPT_CKPT="${EEGPT_CKPT:-${PW_CKPT_ROOT}/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors}"
 LABRAM_CKPT="${LABRAM_CKPT:-${PW_CKPT_ROOT}/baselines/labram/labram-base.pth}"
+LUNA_DIR="${LUNA_DIR:-${PW_CKPT_ROOT}/baselines/luna}"
 N_GPUS=4
 read -r -a RUN_LIST <<< "${RUNS}"
 
 [[ -f "${DATA}/train.h5" ]] || { echo "ERROR: ${DATA}/train.h5 missing -- run cineca_fusion_prep.sbatch"; exit 1; }
 grep -q '"official"' "${DATA}/split.json" 2>/dev/null \
     || echo "WARNING: ${DATA}/split.json is not the official split"
-for v in EEG_CKPT EEGPT_CKPT LABRAM_CKPT; do
-    [[ -f "${!v}" ]] || { echo "ERROR: no ${v} at ${!v} (bash scripts/download_eeg_baselines.sh)"; exit 1; }
+need() { [[ -f "$2" ]] || { echo "ERROR: no $1 checkpoint at $2 (bash scripts/download_eeg_baselines.sh)"; exit 1; }; }
+for spec in ${RUNS}; do
+    e="${spec%%:*}"
+    case "${e}" in
+        c1|c1native) need C1 "${EEG_CKPT}" ;;
+        eegpt) need EEGPT "${EEGPT_CKPT}" ;;
+        labram) need LaBraM "${LABRAM_CKPT}" ;;
+        luna_base|luna_large|luna_huge) need LUNA "${LUNA_DIR}/LUNA_${e#luna_}.safetensors" ;;
+        *) echo "ERROR: unknown encoder ${e} in RUNS"; exit 1 ;;
+    esac
 done
 mkdir -p "${OUT_ROOT}"
 echo "runs    ${RUNS}"
 echo "data    ${DATA}"
 echo "c1      ${EEG_CKPT}"; echo "eegpt   ${EEGPT_CKPT}"; echo "labram  ${LABRAM_CKPT}"
+echo "luna    ${LUNA_DIR}"
 echo "output  ${OUT_ROOT}/eeg_<encoder>_<mode>_${TAG}"
 
 worker() {
@@ -75,6 +87,8 @@ worker() {
             c1native) sets=("encoders.eeg=${EEG_CKPT}" "encoders.eeg_arch=c1" "model.eeg_adapter=null") ;;
             eegpt)    sets=("encoders.eeg=${EEGPT_CKPT}" "encoders.eeg_arch=eegpt") ;;
             labram)   sets=("encoders.eeg=${LABRAM_CKPT}" "encoders.eeg_arch=labram") ;;
+            luna_base|luna_large|luna_huge)
+                      sets=("encoders.eeg=${LUNA_DIR}/LUNA_${enc#luna_}.safetensors" "encoders.eeg_arch=${enc}") ;;
             *) echo "[gpu ${gpu}] ${spec}: unknown encoder"; rc=1; continue ;;
         esac
         if [[ -f "${out}/results.json" ]]; then

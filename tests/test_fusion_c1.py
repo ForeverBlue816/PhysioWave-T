@@ -417,7 +417,16 @@ def _fake_baseline_checkpoints(tmp_path):
     sd["lm_head.weight"] = torch.zeros(8192, 200)
     labram = tmp_path / "labram-base.pth"
     torch.save({"model": sd, "epoch": 0}, labram)
-    return {"eegpt": (str(eegpt), e), "labram": (str(labram), lb)}
+    from physiowave.fusion.baselines import LUNA_SIZES, LUNABackbone
+    lu = LUNABackbone(**LUNA_SIZES["luna_base"])
+    sd = dict(lu.state_dict())                       # LUNA_base.safetensors: no prefix,
+    sd["decoder_head.norm.weight"] = torch.ones(64)  # plus the pretraining-only parts
+    sd["channel_emb.embeddings.weight"] = torch.zeros(90, 64)
+    sd["mask_token"] = torch.zeros(1, 1, 64)
+    sd["cross_attn.temparature"] = torch.tensor(1.0)
+    luna = tmp_path / "LUNA_base.safetensors"
+    _write_safetensors(luna, sd)
+    return {"eegpt": (str(eegpt), e), "labram": (str(labram), lb), "luna_base": (str(luna), lu)}
 
 
 def test_eeg_baselines_load_freeze_and_decay(tmp_path):
@@ -430,7 +439,8 @@ def test_eeg_baselines_load_freeze_and_decay(tmp_path):
         for k, v in ref.state_dict().items():                 # the weights are the file's
             assert torch.equal(enc.backbone.state_dict()[k], v), (arch, k)
         tok = enc.encode(x)
-        n = {"eegpt": 16 * 4, "labram": 6 * 4}[arch]           # 16 patches x 4 summary / 6 chans x 4 s
+        n = {"eegpt": 16 * 4, "labram": 6 * 4,                # 16 patches x 4 summary / 6 chans x 4 s
+             "luna_base": 1024 // 40}[arch]                    # 25 patches of the centred 1000 samples
         assert tok.shape == (3, n, enc.embed_dim)
         tok.sum().backward()
         assert all(p.grad is None for p in enc.backbone.parameters())   # frozen
@@ -441,9 +451,11 @@ def test_eeg_baselines_load_freeze_and_decay(tmp_path):
         assert enc.layer_lr_scale(f"backbone.blocks.{depth - 1}.mlp.fc1.weight", 1.0, d) == d
         assert enc.layer_lr_scale("backbone.blocks.0.norm1.weight", 1.0, d) == d ** depth
         assert enc.layer_lr_scale("backbone.norm.weight", 1.0, d) == 1.0
-        assert enc.layer_lr_scale("backbone.patch_embed.conv1.weight"
-                                  if arch == "labram" else "backbone.chan_embed.weight",
-                                  1.0, d) == d ** (depth + 1)
+        first = {"labram": "backbone.patch_embed.conv1.weight", "eegpt": "backbone.chan_embed.weight",
+                 "luna_base": "backbone.cross_attn.query_embed"}[arch]
+        assert enc.layer_lr_scale(first, 1.0, d) == d ** (depth + 1)
+        enc.train()
+        assert not enc.backbone.training and enc.adapter.training   # a frozen backbone stays in eval
     a = ChannelAdapter(2, 6)
     with torch.no_grad():
         a.weight.mul_(100)
@@ -452,6 +464,12 @@ def test_eeg_baselines_load_freeze_and_decay(tmp_path):
     # a checkpoint of the wrong model is refused, not half-loaded
     with pytest.raises(SystemExit):
         build_baseline("eegpt", ["a", "b"], 256.0, 1024, fake["labram"][0], freeze=True)
+    with pytest.raises(SystemExit):
+        build_baseline("luna_large", ["a", "b"], 256.0, 1024, fake["luna_base"][0], freeze=True)
+    # LUNA's positions are LUNA's: MNE's head frame, a bipolar name at the midpoint
+    from physiowave.fusion.baselines import electrode_positions
+    p = electrode_positions(["T7", "T8", "T7-T8"])
+    assert abs(p[0, 0] - (-0.0845)) < 2e-3 and np.allclose(p[2], (p[0] + p[1]) / 2, atol=1e-7)
 
 
 @pytest.mark.slow
@@ -484,6 +502,8 @@ def test_seizeit2_eeg_only_c1_eegpt_labram(tmp_path):
                          "model.encoder_mode=frozen"],
         "labram_finetune": [f"encoders.eeg={fake['labram'][0]}", "encoders.eeg_arch=labram",
                             "model.encoder_mode=finetune"],
+        "luna_base_frozen": [f"encoders.eeg={fake['luna_base'][0]}", "encoders.eeg_arch=luna_base",
+                             "model.encoder_mode=frozen"],
     }
     for name, sets in runs.items():
         out = tmp_path / "runs" / name
@@ -498,8 +518,8 @@ def test_seizeit2_eeg_only_c1_eegpt_labram(tmp_path):
             assert rep["route"] == "E19_256" and rep["adapter"]["to"][1] == "T7"
         if name == "c1native_frozen":
             assert rep["route"] is None and "adapter" not in rep
-        if name.startswith(("eegpt", "labram")):
-            assert rep["arch"] == name.split("_")[0]
+        if name.startswith(("eegpt", "labram", "luna")):
+            assert rep["arch"] == name.rsplit("_", 1)[0]
     r = subprocess.run([sys.executable, os.path.join(ROOT, "Fusion", "seizeit2_events.py"),
                         "--run-dir", str(tmp_path / "runs" / "eegpt_frozen"),
                         "--raw-dir", str(raw), "--device", "cpu", "--step", "4", "--batch", "64"],

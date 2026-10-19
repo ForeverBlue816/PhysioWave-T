@@ -3,7 +3,7 @@
 #
 #   python -m physiowave.fusion.train --config fusion/seizeit2_eeg --output-dir <dir> \
 #       --set data.tasks.seizeit2.dir=<prep dir> encoders.eeg=<checkpoint> \
-#             encoders.eeg_arch=c1|eegpt|labram model.encoder_mode=frozen|finetune
+#             encoders.eeg_arch=c1|eegpt|labram|luna_large|luna_huge model.encoder_mode=frozen|finetune
 #
 # Same windows, split, head, schedule, selection and test for every encoder:
 # the official split's windows; one learned 1x1 channel adapter from the two
@@ -19,7 +19,7 @@ data:
     mpdb: {dir: null}
   modalities: [eeg]
 encoders:
-  eeg_arch: c1                 # c1 | eegpt | labram
+  eeg_arch: c1                 # c1 | eegpt | labram | luna_base | luna_large | luna_huge
   eeg_input_uv: 30.0           # the RMS a z-scored channel is rescaled to for EEGPT (mV) and LaBraM (0.1 mV)
 model:
   fusion: concat               # one modality: pool -> MLP

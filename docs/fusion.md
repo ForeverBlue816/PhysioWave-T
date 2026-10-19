@@ -210,7 +210,7 @@ that holds one continues after that epoch, so a job the walltime cut off is
 finished by resubmitting the same command; `--fresh` starts over. The file
 is removed once `results.json` is written.
 
-## SeizeIT2, EEG alone: C1 against EEGPT and LaBraM
+## SeizeIT2, EEG alone: C1 against EEGPT, LaBraM and LUNA
 
 Published EEG foundation models report on their own preprocessing, splits
 and folds, so their numbers do not sit beside ours. Here they are run in
@@ -223,11 +223,21 @@ event-level scoring above -- the encoder is the only thing that differs.
 | C1 | `pretrain_eeg_c1_moe/best.pth` | per-channel z-score, 256 Hz |
 | EEGPT large (NeurIPS 2024) | `eegpt_mcae_58chs_4s_large4E`, target encoder | mV, 256 Hz, 64-sample patches |
 | LaBraM-Base (ICLR 2024) | `labram-base.pth`, student | 0.1 mV, 200 Hz, 200-sample patches |
+| LUNA large / huge (NeurIPS 2025) | `LUNA_large/huge.safetensors`, encoder | per-channel z-score, 256 Hz, 40-sample patches, the centred 1000 samples |
 
-`physiowave/fusion/baselines.py` re-implements both published encoders
+`physiowave/fusion/baselines.py` re-implements the published encoders
 with the released parameter names. The released weights load strictly,
 and on random input they reproduce the authors' code: EEGPT exactly,
-LaBraM to 7e-5 on outputs of size ~3 (attention kernel rounding).
+LaBraM to 7e-5 on outputs of size ~3, LUNA base and large to 4e-6 and
+7e-6 on outputs of size ~0.7 (attention kernel rounding).
+
+LUNA is topology-agnostic: each channel is placed by its standard_1005
+coordinates (MNE head frame; a bipolar name at its electrodes' midpoint),
+encoded by a NeRF-style sine bank and summarised by learned queries. Its
+highest bands multiply the normalised coordinates by 2^15, so the
+coordinates must be LUNA's exactly; `electrode_positions` returns them at
+full precision. Its weights are CC BY-ND 4.0: fine-tuned copies stay on the
+cluster and are never shared (the results sync takes no checkpoints).
 
 **Montage.** SeizeIT2's two behind-the-ear channels are electrodes of no
 model's vocabulary. Every encoder, C1 included, gets the same learned 1x1
@@ -253,6 +263,8 @@ are run for each encoder.
 ```bash
 bash scripts/download_eeg_baselines.sh          # login node, once; SHA-256 checked
 sbatch scripts/slurm/cineca_seizeit2_eeg.sbatch # 8 runs, then their event-level scoring
+sbatch --export=ALL,RUNS="luna_large:frozen luna_large:finetune luna_huge:frozen luna_huge:finetune" \
+    scripts/slurm/cineca_seizeit2_eeg.sbatch     # LUNA, into the same tables
 ```
 
 LaBraM's file comes from the authors' repository at a fixed commit. EEGPT's

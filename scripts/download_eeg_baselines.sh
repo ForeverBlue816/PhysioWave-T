@@ -8,6 +8,7 @@
 #
 #   -> $PW_CKPT_ROOT/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors
 #   -> $PW_CKPT_ROOT/baselines/labram/labram-base.pth
+#   -> $PW_CKPT_ROOT/baselines/luna/LUNA_{base,large,huge}.safetensors
 #
 # LaBraM-Base: the authors' file, from their repository (MIT) at a fixed
 # commit. EEGPT large (eegpt_mcae_58chs_4s_large4E): the authors release it on
@@ -17,7 +18,10 @@
 # a third-party mirror. Its target encoder loads strictly into the official
 # EEGTransformer and gives bit-identical outputs; to use the authors' file
 # instead, download the .ckpt in a browser and pass EEGPT_CKPT=<path> to the
-# job (both formats load).
+# job (both formats load). LUNA (NeurIPS 2025): the authors' files from
+# huggingface.co/PulpBio/LUNA at a fixed revision; the weights are CC BY-ND 4.0
+# (use and cite; fine-tuned copies may not be redistributed). LUNA=0 skips them
+# (the huge checkpoint is 1.2 GB).
 # ============================================================================
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,4 +56,16 @@ fetch "https://huggingface.co/eeg-telecom-paris/eegpt-large-official/resolve/11e
 fetch "https://raw.githubusercontent.com/935963004/LaBraM/c431221e6cfd23dbfa9950e0180682fb322b0548/checkpoints/labram-base.pth" \
       "${OUT}/labram/labram-base.pth" \
       7c50583826afac76c4ab18f43d958df40496c8229accc09ed6a227c9bb57c37c
+if [[ "${LUNA:-1}" == "1" ]]; then
+    LUNA_REV=999c1af0fd6fbfb43ed47169c61fe9faa49cfe9f
+    fetch "https://huggingface.co/PulpBio/LUNA/resolve/${LUNA_REV}/LUNA_base.safetensors" \
+          "${OUT}/luna/LUNA_base.safetensors" \
+          482839ad9152b6948ff166d2a1638637c54b4d91f1cefadbce6312831ba9b11d
+    fetch "https://huggingface.co/PulpBio/LUNA/resolve/${LUNA_REV}/LUNA_large.safetensors" \
+          "${OUT}/luna/LUNA_large.safetensors" \
+          03e0321a1e1a30dc074f7bfe512a901138200494f7694f31ab633e42b105c0e4
+    fetch "https://huggingface.co/PulpBio/LUNA/resolve/${LUNA_REV}/LUNA_huge.safetensors" \
+          "${OUT}/luna/LUNA_huge.safetensors" \
+          7522e85c6403675bff3c1b3856e5e93b724ac0da4d7d0e7e11bfba9a57067346
+fi
 echo "done: ${OUT}"

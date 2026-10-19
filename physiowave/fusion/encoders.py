@@ -122,7 +122,8 @@ def build_encoder(modality: str, names: Sequence[str], fs: float, window_samples
     left out to reach it (``dropped_channels``; ``keep_index`` selects the
     rows the model takes).
 
-    EEG only: ``arch`` eegpt / labram builds that published encoder instead
+    EEG only: ``arch`` eegpt / labram / luna_base / luna_large / luna_huge
+    builds that published encoder instead
     (physiowave.fusion.baselines), and ``adapter`` -- a list of electrode
     names -- puts a learned channel adapter from the recorded channels onto
     those electrodes in front of whichever encoder, C1 included, which is
