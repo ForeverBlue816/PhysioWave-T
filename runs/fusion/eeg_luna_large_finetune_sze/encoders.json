@@ -1,0 +1,39 @@
+{
+  "seizeit2": {
+    "eeg": {
+      "modality": "eeg",
+      "arch": "luna_large",
+      "route": null,
+      "exported": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/luna/LUNA_large.safetensors",
+      "embed_dim": 576,
+      "adapter": {
+        "from": [
+          "bte_sameside",
+          "bte_other"
+        ],
+        "to": [
+          "F7",
+          "T7",
+          "P7",
+          "F8",
+          "T8",
+          "P8"
+        ]
+      },
+      "input_uv": 30.0,
+      "taken": [
+        "blocks",
+        "channel_location_embedder",
+        "cross_attn",
+        "freq_embed",
+        "norm",
+        "patch_embed"
+      ],
+      "skipped": [],
+      "dropped_channels": [],
+      "keep_index": null,
+      "summary": "luna_large loaded from LUNA_large.safetensors; adapter 2 -> F7/T7/P7/F8/T8/P8 trains",
+      "trainable_params": 40449258
+    }
+  }
+}

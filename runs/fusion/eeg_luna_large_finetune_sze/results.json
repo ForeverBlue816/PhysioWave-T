@@ -1,0 +1,144 @@
+{
+  "fusion": "concat",
+  "encoder_mode": "finetune",
+  "seed": 42,
+  "best_epoch": 3,
+  "best_score": 0.2998597572847489,
+  "select_by": {
+    "seizeit2": "auprc"
+  },
+  "epochs_run": 9,
+  "hparams": {
+    "epochs": 15,
+    "batch_size": 32,
+    "lr": 0.0001,
+    "layer_decay": 0.75,
+    "weight_decay": 0.05,
+    "modality_dropout": 0.3,
+    "uni_weight": 0.0,
+    "reliability_weight": 0.0,
+    "consistency_weight": 0.0,
+    "class_weight": "sqrt"
+  },
+  "corruption_severity": 0.7,
+  "encoders": {
+    "seizeit2": {
+      "eeg": {
+        "modality": "eeg",
+        "arch": "luna_large",
+        "route": null,
+        "exported": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/luna/LUNA_large.safetensors",
+        "embed_dim": 576,
+        "adapter": {
+          "from": [
+            "bte_sameside",
+            "bte_other"
+          ],
+          "to": [
+            "F7",
+            "T7",
+            "P7",
+            "F8",
+            "T8",
+            "P8"
+          ]
+        },
+        "input_uv": 30.0,
+        "taken": [
+          "blocks",
+          "channel_location_embedder",
+          "cross_attn",
+          "freq_embed",
+          "norm",
+          "patch_embed"
+        ],
+        "skipped": [],
+        "dropped_channels": [],
+        "keep_index": null,
+        "summary": "luna_large loaded from LUNA_large.safetensors; adapter 2 -> F7/T7/P7/F8/T8/P8 trains",
+        "trainable_params": 40449258
+      }
+    }
+  },
+  "seconds": 4130.92249584198,
+  "tasks": {
+    "seizeit2": {
+      "classes": [
+        "background",
+        "seizure"
+      ],
+      "val": {
+        "acc": 0.8039712977854757,
+        "balanced_acc": 0.625202249573529,
+        "kappa": 0.22848356752677668,
+        "weighted_f1": 0.8122107806591831,
+        "macro_f1": 0.6135402353601607,
+        "auroc": 0.7759577004453009,
+        "auprc": 0.2998597572847489,
+        "sensitivity": 0.3810954471920499,
+        "specificity": 0.8693090519550081,
+        "n": 32332,
+        "dropped": 0,
+        "reliability_eeg": 1.0
+      },
+      "test": {
+        "complete": {
+          "acc": 0.8539787975692267,
+          "balanced_acc": 0.6497199043680166,
+          "kappa": 0.2720153365815541,
+          "weighted_f1": 0.8604808747401733,
+          "macro_f1": 0.6355252525647981,
+          "auroc": 0.7543214369195931,
+          "auprc": 0.3651245762194587,
+          "sensitivity": 0.3935091277890467,
+          "specificity": 0.9059192383829369,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_noise": {
+          "acc": 0.9003835357264043,
+          "balanced_acc": 0.5322961658660238,
+          "kappa": 0.1056642283674748,
+          "weighted_f1": 0.8638900437191556,
+          "macro_f1": 0.5364074145758659,
+          "auroc": 0.6195736251126818,
+          "auprc": 0.21641000577360925,
+          "sensitivity": 0.07058823529411765,
+          "specificity": 0.9940040964379299,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_bad_channel": {
+          "acc": 0.7819810185804037,
+          "balanced_acc": 0.5881549095249458,
+          "kappa": 0.1284288474950359,
+          "weighted_f1": 0.808810242842402,
+          "macro_f1": 0.557796577498428,
+          "auroc": 0.6677337287029339,
+          "auprc": 0.2361697584747031,
+          "sensitivity": 0.34513184584178497,
+          "specificity": 0.831267950522353,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        },
+        "eeg_drift": {
+          "acc": 0.8288381849403104,
+          "balanced_acc": 0.5984807617191874,
+          "kappa": 0.17333346303667851,
+          "weighted_f1": 0.8387266743827567,
+          "macro_f1": 0.5856955681315354,
+          "auroc": 0.7016624989506147,
+          "auprc": 0.24100817310006903,
+          "sensitivity": 0.30973630831643,
+          "specificity": 0.8873593994942387,
+          "n": 97253,
+          "dropped": 0,
+          "reliability_eeg": 1.0
+        }
+      }
+    }
+  }
+}
