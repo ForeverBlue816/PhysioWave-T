@@ -1,0 +1,60 @@
+============================================================
+  siena preprocessing  (job 61406994 task 3)
+  shard 3/4   cpus 8   workers 8
+  array 0-3 (4 task(s))   N_SHARDS=4
+  partition boost_usr_prod
+  python /leonardo/home/userexternal/ychen003/pwprep
+============================================================
+============================================================
+  siena -> E19_256   19 x 1024 @ 256 Hz, 152 tokens (continuation corpus)
+  raw   /leonardo_scratch/large/userexternal/ychen003/bio/eeg/Siena/raw
+  out   /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+  val   0.10 (seed 42)
+  shard 3/4 (by subject)
+  8 worker process(es)
+============================================================
+dataset=siena  route=E19_256  19x1024 @ 256Hz
+slots=19  out=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+  cached the listing at /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena/siena_files.txt
+  PN00/PN00-1.edf: 656 windows
+  PN00/PN00-2.edf: 575 windows
+  PN00/PN00-3.edf: 627 windows
+  PN00/PN00-4.edf: 525 windows
+  PN00/PN00-5.edf: 535 windows
+  PN01/PN01-1.edf: 12139 windows
+  PN06/PN06-1.edf: 2403 windows
+  PN06/PN06-2.edf: 3155 windows
+  PN06/PN06-3.edf: 2045 windows
+  PN06/PN06-4.edf: 1756 windows
+  PN06/PN06-5.edf: 1505 windows
+  PN07/PN07-1.edf: 7862 windows
+  PN10/PN10-1.edf: 2495 windows
+  PN10/PN10-10.edf: 2141 windows
+  PN10/PN10-2.edf: 2138 windows
+  PN10/PN10-3.edf: 2178 windows
+  PN10/PN10-4.5.6.edf: 4162 windows
+  PN10/PN10-7.8.9.edf: 3738 windows
+  PN13/PN13-1.edf: 2338 windows
+  PN13/PN13-2.edf: 2328 windows
+  PN13/PN13-3.edf: 3131 windows
+  PN14/PN14-1.edf: 1967 windows
+  PN14/PN14-2.edf: 2291 windows
+  PN14/PN14-3.edf: 10498 windows
+  PN14/PN14-4.edf: 3660 windows
+  PN16/PN16-1.edf: 2067 windows
+  PN16/PN16-2.edf: 2324 windows
+
+  dropped 31 non-slot channel name(s): ['1', '2', '23', '3', '31', '33', '61', '62', '63', '64', 'A', 'B'] ...
+  NOTE: 12 of them are known electrodes that E19_256 has no slot for: ['EEG Cp1', 'EEG Cp2', 'EEG Cp5', 'EEG Cp6', 'EEG F10', 'EEG F9', 'EEG Fc1', 'EEG Fc2', 'EEG Fc5', 'EEG Fc6', 'EEG P10', 'EEG P9']
+
+27 recordings, 81239 windows, 8 subjects (7 train / 1 val)
+  0 failure(s) -> /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena/preprocessing_failures.0003.jsonl
+  manifests + dataset_statistics.json in /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+
+============================================================
+  task 3 exit 0
+  When every task has finished:
+    python scripts/build_eeg_c1_manifest.py \
+        --corpus-root ${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus} \
+        --datasets ${DATASET} --allow-missing --check-shards
+============================================================

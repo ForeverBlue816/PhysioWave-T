@@ -1,0 +1,2 @@
+mains: 50.0 (registry)
+  NOTE: siena's mains frequency is inferred, not published. Run --inspect N --verify-powerline once and confirm the peak is at 50 Hz before the full array.

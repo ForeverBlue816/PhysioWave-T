@@ -1,0 +1,97 @@
+============================================================
+  EEG C1 multi-route pretraining  (job 61413390)
+  config     pretrain/eeg_c1_siena
+  torch      2.2.0a0+git6c8c5ad
+  1 node(s) x 4 gpu = 4 rank(s)
+  rendezvous lrdn1580:33390 (id 61413390)
+  nodes      lrdn1580 
+  OMP_NUM_THREADS=8
+  epochs=<script default>  resume=<none>
+  progress=auto (log, under sbatch)  heartbeat=120s
+  code        /leonardo/home/userexternal/ychen003/PhysioWave-T
+  venv        /leonardo/home/userexternal/ychen003/pw
+  checkpoints /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs
+  caches      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/ssl , /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/cache/preprocessed
+  manifests   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/manifests
+  data        /leonardo_scratch/large/userexternal/ychen003/bio/eeg , /leonardo_scratch/large/userexternal/ychen003/bio/ecg , /leonardo_scratch/large/userexternal/ychen003/bio/emg
+  DATA_ROOT  =/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus
+  OUTPUT_DIR =/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena   (resubmit with RESUME=auto to continue)
+============================================================
+============================================================
+  EEG C1 multi-route pretraining
+  config=pretrain/eeg_c1_siena
+  nodes=1 x 4 gpu = 4 rank(s)
+  epochs=<config>  grad_accum=<config>
+  lr=<config>  wd=<config>  mask_ratio=<config>  seed=<config>
+  weights=<config>  steps/epoch=<derived>
+  (<config> means pretrain/eeg_c1_siena.yaml decides; the trainer's own banner
+   below prints the values it actually resolved)
+  train manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged_siena/manifest_train.jsonl
+  val   manifest /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged_siena/manifest_val.jsonl
+  out            /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena
+  init from      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth  (weights only)
+============================================================
+python -m torch.distributed.run --standalone --nproc_per_node=4 -m physiowave.train.pretrain_main --config pretrain/eeg_c1_siena --output-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena --init-from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth --set data.manifest_train=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged_siena/manifest_train.jsonl data.manifest_val=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged_siena/manifest_val.jsonl 
+NCCL version 2.19.1+cuda12.1
+initialised from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth (weights only; it was at epoch 60, step 46080, best spec 0.30461)
+initialised from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth (weights only; it was at epoch 60, step 46080, best spec 0.30461)
+initialised from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth (weights only; it was at epoch 60, step 46080, best spec 0.30461)
+initialised from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/latest.pth (weights only; it was at epoch 60, step 46080, best spec 0.30461)
+==================================================================
+  EEG C1 multi-route pretraining
+  total parameters        30,300,691
+  shared transformer      25,224,704
+  frontend E19_256        66,177
+  frontend E32_512        171,867
+  frontend E64_256        643,707
+  frontend E128_512       2,490,555
+  patch_embed 256        67,072   spec decoder 329,344   raw decoder 329,344
+  patch_embed 512        132,608   spec decoder 395,008   raw decoder 395,008
+  downstream encoder      28,851,475   (+1,449,216 pretraining-only: both decoders and the mask token)
+  objective:
+    0.5 x spec MSE
+    0.5 x raw SmoothL1(beta=0.5)
+    0.001 x ScaleFold KL
+  L_total = 0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL
+  spec target: normalised per patch
+  masking: signal before the frontend   targets: detached
+  channel encoder (C1)    21,504  + proj 33,280
+  routes:
+    E19_256: 19x1024 @ 256Hz -> 19x8 = 152 tokens (patch (1, 128))
+    E32_512: 32x2048 @ 512Hz -> 32x8 = 256 tokens (patch (1, 256))
+    E64_256: 64x1024 @ 256Hz -> 64x8 = 512 tokens (patch (1, 128))
+    E128_512: 128x2048 @ 512Hz -> 128x8 = 1024 tokens (patch (1, 256))
+  mixture policy: temperature:0.5 + fixed {'siena': 0.3}
+    dataset          corpus%   step%  window%   passes/epoch
+    faced             0.83%   2.36%    2.81%     0.05x
+    hbn               8.71%  33.68%   10.03%     0.02x
+    hgd               0.15%   4.19%    1.25%     0.13x
+    m3cv              0.53%   4.46%    2.65%     0.08x
+    physionet_mi      0.24%   3.28%    1.95%     0.13x
+    siena             0.75%  29.23%   46.40%     0.98x
+    tdbrain           0.56%   3.28%    3.90%     0.11x
+    tueg             88.24%  19.53%   31.01%     0.01x
+  channel vocab sha256    596f2711269e47b2
+  budget:
+    resolved steps per epoch   763  (derived from the mixture)
+    windows read over the run  495,884 of a 15,539,356-window corpus (0.03x)
+    total optimizer updates    1526   (763/epoch x 2 epochs, grad_accum 1)
+    effective world size       4
+    validation per epoch       first 100 batch(es) per dataset -- a CURVE, not a final number
+    per-route batch size       E19_256=128  E32_512=96  E64_256=48  E128_512=24
+    passes per dataset/epoch   faced=0.05x  hbn=0.02x  hgd=0.13x  m3cv=0.08x  physionet_mi=0.13x  siena=0.98x  tdbrain=0.11x  tueg=0.01x
+  steps/epoch 763  epochs 2  grad_accum 1
+==================================================================
+  [15:46:35] epoch 0 step 1/763 [E19_256 siena] loss 0.36298 lr 2.63e-06 16 win/s eta 1:41:34
+
+============================================================
+  Figures:
+    python scripts/visualize_eeg_pretraining.py \
+        --run-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena --checkpoint best.pth --split val --format svg
+    Several candidate windows per route, ranked, to choose one from:
+    python scripts/visualize_eeg_pretraining.py \
+        --run-dir /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena --checkpoint best.pth --format png --recon-windows 8
+  Resume:
+    sbatch --export=ALL,RESUME=auto \
+        scripts/slurm/cineca_eeg_c1_moe_pretrain.sbatch
+============================================================

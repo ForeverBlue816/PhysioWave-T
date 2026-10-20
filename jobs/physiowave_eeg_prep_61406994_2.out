@@ -1,0 +1,38 @@
+============================================================
+  siena preprocessing  (job 61406994 task 2)
+  shard 2/4   cpus 8   workers 8
+  array 0-3 (4 task(s))   N_SHARDS=4
+  partition boost_usr_prod
+  python /leonardo/home/userexternal/ychen003/pwprep
+============================================================
+============================================================
+  siena -> E19_256   19 x 1024 @ 256 Hz, 152 tokens (continuation corpus)
+  raw   /leonardo_scratch/large/userexternal/ychen003/bio/eeg/Siena/raw
+  out   /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+  val   0.10 (seed 42)
+  shard 2/4 (by subject)
+  8 worker process(es)
+============================================================
+dataset=siena  route=E19_256  19x1024 @ 256Hz
+slots=19  out=/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+  cached the listing at /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena/siena_files.txt
+  PN12/PN12-1.2.edf: 2443 windows
+  PN12/PN12-3.edf: 497 windows
+  PN12/PN12-4.edf: 2548 windows
+  PN17/PN17-1.edf: 2319 windows
+  PN17/PN17-2.edf: 2293 windows
+
+  dropped 31 non-slot channel name(s): ['1', '2', '23', '3', '31', '33', '61', '62', '63', '64', 'A', 'B'] ...
+  NOTE: 12 of them are known electrodes that E19_256 has no slot for: ['EEG Cp1', 'EEG Cp2', 'EEG Cp5', 'EEG Cp6', 'EEG F10', 'EEG F9', 'EEG Fc1', 'EEG Fc2', 'EEG Fc5', 'EEG Fc6', 'EEG P10', 'EEG P9']
+
+5 recordings, 10100 windows, 2 subjects (2 train / 0 val)
+  0 failure(s) -> /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena/preprocessing_failures.0002.jsonl
+  manifests + dataset_statistics.json in /leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/siena
+
+============================================================
+  task 2 exit 0
+  When every task has finished:
+    python scripts/build_eeg_c1_manifest.py \
+        --corpus-root ${DATA_ROOT:-${PW_DATA_EEG}/eeg_c1_corpus} \
+        --datasets ${DATASET} --allow-missing --check-shards
+============================================================

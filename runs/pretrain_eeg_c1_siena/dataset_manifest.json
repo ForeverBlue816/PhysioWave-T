@@ -1,0 +1,139 @@
+{
+  "routes": {
+    "E19_256": {
+      "n_channels": 19,
+      "window_samples": 1024,
+      "sampling_rate": 256,
+      "patch_size": [
+        1,
+        128
+      ],
+      "n_tokens": 152
+    },
+    "E32_512": {
+      "n_channels": 32,
+      "window_samples": 2048,
+      "sampling_rate": 512,
+      "patch_size": [
+        1,
+        256
+      ],
+      "n_tokens": 256
+    },
+    "E64_256": {
+      "n_channels": 64,
+      "window_samples": 1024,
+      "sampling_rate": 256,
+      "patch_size": [
+        1,
+        128
+      ],
+      "n_tokens": 512
+    },
+    "E128_512": {
+      "n_channels": 128,
+      "window_samples": 2048,
+      "sampling_rate": 512,
+      "patch_size": [
+        1,
+        256
+      ],
+      "n_tokens": 1024
+    }
+  },
+  "datasets": {
+    "faced": {
+      "route_id": "E32_512",
+      "n_windows": 129268
+    },
+    "hbn": {
+      "route_id": "E128_512",
+      "n_windows": 1352818
+    },
+    "hgd": {
+      "route_id": "E128_512",
+      "n_windows": 23074
+    },
+    "m3cv": {
+      "route_id": "E64_256",
+      "n_windows": 81895
+    },
+    "physionet_mi": {
+      "route_id": "E64_256",
+      "n_windows": 36933
+    },
+    "siena": {
+      "route_id": "E19_256",
+      "n_windows": 117083
+    },
+    "tdbrain": {
+      "route_id": "E32_512",
+      "n_windows": 86991
+    },
+    "tueg": {
+      "route_id": "E19_256",
+      "n_windows": 13711294
+    }
+  },
+  "target_weights": {
+    "tueg": 0.20148571742027105,
+    "faced": 0.026084907190313034,
+    "tdbrain": 0.021398382320469044,
+    "physionet_mi": 0.027885669109732926,
+    "m3cv": 0.04152431437322482,
+    "hbn": 0.33753861105374483,
+    "hgd": 0.04408239853224423,
+    "siena": 0.3
+  },
+  "realised_mixture": {
+    "by_step": {
+      "faced": 0.023591087811271297,
+      "hbn": 0.33682830930537355,
+      "hgd": 0.04193971166448231,
+      "m3cv": 0.04456094364351245,
+      "physionet_mi": 0.0327653997378768,
+      "siena": 0.29226736566186107,
+      "tdbrain": 0.0327653997378768,
+      "tueg": 0.19528178243774574
+    },
+    "by_window": {
+      "faced": 0.02809207959422552,
+      "hbn": 0.10027311744049941,
+      "hgd": 0.012485368708544674,
+      "m3cv": 0.026531408505657432,
+      "physionet_mi": 0.019508388607101055,
+      "siena": 0.4640395370009104,
+      "tdbrain": 0.03901677721420211,
+      "tueg": 0.3100533229288594
+    }
+  },
+  "batch_size_by_route": {
+    "E19_256": 128,
+    "E32_512": 96,
+    "E64_256": 48,
+    "E128_512": 24
+  },
+  "steps_per_epoch": 763,
+  "parameters": {
+    "total": 30300691,
+    "shared_transformer": 25224704,
+    "wavelet_frontend.E19_256": 66177,
+    "wavelet_frontend.E32_512": 171867,
+    "wavelet_frontend.E64_256": 643707,
+    "wavelet_frontend.E128_512": 2490555,
+    "patch_embed.256": 67072,
+    "patch_embed.512": 132608,
+    "reconstruction_head.256": 329344,
+    "reconstruction_head.512": 395008,
+    "raw_reconstruction_head.256": 329344,
+    "raw_reconstruction_head.512": 395008,
+    "channel_encoder": 21504,
+    "channel_to_token": 33280,
+    "channel_token_gate": 1,
+    "mask_token": 512,
+    "pretraining_only": 1449216,
+    "downstream_encoder": 28851475
+  },
+  "channel_vocab_size": 334,
+  "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8"
+}
