@@ -85,8 +85,23 @@ def test_siena_preprocess_merge_and_continue_from_a_checkpoint(tmp_path):
     assert rec["dataset_id"] == "siena" and rec["route_id"] == "E19_256" and rec["empty_slots"] == []
     run("EEG/preprocess_pretrain_corpus.py", "--dataset", "smoke", "--smoke-test", "--smoke-as",
         "tueg", "--out-dir", str(corpus / "tueg"), "--smoke-subjects", "6", "--mains-hz", "50")
+    # the verified original corpus first, then Siena added on top of it: the base
+    # rows are kept as they are and only Siena's shards are checked
     run("scripts/build_eeg_c1_manifest.py", "--corpus-root", str(corpus), "--datasets",
-        "tueg,siena", "--out-dir", str(corpus / "merged_siena"))
+        "tueg", "--out-dir", str(corpus / "merged"), "--check-shards")
+    out = run("scripts/build_eeg_c1_manifest.py", "--corpus-root", str(corpus), "--base-dir",
+              str(corpus / "merged"), "--datasets", "siena", "--out-dir",
+              str(corpus / "merged_siena"), "--check-shards", "--drop-unreadable")
+    n_siena = sum(1 for s in ("train", "val")
+                  for _ in open(corpus / "siena" / f"manifest_{s}.jsonl"))
+    assert f"checking {n_siena} shard(s)" in out                 # Siena only, not the base
+    ids = [json.loads(line)["dataset_id"]
+           for line in open(corpus / "merged_siena" / "manifest_train.jsonl")]
+    assert set(ids) == {"tueg", "siena"}
+    r = subprocess.run([py, "scripts/build_eeg_c1_manifest.py", "--corpus-root", str(corpus),
+                        "--base-dir", str(corpus / "merged"), "--datasets", "tueg",
+                        "--out-dir", str(tmp_path / "x")], capture_output=True, text=True, cwd=ROOT)
+    assert r.returncode != 0 and "both in --base-dir" in r.stderr
     run("-m", "physiowave.train.pretrain_main", "--config", "pretrain/eeg_c1_moe", "--smoke-test",
         "--max-steps", "2", "--output-dir", str(tmp_path / "init"))
     out = run("-m", "physiowave.train.pretrain_main", "--config", "pretrain/eeg_c1_siena",

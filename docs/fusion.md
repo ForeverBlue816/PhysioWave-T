@@ -316,12 +316,19 @@ fresh optimizer, and decays to 1e-5. Siena is registered as a continuation
 corpus (`routes.CONTINUATION_DATASETS`), so the original seven-corpus
 definition is unchanged, and a run uses Siena only when its config names it.
 
+The merge starts from the verified original manifest (`--base-dir merged`),
+so the seven corpora keep exactly the shards the original run read; only
+Siena's are checked. Re-merging the seven from their per-dataset manifests
+brings back the shards the original `--check-shards --drop-unreadable`
+left out. The first continuation attempt did that and died on a TUEG
+shard whose data does not inflate.
+
 ```bash
 bash scripts/download_siena.sh                                    # login node
 sbatch --export=ALL,DATASET=siena --array=0-3 scripts/slurm/cineca_eeg_corpus_preprocess.sbatch
 source scripts/cineca_env.sh && python scripts/build_eeg_c1_manifest.py \
-    --corpus-root $PW_DATA_EEG/eeg_c1_corpus --allow-missing \
-    --datasets tueg,faced,tdbrain,physionet_mi,m3cv,hbn,hgd,siena \
+    --corpus-root $PW_DATA_EEG/eeg_c1_corpus --base-dir $PW_DATA_EEG/eeg_c1_corpus/merged \
+    --datasets siena --check-shards --drop-unreadable --jobs 4 \
     --out-dir $PW_DATA_EEG/eeg_c1_corpus/merged_siena
 sbatch --nodes=1 --export=ALL,CONFIG=pretrain/eeg_c1_siena,INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/latest.pth,MANIFEST_TRAIN=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_train.jsonl,MANIFEST_VAL=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_val.jsonl,OUTPUT_DIR=$PW_CKPT_ROOT/pretrain_eeg_c1_siena \
     scripts/slurm/cineca_eeg_c1_moe_pretrain.sbatch

@@ -168,6 +168,14 @@ def main(argv=None) -> int:
                         "unreadable_shards.jsonl, instead of refusing to write. "
                         "The windows they held are lost either way; this makes "
                         "the loss explicit and lets training start.")
+    p.add_argument("--base-dir", default=None,
+                   help="start from an already merged and checked pair of "
+                        "manifests (e.g. <corpus-root>/merged) and add --datasets "
+                        "to it. The base rows are kept as they are -- the shards "
+                        "an earlier --check-shards --drop-unreadable kept -- and "
+                        "only the added datasets' shards are checked. How a "
+                        "continuation corpus joins the verified original one "
+                        "without re-reading 67,000 TUEG files.")
     p.add_argument("--jobs", type=int, default=1,
                    help="workers for --check-shards. The merge itself reads a "
                         "handful of text files and needs none of these.")
@@ -211,6 +219,37 @@ def main(argv=None) -> int:
     subjects: Dict[str, Dict[str, set]] = defaultdict(
         lambda: {"train": set(), "val": set()})
     per_dataset = {}
+    base_paths = set()
+
+    if args.base_dir:
+        base_counts: Dict[str, Dict] = {}
+        for split in ("train", "val"):
+            path = os.path.join(args.base_dir, f"manifest_{split}.jsonl")
+            if not os.path.isfile(path):
+                print(f"ERROR: --base-dir has no {path}", file=sys.stderr)
+                return 1
+            with open(path) as f:
+                rows = [json.loads(line) for line in f if line.strip()]
+            for r in rows:
+                d = r["dataset_id"]
+                if d in present:
+                    print(f"ERROR: {d} is both in --base-dir and in --datasets; "
+                          f"add only datasets the base does not hold", file=sys.stderr)
+                    return 1
+                merged[split].append(r)
+                base_paths.add(r["path"])
+                subjects[d][split].update(r.get("subjects", ()))
+                c = base_counts.setdefault(d, {"train_shards": 0, "train_windows": 0,
+                                               "val_shards": 0, "val_windows": 0})
+                c[f"{split}_shards"] += 1
+                c[f"{split}_windows"] += int(r["n_windows"])
+        for d, c in base_counts.items():
+            c["route_id"] = registry[d].route_id if d in registry else r.get("route_id")
+            c["subjects"] = len(subjects[d]["train"] | subjects[d]["val"])
+            c["from_base"] = args.base_dir
+            per_dataset[d] = c
+        print(f"base: {sum(len(v) for v in merged.values()):,} shard row(s) of "
+              f"{sorted(base_counts)} from {args.base_dir} (kept as checked)", flush=True)
 
     for d in present:
         dataset_dir = os.path.join(root, d)
@@ -261,7 +300,8 @@ def main(argv=None) -> int:
         import time
 
         todo = [(r["path"], int(r["n_windows"]), args.check_level)
-                for split in ("train", "val") for r in merged[split]]
+                for split in ("train", "val") for r in merged[split]
+                if r["path"] not in base_paths]            # the base was checked already
         bad = []
         started = time.time()
         print(f"checking {len(todo):,} shard(s) on {args.jobs} worker(s) "
