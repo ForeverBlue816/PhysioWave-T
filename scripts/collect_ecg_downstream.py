@@ -151,11 +151,15 @@ def main(argv=None, spec=None) -> int:
                   + f"{fmt(r['best_val']):>9s}  {r['best_epoch']}")
             md.append(f"| {name} | {lr} | " + " | ".join(fmt(v) for v in vals)
                       + f" | {fmt(r['best_val'])} | ep {r['best_epoch']} |")
+        # Reference rows: the default single row (PhysioWave v1, ``paper``), or
+        # spec["references"] = {task: [(label, {metric: value}), ...]}.
+        refs = list((spec.get("references") or {}).get(task, []))
         if task in PAPER_V1:
-            ref = PAPER_V1[task]
-            print(f"  {'  PhysioWave v1 (paper)*':26s}{'':>8s}" + "".join(
+            refs.insert(0, (spec.get("paper_label", "PhysioWave v1 (paper)"), PAPER_V1[task]))
+        for label, ref in refs:
+            print(f"  {'  ' + label + '*':26s}{'':>8s}" + "".join(
                 f"{fmt(ref.get(k)):>11s}" for k, _ in cols))
-            md.append("| PhysioWave v1 (paper)* | | " + " | ".join(
+            md.append(f"| {label}* | | " + " | ".join(
                 fmt(ref.get(k)) for k, _ in cols) + " | | |")
         if "ft" in pick and "scratch" in pick:
             k, lab = cols[0]
@@ -167,7 +171,8 @@ def main(argv=None, spec=None) -> int:
         md.append("")
     print("=" * 90)
     print("  \u2713 the run of each mode with the best validation score; only it is compared.")
-    if spec.get("paper_note") and any(t in runs for t in PAPER_V1):
+    if spec.get("paper_note") and any(t in runs for t in
+                                      set(PAPER_V1) | set(spec.get("references") or {})):
         print("  * " + "\n    ".join(spec["paper_note"]))
         md += ["\\* " + " ".join(spec["paper_note"])]
     if args.json:
