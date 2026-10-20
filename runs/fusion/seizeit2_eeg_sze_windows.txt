@@ -4,12 +4,16 @@ seizeit2: test auprc under each condition (val-selected checkpoint)
   run                                   alleeg~noiseeeg~badcheeg~drift
   concat/finetune [eeg_c1_finetune   0.3206   0.2431   0.2030   0.1518
   concat/finetune [eeg_c1native_fi   0.2632   0.1989   0.1147   0.1239
+  concat/finetune [eeg_c1siena_fin   0.3782   0.2641   0.2774   0.1743
+  concat/finetune [eeg_c1siena_fin   0.2985   0.2622   0.2410   0.1627
+  concat/finetune [eeg_c1siena_fin   0.3269   0.2557   0.2074   0.1664
   concat/finetune [eeg_eegpt_finet   0.2577   0.2032   0.1445   0.1333
   concat/finetune [eeg_labram_fine   0.3446   0.1716   0.2031   0.1872
   concat/finetune [eeg_luna_huge_f   0.3575   0.2085   0.2076   0.2498
   concat/finetune [eeg_luna_large_   0.3651   0.2164   0.2362   0.2410
   concat/frozen [eeg_c1_frozen_sze   0.3218   0.2204   0.2045   0.1501
   concat/frozen [eeg_c1native_froz   0.2840   0.2147   0.0950   0.1529
+  concat/frozen [eeg_c1siena_froze   0.3124   0.2103   0.1875   0.1624
   concat/frozen [eeg_eegpt_frozen_   0.3015   0.2739   0.1424   0.1525
   concat/frozen [eeg_labram_frozen   0.2758   0.1305   0.1957   0.1463
   concat/frozen [eeg_luna_huge_fro   0.3469   0.2138   0.2285   0.1929

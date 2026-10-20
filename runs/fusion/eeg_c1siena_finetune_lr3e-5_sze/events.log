@@ -777,3 +777,8 @@
   [776/778] sub-125 run-83: 1.0 h, 0 seizure s, present [True, False, False]  (3s)
   [777/778] sub-125 run-84: 1.0 h, 0 seizure s, present [True, False, False]  (3s)
   [778/778] sub-125 run-85: 0.1 h, 0 seizure s, present [True, False, False]  (1s)
+  complete  th0.5: sens_ovlp 0.507  FA/h 7.44 (epoch 111.4)  | pooled sens 0.398 FA/24h 281.4  | AUROC 0.698 AUPRC 0.0041  | sens@1FA/h 0.105
+  eeg_only  th0.5: sens_ovlp 0.507  FA/h 7.44 (epoch 111.4)  | pooled sens 0.398 FA/24h 281.4  | AUROC 0.698 AUPRC 0.0041  | sens@1FA/h 0.105
+  eeg_ecg   th0.5: sens_ovlp 0.507  FA/h 7.44 (epoch 111.4)  | pooled sens 0.398 FA/24h 281.4  | AUROC 0.698 AUPRC 0.0041  | sens@1FA/h 0.105
+  eeg_emg   th0.5: sens_ovlp 0.507  FA/h 7.44 (epoch 111.4)  | pooled sens 0.398 FA/24h 281.4  | AUROC 0.698 AUPRC 0.0041  | sens@1FA/h 0.105
+wrote /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1siena_finetune_lr3e-5_sze/events_cross.json in 8874s
