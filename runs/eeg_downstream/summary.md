@@ -12,4 +12,17 @@
 
 pretrained - scratch (BalAcc, each chosen on validation): -0.0006
 
+## PhysioNet P300 (erpbci), target vs non-target, subject-disjoint split
+
+| | lr | BalAcc | Kappa | AUROC | F1-w | val | |
+|---|---|---|---|---|---|---|---|
+| ✓ C1 fine-tuned | 1e-04 | 0.6014 | 0.2465 | 0.7109 | 0.8069 | 0.7690 | ep 10 |
+|   C1 fine-tuned | 3e-05 | 0.6179 | 0.2603 | 0.7151 | 0.8036 | 0.6733 | ep 19 |
+| ✓ C1 linear probe | 1e-03 | 0.6217 | 0.2981 | 0.7576 | 0.8206 | 0.7718 | ep 9 |
+| ✓ C1 from scratch | 5e-04 | 0.5857 | 0.2381 | 0.7489 | 0.8116 | 0.7652 | ep 13 |
+| EEGPT (linear probe)* | | 0.6502 | 0.2999 | 0.7168 |    -   | | |
+| LaBraM (linear probe)* | | 0.6477 | 0.2935 | 0.7068 |    -   | | |
+
+pretrained - scratch (BalAcc, each chosen on validation): +0.0157
+
 \* EEGPT's table: Sleep-EDF 10-fold, P300 leave-one-subject-out, each scored on the fold it also validates on. Here one subject-disjoint split with a held-out test set nothing selects on. Indicative only.

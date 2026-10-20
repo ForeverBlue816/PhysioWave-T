@@ -1,0 +1,41 @@
+============================================================
+  EEG C1 downstream  (job 61511737, 1 node, 4 GPUs)
+  tasks   physio_p300
+  modes   ft@1e-4 ft@3e-5 probe@1e-3 scratch   epochs 20
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream
+============================================================
+[gpu 3] physio_p300 scratch: start 08:55
+[gpu 1] physio_p300 ft@3e-5: start 08:55
+[gpu 0] physio_p300 ft@1e-4: start 08:55
+[gpu 2] physio_p300 probe@1e-3: start 08:55
+[gpu 2] physio_p300 probe@1e-3: done 09:16
+[gpu 3] physio_p300 scratch: done 09:18
+[gpu 0] physio_p300 ft@1e-4: done 09:18
+[gpu 1] physio_p300 ft@3e-5: done 09:18
+==========================================================================================
+Sleep-EDF (Sleep Cassette), 5 stages, Fpz-Cz + Pz-Oz, subject-disjoint holdout
+------------------------------------------------------------------------------------------
+                                  lr     BalAcc      Kappa       F1-w        Acc      val  ep
+    C1 fine-tuned              1e-04     0.6942     0.7281     0.7985     0.8094   0.6800  6
+  ✓ C1 fine-tuned              3e-05     0.6918     0.7170     0.7871     0.8010   0.6820  6
+  ✓ C1 linear probe            1e-03     0.6654     0.7200     0.7897     0.8052   0.6817  8
+  ✓ C1 from scratch            4e-04     0.6924     0.7363     0.8043     0.8152   0.6906  8
+    EEGPT (frozen + 4-layer head)*             0.6917     0.6857        -          -  
+  pretrained - scratch (BalAcc, each chosen on validation): -0.0006
+==========================================================================================
+PhysioNet P300 (erpbci), target vs non-target, subject-disjoint split
+------------------------------------------------------------------------------------------
+                                  lr     BalAcc      Kappa      AUROC       F1-w      val  ep
+  ✓ C1 fine-tuned              1e-04     0.6014     0.2465     0.7109     0.8069   0.7690  10
+    C1 fine-tuned              3e-05     0.6179     0.2603     0.7151     0.8036   0.6733  19
+  ✓ C1 linear probe            1e-03     0.6217     0.2981     0.7576     0.8206   0.7718  9
+  ✓ C1 from scratch            5e-04     0.5857     0.2381     0.7489     0.8116   0.7652  13
+    EEGPT (linear probe)*                0.6502     0.2999     0.7168        -  
+    LaBraM (linear probe)*               0.6477     0.2935     0.7068        -  
+  pretrained - scratch (BalAcc, each chosen on validation): +0.0157
+==========================================================================================
+  ✓ the run of each mode with the best validation score; only it is compared.
+  * EEGPT's table: Sleep-EDF 10-fold, P300 leave-one-subject-out, each
+    scored on the fold it also validates on. Here one subject-disjoint
+    split with a held-out test set nothing selects on. Indicative only.
