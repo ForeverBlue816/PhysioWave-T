@@ -1,0 +1,12 @@
+runs    c1siena:finetune:1e-5 c1siena:finetune:3e-5 c1siena:finetune c1siena:frozen
+data    /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/seizeit2
+c1      /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+eegpt   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/eegpt/eegpt_mcae_58chs_4s_large4E.safetensors
+labram  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/labram/labram-base.pth
+luna    /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/baselines/luna
+c1siena /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena/latest.pth
+output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_<encoder>_<mode>_sze
+[gpu 2] c1siena:finetune: train 07:49 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1siena_finetune_sze.log
+[gpu 3] c1siena:frozen: train 07:49 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1siena_frozen_sze.log
+[gpu 0] c1siena:finetune:1e-5: train 07:49 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1siena_finetune_lr1e-5_sze.log
+[gpu 1] c1siena:finetune:3e-5: train 07:49 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/eeg_c1siena_finetune_lr3e-5_sze.log

@@ -1,0 +1,33 @@
+exported encoder (no route) from /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  95 tensors, 25,279,489 parameters -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream/physio_p300_probe_lr1e-3/encoder.pth
+  frontend     excluded -- downstream builds its own; pass --route to include one
+  vocab sha    596f2711269e47b2
+  decoder      excluded (pretraining head)
+============================================================
+  EEG C1 downstream  physio_p300  mode probe  lr 1e-3  epochs 20
+  data     /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0
+  encoder  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream/physio_p300_probe_lr1e-3/encoder.pth
+  output   /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream/physio_p300_probe_lr1e-3
+============================================================
+2026-10-20 08:30:37,224 INFO hyper-parameters (cli > config train: > builtin):
+2026-10-20 08:30:37,224 INFO     epochs           20          [cli]
+2026-10-20 08:30:37,224 INFO     batch_size       64          [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     lr               0.001       [cli]
+2026-10-20 08:30:37,224 INFO     weight_decay     0.01        [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     warmup_epochs    5           [builtin]
+2026-10-20 08:30:37,224 INFO     warmup_ratio     0.2         [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     grad_clip        1.0         [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     label_smoothing  0.0         [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     min_lr_ratio     0.01        [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     precision        bf16        [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     select_by        auroc       [config:finetune/eeg_c1_p300]
+2026-10-20 08:30:37,224 INFO     patience         0           [builtin]
+2026-10-20 08:30:37,224 INFO     min_delta        0.0         [builtin]
+2026-10-20 08:30:37,224 INFO     encoder_lr_scale 1.0         [builtin]
+2026-10-20 08:30:37,224 INFO     layer_decay      1.0         [builtin]
+2026-10-20 08:30:37,224 INFO loading /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0 into memory on each of 1 rank(s): train.h5 2.06 GiB val.h5 0.29 GiB test.h5 0.28 GiB
+2026-10-20 08:30:39,506 INFO train 18586 windows, 58 channels, 512 samples/window
+2026-10-20 08:30:39,506 INFO class counts: [15496, 3090]
+model.eeg_c1 needs ['sampling_rate'] and neither the config nor /leonardo_scratch/large/userexternal/ychen003/bio/eeg/p300_f0/train.h5 supplies them.
+  A patch length is a modelling choice and belongs in the config. A sampling rate should be an attribute of the file, and is written by the converters -- but only since the fix that made it unconditional, so a file built before that has none.
+  Either re-run the converter's --stage split, or state it: --set model.eeg_c1.sampling_rate=<Hz>
