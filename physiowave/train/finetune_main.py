@@ -119,17 +119,36 @@ HPARAM_FALLBACKS = {
     # from-scratch curve -- the pretrained features were overwritten -- while
     # a frozen probe beat it on cross-subject GRABMyo; this is the remedy.
     "layer_decay": 1.0,
+    # Cross-entropy class weights: "none", or "balanced" -- class c weighted
+    # N / (K * n_c) over the TRAINING labels (sklearn's "balanced"). For a
+    # skewed binary task (P300, about 1 target in 6) the argmax of a plain CE
+    # leans to the majority class, which balanced accuracy and kappa punish
+    # while AUROC does not see it.
+    "class_weight": "none",
 }
 HPARAM_TYPES = {
     "epochs": int, "batch_size": int, "warmup_epochs": int, "lr": float,
     "weight_decay": float, "warmup_ratio": float, "grad_clip": float,
     "label_smoothing": float, "min_lr_ratio": float, "precision": str,
     "select_by": str, "patience": int, "min_delta": float,
-    "encoder_lr_scale": float, "layer_decay": float,
+    "encoder_lr_scale": float, "layer_decay": float, "class_weight": str,
 }
 
 
-def c1_lr_scale(depth: int, encoder_lr_scale: float = 1.0, layer_decay: float = 1.0):
+CLASS_WEIGHTS = ("none", "balanced")
+
+
+def balanced_class_weights(labels: np.ndarray, num_classes: int) -> torch.Tensor:
+    """N / (K * n_c) per class over ``labels``; a class absent from them is refused."""
+    counts = np.bincount(np.asarray(labels, dtype=np.int64), minlength=num_classes)
+    if (counts == 0).any():
+        raise SystemExit(f"class_weight=balanced: class(es) {np.flatnonzero(counts == 0).tolist()} "
+                         f"have no training window")
+    return torch.as_tensor(counts.sum() / (num_classes * counts), dtype=torch.float32)
+
+
+def c1_lr_scale(depth: int, encoder_lr_scale: float = 1.0, layer_decay: float = 1.0,
+                pretrained_prefixes: Optional[Tuple[str, ...]] = None):
     """``name -> multiple of lr`` for a C1 downstream model's parameters.
 
     What pretraining supplied (TRANSFERABLE) learns at ``encoder_lr_scale``
@@ -138,12 +157,17 @@ def c1_lr_scale(depth: int, encoder_lr_scale: float = 1.0, layer_decay: float = 
     block below at ``decay`` more, the final norm above the top block at 1,
     and the channel encoder and gate, which feed block 0, at
     ``decay ** (depth + 1)``. The two factors multiply.
+
+    ``pretrained_prefixes`` is what the checkpoint supplied (the model's
+    ``pretrained_prefixes``); on a route it adds the frontend and patcher,
+    which then learn like the channel encoder under block 0.
     """
     from physiowave.eeg_c1.downstream import TRANSFERABLE
     s, d = float(encoder_lr_scale), float(layer_decay)
+    prefixes = tuple(pretrained_prefixes or TRANSFERABLE)
 
     def scale(name: str) -> float:
-        if not name.startswith(TRANSFERABLE):
+        if not name.startswith(prefixes):
             return 1.0
         f = s
         if d != 1.0:
@@ -175,6 +199,9 @@ def resolve_hparams(args, cfg: Dict[str, Any]) -> List[Tuple[str, Any, str]]:
     if args.select_by not in SELECTION_METRICS:
         raise SystemExit(f"--select-by must be one of {SELECTION_METRICS}, "
                          f"got {args.select_by!r}")
+    if args.class_weight not in CLASS_WEIGHTS:
+        raise SystemExit(f"--class-weight must be one of {CLASS_WEIGHTS}, "
+                         f"got {args.class_weight!r}")
     return rows
 
 
@@ -604,6 +631,9 @@ def parse_args(argv=None):
                         "CrossEntropyLoss. Smoothing puts a floor under the "
                         "loss (0.20 for 2 classes, 0.39 for 5) that reads as "
                         "a run that stopped improving.")
+    p.add_argument("--class-weight", default=None, choices=CLASS_WEIGHTS,
+                   help="'balanced' weights the cross-entropy by N / (K * n_c) "
+                        "over the training labels (train.class_weight); default none")
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--precision", default=None)
     p.add_argument("--device", default=None, choices=["cuda", "cpu", "mps"],
@@ -813,12 +843,21 @@ def main(argv=None) -> int:
     precision, amp_dtype = resolve_precision(args.precision, device)
     scaler = make_grad_scaler(device.type, precision == "fp16")
     if multilabel:
+        if args.class_weight != "none":
+            raise SystemExit("class_weight applies to single-label cross-entropy; "
+                             "this split is multi-label")
         criterion = nn.BCEWithLogitsLoss()
         if info.is_main:
             logger.info("multi-label: %d sigmoid outputs, BCE; label smoothing "
                         "does not apply", args.num_classes)
     else:
-        criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+        weight = None
+        if args.class_weight == "balanced":
+            weight = balanced_class_weights(train_set.labels, args.num_classes).to(device)
+            if info.is_main:
+                logger.info("class weights (balanced, from the training labels): %s",
+                            [round(float(w), 4) for w in weight])
+        criterion = nn.CrossEntropyLoss(weight=weight, label_smoothing=args.label_smoothing)
     lr_scale = None
     scaled = args.encoder_lr_scale != 1.0 or args.layer_decay != 1.0
     has_pretrained = bool(args.pretrained
@@ -838,7 +877,8 @@ def main(argv=None) -> int:
         blocks = getattr(getattr(core, "shared_transformer", None), "blocks", None)
         if blocks is None:
             raise SystemExit("layer_decay needs the model's shared_transformer.blocks")
-        lr_scale = c1_lr_scale(len(blocks), args.encoder_lr_scale, args.layer_decay)
+        lr_scale = c1_lr_scale(len(blocks), args.encoder_lr_scale, args.layer_decay,
+                               getattr(core, "pretrained_prefixes", None))
     optimizer = build_optimizer(core, args.lr, args.weight_decay, lr_scale=lr_scale)
     if info.is_main and lr_scale is not None:
         # Every distinct rate with how many parameters learn at it, highest

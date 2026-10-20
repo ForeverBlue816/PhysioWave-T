@@ -99,6 +99,38 @@ def collect(root, tasks=TASKS):
     return runs
 
 
+SEED_RE = re.compile(r"(?:^|_)s(\d+)$")
+
+
+def by_seed(rows):
+    """Runs that differ only in their seed (a trailing ``_s<seed>`` in the tag;
+    none is seed 42) as one row: test metrics, val and epoch averaged, with the
+    per-metric standard deviation under ``std`` and the count under ``n``."""
+    groups = {}
+    for r in rows:
+        tag = SEED_RE.sub("", r["tag"])
+        groups.setdefault((r["mode"], tag), []).append(r)
+    out = []
+    for (mode, tag), rs in groups.items():
+        if len(rs) == 1:
+            out.append({**rs[0], "tag": tag, "n": 1, "std": {}})
+            continue
+        keys = set().union(*(r["test"] for r in rs))
+        test, std = {}, {}
+        for k in keys:
+            v = [r["test"][k] for r in rs if isinstance(r["test"].get(k), (int, float))]
+            if v:
+                m = sum(v) / len(v)
+                test[k] = m
+                std[k] = (sum((x - m) ** 2 for x in v) / max(len(v) - 1, 1)) ** 0.5
+        vals = [r["best_val"] for r in rs if r["best_val"] is not None]
+        out.append({**rs[0], "tag": tag, "test": test, "std": std, "n": len(rs),
+                    "best_val": sum(vals) / len(vals) if vals else None,
+                    "best_epoch": "/".join(str(r["best_epoch"]) for r in rs),
+                    "dirs": [r["dir"] for r in rs]})
+    return out
+
+
 def selected(rows):
     """Per mode, the run with the best validation score."""
     best = {}
@@ -128,13 +160,13 @@ def main(argv=None, spec=None) -> int:
         if task not in runs:
             continue
         cols = COLUMNS[task]
-        rows = sorted(runs[task], key=lambda r: (MODES.index(r["mode"]),
+        rows = sorted(by_seed(runs[task]), key=lambda r: (MODES.index(r["mode"]),
                                                  -(r["lr"] or 0), r["tag"]))
         pick = selected(rows)
-        print("=" * 90)
+        print("=" * 100)
         print(TITLE[task])
-        print("-" * 90)
-        print(f"  {'':26s}{'lr':>8s}" + "".join(f"{lab:>11s}" for _, lab in cols)
+        print("-" * 100)
+        print(f"  {'':36s}{'lr':>8s}" + "".join(f"{lab:>11s}" for _, lab in cols)
               + f"{'val':>9s}  ep")
         md += [f"## {TITLE[task]}", "",
                "| | lr | " + " | ".join(lab for _, lab in cols) + " | val | |",
@@ -147,17 +179,22 @@ def main(argv=None, spec=None) -> int:
             name = f"{mark} {MODE_NAME[r['mode']]}" + (f" [{label}]" if label else "")
             vals = [r["test"].get(k) for k, _ in cols]
             lr = f"{r['lr']:.0e}" if r["lr"] else "-"
-            print(f"  {name:26s}{lr:>8s}" + "".join(f"{fmt(v):>11s}" for v in vals)
-                  + f"{fmt(r['best_val']):>9s}  {r['best_epoch']}")
-            md.append(f"| {name} | {lr} | " + " | ".join(fmt(v) for v in vals)
-                      + f" | {fmt(r['best_val'])} | ep {r['best_epoch']} |")
+            seeds = f"  n={r['n']}" if r["n"] > 1 else ""
+            print(f"  {name:36s}{lr:>8s}" + "".join(f"{fmt(v):>11s}" for v in vals)
+                  + f"{fmt(r['best_val']):>9s}  {r['best_epoch']}{seeds}")
+            if r["n"] > 1:
+                print(f"  {'':36s}{'± std':>8s}" + "".join(
+                    f"{fmt(r['std'].get(k)):>11s}" for k, _ in cols))
+            sd = [f" ± {r['std'][k]:.4f}" if k in r["std"] else "" for k, _ in cols]
+            md.append(f"| {name} | {lr} | " + " | ".join(fmt(v) + e for v, e in zip(vals, sd))
+                      + f" | {fmt(r['best_val'])} | ep {r['best_epoch']}{seeds} |")
         # Reference rows: the default single row (PhysioWave v1, ``paper``), or
         # spec["references"] = {task: [(label, {metric: value}), ...]}.
         refs = list((spec.get("references") or {}).get(task, []))
         if task in PAPER_V1:
             refs.insert(0, (spec.get("paper_label", "PhysioWave v1 (paper)"), PAPER_V1[task]))
         for label, ref in refs:
-            print(f"  {'  ' + label + '*':26s}{'':>8s}" + "".join(
+            print(f"  {'  ' + label + '*':36s}{'':>8s}" + "".join(
                 f"{fmt(ref.get(k)):>11s}" for k, _ in cols))
             md.append(f"| {label}* | | " + " | ".join(
                 fmt(ref.get(k)) for k, _ in cols) + " | | |")
@@ -169,8 +206,10 @@ def main(argv=None, spec=None) -> int:
             md.append("")
             md.append(line)
         md.append("")
-    print("=" * 90)
+    print("=" * 100)
     print("  \u2713 the run of each mode with the best validation score; only it is compared.")
+    if any(r["n"] > 1 for t in runs for r in by_seed(runs[t])):
+        print("  n=K: mean over K seeds (std below), selected on the mean validation score.")
     if spec.get("paper_note") and any(t in runs for t in
                                       set(PAPER_V1) | set(spec.get("references") or {})):
         print("  * " + "\n    ".join(spec["paper_note"]))

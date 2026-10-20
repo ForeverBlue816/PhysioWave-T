@@ -21,6 +21,14 @@
 #                one subject-disjoint split, not folds)
 #   PRETRAINED   pretraining checkpoint or exported encoder
 #                ($PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth)
+#   ROUTE        place the montage on a pretraining route (E64_256 for P300):
+#                the pretrained wavelet frontend and patcher load as well, and a
+#                probe freezes the encoder end to end, as EEGPT's does. Unset,
+#                the montage gets its own fresh frontend (the configs' default:
+#                only the Transformer transfers). Empty route slots stay zero.
+#   CLASS_WEIGHT none | balanced (cross-entropy weighted N / (K n_c))
+#   ENC_LR_SCALE ft only: the pretrained parameters at this multiple of LR,
+#                the fresh frontend and head at LR (e.g. LR=1e-3 ENC_LR_SCALE=0.1)
 #   LR, EPOCHS, LAYER_DECAY, SEED, SET, EXTRA, TAG, OUTPUT_DIR
 #   OUTPUT_DIR   $PW_CKPT_ROOT/eeg_downstream/<task>_<mode>[_<tag>]
 # ============================================================================
@@ -74,6 +82,13 @@ then
     echo "NOTE: ${DATA_DIR}/train.h5 has no sampling_rate attribute; using ${RATE} Hz (the converter's rate)"
     SET_ARGS+=("model.eeg_c1.sampling_rate=${RATE}")
 fi
+if [[ -n "${ROUTE:-}" ]]; then
+    patch="$(python -c "import sys; from physiowave.eeg_c1.routes import ROUTES
+r = ROUTES.get(sys.argv[1]); print(r.patch_t if r else '')" "${ROUTE}")"
+    [[ -n "${patch}" ]] || { echo "ERROR: ROUTE=${ROUTE} is not a route (physiowave/eeg_c1/routes.py)" >&2; exit 1; }
+    SET_ARGS+=("model.eeg_c1.route_id=${ROUTE}" "model.eeg_c1.patch_samples=${patch}")
+fi
+[[ -n "${CLASS_WEIGHT:-}" ]] && EXTRA_ARGS+=(--class-weight "${CLASS_WEIGHT}")
 if [[ "${MODE}" != "scratch" ]]; then
     PRETRAINED="${PRETRAINED:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
     [[ -f "${PRETRAINED}" ]] || { echo "ERROR: no file at ${PRETRAINED}" >&2; exit 1; }
@@ -84,10 +99,22 @@ print("encoder" if "route_id" in ck else "checkpoint" if "model" in ck else "unk
 PY
 )"
     case "${kind}" in
-        encoder)    ENCODER="${PRETRAINED}" ;;
+        encoder)    ENCODER="${PRETRAINED}"
+                    # an export made without --route carries no frontend: on a
+                    # route it would load the Transformer alone, silently
+                    if [[ -n "${ROUTE:-}" ]] && ! python - "${PRETRAINED}" "${ROUTE}" <<'PY'
+import sys, torch
+ck = torch.load(sys.argv[1], map_location="cpu", weights_only=False)
+sys.exit(0 if ck.get("route_id") == sys.argv[2] else 1)
+PY
+                    then
+                        echo "ERROR: ${PRETRAINED} was not exported for route ${ROUTE}; pass the pretraining checkpoint instead" >&2
+                        exit 1
+                    fi ;;
         checkpoint) ENCODER="${OUTPUT_DIR}/encoder.pth"
                     python scripts/export_eeg_pretrained_encoder.py \
-                        --checkpoint "${PRETRAINED}" --output "${ENCODER}" ;;
+                        --checkpoint "${PRETRAINED}" --output "${ENCODER}" \
+                        ${ROUTE:+--route "${ROUTE}"} ;;
         *) echo "ERROR: ${PRETRAINED} is neither an encoder nor a checkpoint" >&2; exit 1 ;;
     esac
     SET_ARGS+=("model.eeg_c1.pretrained=${ENCODER}")
@@ -98,7 +125,10 @@ PY
         EXTRA_ARGS+=(--freeze-encoder)
         SET_ARGS+=("model.eeg_c1.freeze_scope=${FREEZE_SCOPE:-pretrained}")
     fi
-    [[ "${MODE}" == "ft" ]] && EXTRA_ARGS+=(--layer-decay "${LAYER_DECAY:-0.75}")
+    if [[ "${MODE}" == "ft" ]]; then
+        EXTRA_ARGS+=(--layer-decay "${LAYER_DECAY:-0.75}")
+        [[ -n "${ENC_LR_SCALE:-}" ]] && EXTRA_ARGS+=(--encoder-lr-scale "${ENC_LR_SCALE}")
+    fi
 fi
 [[ -n "${LR:-}" ]]     && EXTRA_ARGS+=(--lr "${LR}")
 [[ -n "${EPOCHS:-}" ]] && EXTRA_ARGS+=(--epochs "${EPOCHS}")
@@ -110,6 +140,7 @@ fi
 
 echo "============================================================"
 echo "  EEG C1 downstream  ${TASK}  mode ${MODE}  lr ${LR:-<config>}  epochs ${EPOCHS:-<config>}"
+echo "  route    ${ROUTE:-<own frontend>}  class weight ${CLASS_WEIGHT:-none}  seed ${SEED:-42}"
 echo "  data     ${DATA_DIR}"
 echo "  encoder  ${ENCODER:-<none: random initialisation>}"
 echo "  output   ${OUTPUT_DIR}"

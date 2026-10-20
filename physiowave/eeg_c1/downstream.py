@@ -383,6 +383,9 @@ class EEGC1Downstream(nn.Module):
         # Under `pretrained`, what CAN come from a checkpoint whatever the
         # route. load_pretrained adds ROUTE_BOUND if it actually loads those.
         self._frozen_prefixes = TRANSFERABLE
+        # What a checkpoint actually supplied, frozen or not: fine-tuning's
+        # encoder_lr_scale and layer decay apply to exactly these.
+        self.pretrained_prefixes = TRANSFERABLE
         self._apply_freeze()
 
     def _is_frozen_name(self, name: str) -> bool:
@@ -663,6 +666,8 @@ class EEGC1Downstream(nn.Module):
                 f"you are deliberately ablating the mechanism.")
         self.load_state_dict(own)
         self._init_new_rows()
+        if same_route and any(k.startswith(ROUTE_BOUND) for k in taken):
+            self.pretrained_prefixes = TRANSFERABLE + ROUTE_BOUND
         if self._frozen and self.freeze_scope == "pretrained" and same_route \
                 and any(k.startswith(ROUTE_BOUND) for k in taken):
             # The frontend and patcher came from pretraining too, so under

@@ -39,3 +39,33 @@ python EEG/physio_p300_finetune.py --edf-dir $PW_DATA_EEG/erpbci \
 
 A Siena-continued encoder: `PRETRAINED=$PW_CKPT_ROOT/pretrain_eeg_c1_siena/latest.pth
 TAG=siena` (the runs get `_siena` in their directory and their own rows).
+
+## Variants: route, class weights, encoder lr, seeds
+
+A `MODES` token takes `+` suffixes, and `SEEDS` repeats each token:
+
+```bash
+sbatch --export=ALL,TASKS=physio_p300,SEEDS="42 43 44",MODES="ft@1e-3+cw+els0.1 \
+ft@1e-3+route+cw+els0.1 probe@1e-3+cw probe@1e-3+route+cw scratch+cw scratch+route+cw" \
+    scripts/slurm/cineca_eeg_downstream.sbatch
+```
+
+- `+route` places the montage on the pretraining route `ROUTE_ID` (E64_256; P300's
+  58 electrodes are 58 of its 64 slots, the other six stay zero, as in
+  pretraining). The pretrained wavelet frontend and patcher load with the
+  Transformer, so a probe freezes the encoder end to end and trains the head
+  alone, which is EEGPT's linear probe. Without it the montage gets a fresh
+  frontend and only the Transformer transfers (the configs' default, the
+  narrower question).
+- `+cw`: cross-entropy weighted N / (K n_c) over the training labels
+  (`--class-weight balanced`). P300 is about one target in six, and the argmax
+  of an unweighted loss leans to the majority class; balanced accuracy and
+  kappa see that, AUROC does not.
+- `+els<x>` (ft): the pretrained parameters, the route frontend among them
+  when it was loaded, learn at x times the lr under layer decay 0.75; the fresh
+  frontend and the head learn at the lr. `ft@1e-3+els0.1` puts the fresh parts
+  at the probe's 1e-3 and the Transformer at 1e-4 and below. A single lr of
+  1e-4 trains the fresh frontend and head ten times slower than the probe does.
+- Seeds other than 42 add `_s<seed>` to the directory. The table averages the
+  seeds of one configuration (std underneath) and selects on the mean
+  validation score.

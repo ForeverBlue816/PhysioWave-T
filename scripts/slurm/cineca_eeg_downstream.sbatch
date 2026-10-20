@@ -13,9 +13,18 @@
 #                 ft       pretrained encoder fine-tuned, layer decay 0.75
 #                 probe    pretrained encoder frozen; frontend, pool, head train
 #                 scratch  same model, random initialisation (config lr)
+#               a MODE token can also carry variants, each a "+" suffix:
+#                 +route   on the pretraining route ROUTE_ID (E64_256): the
+#                          pretrained frontend loads too (EEG/finetune_eeg_c1.sh)
+#                 +cw      class-balanced cross-entropy
+#                 +els<x>  ft: pretrained parameters at x times the lr
+#               e.g. "ft@1e-3+route+cw+els0.1 probe@1e-3+route+cw scratch+route+cw"
+#   SEEDS       "42"; several, e.g. "42 43 44", run every token once per seed
+#               (directories other than seed 42 end in _s<seed>; the table
+#               reports mean and std over the seeds of each configuration)
 #   EPOCHS      20 (the configs carry EEGPT's 40 / 100)
 #   PRETRAINED  $PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth
-#   TAG, SEED, SET, EXTRA, LAYER_DECAY   passed through
+#   TAG, SET, EXTRA, LAYER_DECAY   passed through
 #
 # The splits are built beforehand (they need mne, the P300 download a login
 # node); a missing split stops that run with the command that builds it. A run
@@ -45,13 +54,16 @@ N_GPUS="${N_GPUS:-4}"
 OUT_ROOT="${OUT_ROOT:-${PW_CKPT_ROOT}/eeg_downstream}"
 export EPOCHS="${EPOCHS:-20}" NUM_GPUS=1 PROGRESS="${PROGRESS:-log}" OUT_ROOT
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" NUM_WORKERS="${NUM_WORKERS:-4}"
+SEEDS="${SEEDS:-42}"
+ROUTE_ID="${ROUTE_ID:-E64_256}"
 RUNS=()
-for t in ${TASKS}; do for m in ${MODES}; do RUNS+=("${t}:${m}"); done; done
+for t in ${TASKS}; do for m in ${MODES}; do for s in ${SEEDS}; do
+    RUNS+=("${t}:${m}:${s}"); done; done; done
 mkdir -p "${OUT_ROOT}"
 echo "============================================================"
 echo "  EEG C1 downstream  (job ${SLURM_JOB_ID:-?}, 1 node, ${N_GPUS} GPUs)"
 echo "  tasks   ${TASKS}"
-echo "  modes   ${MODES}   epochs ${EPOCHS}"
+echo "  modes   ${MODES}   epochs ${EPOCHS}   seeds ${SEEDS}"
 echo "  encoder ${PRETRAINED:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
 echo "  output  ${OUT_ROOT}"
 echo "============================================================"
@@ -63,22 +75,37 @@ sys.exit(0 if "test" in json.load(open(sys.argv[1])) else 1)
 PY
 }
 worker() {
-    local gpu="$1" i spec task token mode lr tag out rc=0
+    local gpu="$1" i spec task token seed base mode lr v route cw els out rc=0
+    local -a parts flags
     for ((i = gpu; i < ${#RUNS[@]}; i += N_GPUS)); do
-        spec="${RUNS[$i]}"; task="${spec%%:*}"; token="${spec#*:}"
-        mode="${token%%@*}"; lr=""; [[ "${token}" == *@* ]] && lr="${token#*@}"
-        tag="${lr:+lr${lr}}${TAG:+${lr:+_}${TAG}}"
-        out="${OUT_ROOT}/${task}_${mode}${tag:+_${tag}}"
+        IFS=: read -r task token seed <<< "${RUNS[$i]}"
+        IFS=+ read -r -a flags <<< "${token}"
+        base="${flags[0]}"; flags=("${flags[@]:1}")
+        mode="${base%%@*}"; lr=""; [[ "${base}" == *@* ]] && lr="${base#*@}"
+        route=""; cw=""; els=""
+        parts=(); [[ -n "${lr}" ]] && parts+=("lr${lr}")
+        for v in ${flags[@]+"${flags[@]}"}; do
+            case "${v}" in
+                route) route="${ROUTE_ID}"; parts+=(route) ;;
+                cw)    cw=balanced; parts+=(cw) ;;
+                els*)  els="${v#els}"; parts+=("${v}") ;;
+                *) echo "[gpu ${gpu}] ${token}: unknown variant +${v}"; rc=1; continue 2 ;;
+            esac
+        done
+        [[ -n "${TAG:-}" ]] && parts+=("${TAG}")
+        [[ "${seed}" != "42" ]] && parts+=("s${seed}")
+        out="${OUT_ROOT}/${task}_${mode}"; for v in ${parts[@]+"${parts[@]}"}; do out+="_${v}"; done
         if [[ "${FORCE:-0}" != "1" ]] && done_already "${out}"; then
-            echo "[gpu ${gpu}] ${task} ${token}: done, skipped"; continue
+            echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: done, skipped"; continue
         fi
-        echo "[gpu ${gpu}] ${task} ${token}: start $(date +%H:%M)"
+        echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: start $(date +%H:%M)"
         if CUDA_VISIBLE_DEVICES="${gpu}" TASK="${task}" MODE="${mode}" LR="${lr}" \
-                TAG="${tag}" OUTPUT_DIR="${out}" bash EEG/finetune_eeg_c1.sh \
+                SEED="${seed}" ROUTE="${route}" CLASS_WEIGHT="${cw}" ENC_LR_SCALE="${els}" \
+                OUTPUT_DIR="${out}" bash EEG/finetune_eeg_c1.sh \
                 > "${out}.log" 2>&1; then
-            echo "[gpu ${gpu}] ${task} ${token}: done $(date +%H:%M)"
+            echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: done $(date +%H:%M)"
         else
-            echo "[gpu ${gpu}] ${task} ${token}: FAILED -- see ${out}.log"; rc=1
+            echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: FAILED -- see ${out}.log"; rc=1
         fi
     done
     return ${rc}
