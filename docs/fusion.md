@@ -276,6 +276,31 @@ checked above. To use the authors' `.ckpt`, pass `EEGPT_CKPT=<path>` to the
 job; both formats load. The tables land in
 `$PW_CKPT_ROOT/fusion/seizeit2_eeg_sze_{windows,events}.txt`.
 
+**Results** (official split, 29 test patients, 181 seizures; the event
+columns are the cross-channel-gated scoring above, s@11 the sensitivity at
+the SVM's 11 FA/h, AUROC and AUPR the paper's epoch-based areas, AUPRC the
+window-level test set):
+
+| encoder | mode | s@11 % | AUROC | AUPR | window AUPRC |
+|---|---|---|---|---|---|
+| LUNA huge | finetune | **63.4** | 0.723 | **0.0305** | 0.358 |
+| C1 | finetune | 61.4 | 0.723 | 0.0107 | 0.321 |
+| LUNA large | finetune | 60.9 | **0.732** | 0.0206 | **0.365** |
+| LaBraM | finetune | 58.0 | 0.725 | 0.0161 | 0.345 |
+| LUNA huge | frozen | 58.2 | 0.725 | 0.0240 | 0.347 |
+| C1 | frozen | 54.5 | 0.715 | 0.0131 | 0.322 |
+| EEGPT | frozen | 53.3 | 0.710 | 0.0146 | 0.302 |
+| SVM (Bhagubai et al.) | | 71.1 | 0.700 | 0.0810 | |
+
+Fine-tuned C1 is level with LUNA on sensitivity and AUROC (two points of
+s@11 are 3-4 of 181 seizures) and ahead of LaBraM and EEGPT. It trails on
+AUPR: its most confident non-seizure scores are higher, so precision at the
+top of the ranking is lower. It also has the best VALIDATION AUPRC of every
+encoder (0.385, LaBraM 0.370, LUNA huge 0.327) and the worst test AUPRC of
+the fine-tuned four, and every C1 fine-tuning picks epoch 0: the few
+validation patients flatter it. No EEG-alone encoder reaches the SVM; the
+multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
+
 ## Figures (`scripts/visualize_seizeit2.py`)
 
 Six paper figures from the runs' own artefacts: the cached per-second
@@ -332,15 +357,31 @@ source scripts/cineca_env.sh && python scripts/build_eeg_c1_manifest.py \
     --out-dir $PW_DATA_EEG/eeg_c1_corpus/merged_siena
 sbatch --nodes=1 --export=ALL,CONFIG=pretrain/eeg_c1_siena,INIT_FROM=$PW_CKPT_ROOT/pretrain_eeg_c1_moe/latest.pth,MANIFEST_TRAIN=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_train.jsonl,MANIFEST_VAL=$PW_DATA_EEG/eeg_c1_corpus/merged_siena/manifest_val.jsonl,OUTPUT_DIR=$PW_CKPT_ROOT/pretrain_eeg_c1_siena \
     scripts/slurm/cineca_eeg_c1_moe_pretrain.sbatch
-sbatch --export=ALL,RUNS="c1siena:finetune:5e-5 c1siena:frozen c1:finetune:5e-5 c1siena:finetune" \
+sbatch --export=ALL,RUNS="c1siena:finetune:1e-5 c1siena:finetune:3e-5 c1siena:finetune c1siena:frozen" \
     scripts/slurm/cineca_seizeit2_eeg.sbatch
 ```
 
-The last job is a 2 x 2 on the fine-tuned runs, Siena or not by learning
-rate 5e-5 or the original 1e-4, so the two effects separate. `c1:finetune`
-at 1e-4 is the existing run, and `c1siena:frozen` is compared with the
-existing `c1:frozen`. An `encoder:mode:lr` entry in `RUNS` sets `train.lr`
-for that run and adds `_lr<lr>` to its directory.
+An `encoder:mode:lr` entry in `RUNS` sets `train.lr` for that run and adds
+`_lr<lr>` to its directory. `c1siena:frozen` is compared with `c1:frozen`.
+
+**Result: no gain.** Two epochs move the original corpora's validation
+loss little (macro 0.2403 -> 0.2441, TUEG 0.3034 -> 0.3041) and bring
+Siena's from 0.4245 to 0.4225. On SeizeIT2:
+
+| encoder | lr | val AUPRC | s@11 % | AUROC | AUPR |
+|---|---|---|---|---|---|
+| C1 | 1e-4 | 0.385 | **61.4** | 0.723 | 0.0107 |
+| C1 + Siena | 1e-4 (chosen on validation) | **0.397** | 59.8 | 0.722 | 0.0106 |
+| C1 + Siena | 3e-5 | 0.352 | 59.2 | 0.722 | 0.0168 |
+| C1 + Siena | 1e-5 | 0.356 | 54.9 | 0.719 | **0.0220** |
+| C1, frozen | | 0.348 | 54.5 | 0.715 | 0.0131 |
+| C1 + Siena, frozen | | 0.347 | 53.4 | 0.714 | 0.0111 |
+
+Validation picks the continued encoder at 1e-4, and on test it is the
+original within noise (1.6 points of s@11 are 3 seizures). Lower learning
+rates do not help sensitivity; 1e-5 doubles AUPR but loses 6.5 points of
+s@11, and validation does not choose it. The original `pretrain_eeg_c1_moe`
+encoder stays the one reported.
 
 ## Files
 
