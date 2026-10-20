@@ -33,10 +33,10 @@ TASK="${TASK:?set TASK=sleep_edf|physio_p300}"
 MODE="${MODE:-ft}"
 NUM_GPUS="${NUM_GPUS:-1}"
 case "${TASK}" in
-    sleep_edf)   CONFIG=finetune/eeg_c1_sleep; NCLS=5
+    sleep_edf)   CONFIG=finetune/eeg_c1_sleep; NCLS=5; RATE=100
                  DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/sleep_edf}"
                  BUILD="python EEG/sleep_edf_finetune.py --out-dir ${PW_DATA_EEG}/sleep_edf --split holdout" ;;
-    physio_p300) CONFIG=finetune/eeg_c1_p300; NCLS=2
+    physio_p300) CONFIG=finetune/eeg_c1_p300; NCLS=2; RATE=256
                  DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/p300_f0}"
                  BUILD="python EEG/download_p300.py --dest ${PW_DATA_EEG}/erpbci && python EEG/physio_p300_finetune.py --edf-dir ${PW_DATA_EEG}/erpbci --out-dir ${PW_DATA_EEG}/p300_f0 --fold 0" ;;
     *) echo "ERROR: TASK must be sleep_edf or physio_p300, not '${TASK}'" >&2; exit 1 ;;
@@ -62,6 +62,18 @@ rm -f "${OUTPUT_DIR}/results.json" "${OUTPUT_DIR}/best.pth" "${OUTPUT_DIR}/histo
 
 SET_ARGS=()
 EXTRA_ARGS=()
+# A split built before the converters wrote the sampling rate unconditionally
+# carries none, and the model refuses to guess. The converters resample to one
+# fixed rate per task (sleep_edf_finetune.py FS = 100, physio_p300_finetune.py
+# FS_OUT = 256), so state it when the file does not.
+if ! python - "${DATA_DIR}/train.h5" <<'PY'
+import sys, h5py
+sys.exit(0 if h5py.File(sys.argv[1], "r").attrs.get("sampling_rate") else 1)
+PY
+then
+    echo "NOTE: ${DATA_DIR}/train.h5 has no sampling_rate attribute; using ${RATE} Hz (the converter's rate)"
+    SET_ARGS+=("model.eeg_c1.sampling_rate=${RATE}")
+fi
 if [[ "${MODE}" != "scratch" ]]; then
     PRETRAINED="${PRETRAINED:-${PW_CKPT_ROOT}/pretrain_eeg_c1_moe/best.pth}"
     [[ -f "${PRETRAINED}" ]] || { echo "ERROR: no file at ${PRETRAINED}" >&2; exit 1; }
