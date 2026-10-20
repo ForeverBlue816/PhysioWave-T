@@ -1,0 +1,11 @@
+============================================================
+  EEG C1 downstream  (job 61506554, 1 node, 4 GPUs)
+  tasks   sleep_edf physio_p300
+  modes   ft@1e-4 ft@3e-5 probe@1e-3 scratch   epochs 20
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream
+============================================================
+[gpu 1] sleep_edf ft@3e-5: start 07:12
+[gpu 3] sleep_edf scratch: start 07:12
+[gpu 2] sleep_edf probe@1e-3: start 07:12
+[gpu 0] sleep_edf ft@1e-4: start 07:12
