@@ -107,6 +107,54 @@ def test_grabmyo_inter_session_split(tmp_path):
     assert set(np.unique(f["test"]["label"][:]).tolist()) == {0, 16}
 
 
+def _uci_tree(root, subjects=("01", "02", "03")):
+    """Three subjects x two series at 1 ms steps: 2 s unmarked, then each of the
+    six gestures for 1.75 s with 1 s unmarked after it; subject 01's second
+    series adds an extended palm (class 7) and one row without a class."""
+    rng = np.random.default_rng(2)
+    for sub in subjects:
+        d = root / sub
+        d.mkdir(parents=True, exist_ok=True)
+        for series in (1, 2):
+            labels = [0] * 2000
+            for k in range(1, 7):
+                labels += [k] * 1750 + [0] * 1000
+            if sub == "01" and series == 2:
+                labels += [7] * 1750 + [0] * 500
+            n = len(labels)
+            x = rng.normal(0, 1.2e-4, (n, 8))
+            lines = ["time\t" + "\t".join(f"channel{k}" for k in range(1, 9)) + "\tclass"]
+            for i in range(n):
+                row = [str(i + 1)] + [f"{v:.5g}" for v in x[i]]
+                if sub == "01" and series == 2 and i == 100:
+                    lines.append("\t".join(row))                 # the row without a class
+                else:
+                    lines.append("\t".join(row + [str(labels[i])]))
+            (d / f"{series}_raw_data_13-12_22.03.16.txt").write_text("\n".join(lines) + "\n")
+
+
+def test_uci_emg_subject_and_session_splits(tmp_path):
+    pytest.importorskip("pandas")
+    _uci_tree(tmp_path / "raw")
+    f, info = _run("uci_emg_xsess", tmp_path / "raw", tmp_path / "xsess")
+    sp = info["splits"]
+    assert f["train"]["data"].shape[1:] == (8, 200)              # 1 s at 200 Hz
+    assert [c.decode() for c in f["train"]["channel_names"][:]] == [f"uci{k}" for k in range(1, 9)]
+    assert info["classes"] == ["rest", "fist", "wrist_flexion", "wrist_extension",
+                               "radial_deviation", "ulnar_deviation"]
+    assert sp["test"]["subjects"] == 3 and sp["train"]["subjects"] == 3   # series 1 / 2
+    assert sp["test"]["segments"] == 3 * 6                         # the palm (7) is left out
+    assert 3 * 18 <= sp["test"]["windows"] <= 4 * 18               # 1.75 s, 1 s windows, 0.25 s stride
+    assert sp["val"]["segments"] == 2                              # 10 % of 18 training segments
+    assert set(np.unique(f["test"]["label"][:]).tolist()) == set(range(6))
+    assert info["segment_overlap"] == {"train/val": 0, "train/test": 0, "val/test": 0}
+    f, info = _run("uci_emg", tmp_path / "raw", tmp_path / "xsubj")
+    sp = info["splits"]
+    assert {sp[s]["subjects"] for s in sp} == {1}                  # 3 subjects, one a side
+    assert all(v == 0 for v in info["subject_overlap"].values())
+    assert sp["test"]["segments"] == 12                            # both series of one subject
+
+
 def _db2_zip(path, subject, rng):
     import scipy.io
     fs, seg, rest = 2000, 5 * 2000, 3 * 2000

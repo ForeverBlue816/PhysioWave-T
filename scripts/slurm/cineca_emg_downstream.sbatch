@@ -19,7 +19,8 @@
 #
 #   PRETRAINED  $PW_CKPT_ROOT/pretrain_emg_c1_moe/best.pth
 #   TASKS       "epn612 grabmyo ninapro_db5 epn612_xuser grabmyo_xsubj"
-#               (ninapro_db2 still runs if named)
+#               (ninapro_db2, uci_emg and uci_emg_xsess run when named:
+#               TASKS="uci_emg uci_emg_xsess")
 #   MODES       "ft ft@3e-4 probe@1e-3 scratch"  (MODE or MODE@LR; per mode the
 #               table reports the run with the best VALIDATION score)
 #   TAG, LR, EPOCHS, SEED, SET   passed to EMG/finetune_emg_c1.sh
@@ -70,6 +71,7 @@ set_for() {      # the download a task reads
         grabmyo|grabmyo_xsubj) echo grabmyo ;;
         ninapro_db2)           echo ninapro_db2 ;;
         ninapro_db5)           echo ninapro_db5 ;;
+        uci_emg|uci_emg_xsess) echo uci_emg ;;
         *)                     return 1 ;;
     esac
 }

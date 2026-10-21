@@ -12,7 +12,8 @@
 #            (what the representation alone is worth)
 #   scratch  the same model, no weights loaded                 (the control)
 #
-# TASK: epn612 (paper: accuracy), epn612_xuser, grabmyo, grabmyo_xsubj, ninapro_db5, ninapro_db2
+# TASK: epn612 (paper: accuracy), epn612_xuser, grabmyo, grabmyo_xsubj, ninapro_db5, ninapro_db2,
+#       uci_emg, uci_emg_xsess
 #
 # The split comes from EMG/emg_downstream_prep.py; build it once with
 # scripts/slurm/cineca_emg_downstream.sbatch (which does it if missing) or
@@ -36,10 +37,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source "$(pwd)/scripts/cineca_env.sh"
 
-TASK="${TASK:?set TASK=epn612|epn612_xuser|grabmyo|grabmyo_xsubj|ninapro_db5|ninapro_db2}"
+TASK="${TASK:?set TASK=epn612|epn612_xuser|grabmyo|grabmyo_xsubj|ninapro_db5|ninapro_db2|uci_emg|uci_emg_xsess}"
 MODE="${MODE:-ft}"
 NUM_GPUS="${NUM_GPUS:-1}"
-case "${TASK}" in epn612|epn612_xuser|grabmyo|grabmyo_xsubj|ninapro_db5|ninapro_db2) ;;
+case "${TASK}" in epn612|epn612_xuser|grabmyo|grabmyo_xsubj|ninapro_db5|ninapro_db2|uci_emg|uci_emg_xsess) ;;
     *) echo "ERROR: unknown TASK '${TASK}'" >&2; exit 1 ;; esac
 case "${MODE}" in ft|probe|scratch) ;;
     *) echo "ERROR: MODE must be ft, probe or scratch, not '${MODE}'" >&2; exit 1 ;; esac

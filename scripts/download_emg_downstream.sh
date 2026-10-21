@@ -1,11 +1,12 @@
 #!/bin/bash
 # ============================================================================
-# Fetch the sEMG downstream benchmarks: EMG-EPN-612, GRABMyo, NinaPro DB2.
+# Fetch the sEMG downstream benchmarks: EMG-EPN-612, GRABMyo, NinaPro DB2/DB5,
+# the UCI EMG-for-gestures set.
 #
 #   source $HOME/pw/bin/activate
 #   bash scripts/download_emg_downstream.sh status
 #   bash scripts/download_emg_downstream.sh all
-#   bash scripts/download_emg_downstream.sh epn612 | grabmyo | ninapro_db2
+#   bash scripts/download_emg_downstream.sh epn612 | grabmyo | ninapro_db2 | ninapro_db5 | uci_emg
 #
 # RUN IT ON A LOGIN NODE (compute nodes have no internet). ~35 GB in all;
 # every step is resumable: a finished set carries .complete and is skipped,
@@ -21,6 +22,9 @@
 #                Cite Atzori et al., Sci. Data 2014.
 #   ninapro_db5  NinaPro DB5 from Zenodo 1000116: s1.zip .. s10.zip (~200 MB),
 #                kept zipped. Cite Pizzolato et al., PLoS ONE 2017.
+#   uci_emg      UCI 481 "EMG data for gestures": one 18 MB zip, unpacked to
+#                36 subject folders of two tab-separated recordings. CC BY 4.0;
+#                cite Lobov et al., Sensors 2018.
 #
 # LAYOUT (what the preprocessing and scripts/slurm/cineca_emg_downstream.sbatch
 # expect):
@@ -28,6 +32,7 @@
 #   $EMG_ROOT/downstream/raw/grabmyo/Session{1,2,3}/session*_participant*/...
 #   $EMG_ROOT/downstream/raw/ninapro_db2/DB2_s{1..40}.zip
 #   $EMG_ROOT/downstream/raw/ninapro_db5/s{1..10}.zip
+#   $EMG_ROOT/downstream/raw/uci_emg/EMG_data_for_gestures-master/{01..36}/{1,2}_raw_data_*.txt
 #   $EMG_ROOT/downstream/c1/<task>/        written by the preprocessing
 #
 # None of these is in the sEMG pretraining corpus; the pretraining
@@ -44,10 +49,11 @@ EMG_ROOT="${EMG_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/emg}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${PYTHON:-python}"
 JOBS="${JOBS:-16}"
-SETS="epn612 grabmyo ninapro_db5 ninapro_db2"
+SETS="epn612 grabmyo ninapro_db5 ninapro_db2 uci_emg"
 EPN_URL="${EPN_URL:-https://zenodo.org/api/records/4421500/files/EMG-EPN612%20Dataset.zip/content}"
 DB2_BASE="${DB2_BASE:-https://ninapro.hevs.ch/files/DB2_Preproc}"
 DB5_BASE="${DB5_BASE:-https://zenodo.org/api/records/1000116/files}"
+UCI_URL="${UCI_URL:-https://archive.ics.uci.edu/static/public/481/emg+data+for+gestures.zip}"
 
 say()  { echo "==> $*"; }
 warn() { echo "WARNING: $*" >&2; }
@@ -120,6 +126,22 @@ sys.exit(0 if ok == 10 else 1)
 PY
 }
 
+get_uci_emg() {
+    local d zip; d="$(raw_dir uci_emg)"; zip="${d}/emg_data_for_gestures.zip"
+    mkdir -p "${d}"
+    say "UCI 481 ${UCI_URL} (18 MB)"
+    curl -fsSL --retry 3 -o "${zip}" "${UCI_URL}" || return 1
+    "${PYTHON}" - "${zip}" "${d}" <<'PY'
+import os, re, sys, zipfile
+z, dest = zipfile.ZipFile(sys.argv[1]), sys.argv[2]
+members = [m for m in z.namelist() if not (m.startswith("/") or ".." in m.split("/"))]
+z.extractall(dest, members)
+n = sum(1 for m in members if re.search(r"/\d\d/\d_raw_data_.*\.txt$", m))
+print(f"    {n} recordings (expected 36 subjects x 2 series = 72)")
+sys.exit(0 if n >= 72 else 1)
+PY
+}
+
 LOCK_HELD=""
 release_lock() { [[ -n "${LOCK_HELD}" ]] && rm -rf "${LOCK_HELD}"; LOCK_HELD=""; }
 trap release_lock EXIT
@@ -171,6 +193,6 @@ case "${1:-}" in
         for ds in ${SETS}; do run_one "${ds}" || failed+=("${ds}"); done
         echo; status
         [[ ${#failed[@]} -eq 0 ]] || { warn "incomplete: ${failed[*]} -- rerun"; exit 1; } ;;
-    epn612|grabmyo|ninapro_db2|ninapro_db5) run_one "$1" ;;
-    *) echo "usage: bash $0 status|all|epn612|grabmyo|ninapro_db5|ninapro_db2" >&2; exit 1 ;;
+    epn612|grabmyo|ninapro_db2|ninapro_db5|uci_emg) run_one "$1" ;;
+    *) echo "usage: bash $0 status|all|epn612|grabmyo|ninapro_db5|ninapro_db2|uci_emg" >&2; exit 1 ;;
 esac

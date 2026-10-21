@@ -23,9 +23,10 @@ COLS = [("acc", "Acc"), ("balanced_acc", "BalAcc"), ("macro_f1", "F1-mac"),
 SPEC = {
     "heading": "sEMG C1 downstream",
     "tasks": ("epn612", "epn612_xuser", "grabmyo", "grabmyo_xsubj", "ninapro_db5",
-              "ninapro_db2"),
+              "ninapro_db2", "uci_emg", "uci_emg_xsess"),
     "columns": {t: COLS for t in ("epn612", "epn612_xuser", "grabmyo",
-                                  "grabmyo_xsubj", "ninapro_db5", "ninapro_db2")},
+                                  "grabmyo_xsubj", "ninapro_db5", "ninapro_db2",
+                                  "uci_emg", "uci_emg_xsess")},
     "titles": {
         "epn612": "EMG-EPN-612, 6 gestures, user-dependent (the paper's protocol; paper: accuracy)",
         "epn612_xuser": "EMG-EPN-612, 6 gestures, user-independent (test users never trained on)",
@@ -33,6 +34,8 @@ SPEC = {
         "grabmyo_xsubj": "GRABMyo, 17 classes, subject-independent",
         "ninapro_db5": "NinaPro DB5, exercises A+B+C, 52 movements + rest, two Myo at 200 Hz (reps 1,3,4,6 / 2,5)",
         "ninapro_db2": "NinaPro DB2, exercises B+C+D, 49 movements + rest (reps 1,3,4,6 / 2,5)",
+        "uci_emg": "UCI EMG for gestures (Lobov et al. 2018), 6 gestures, subject-independent (36 subjects, 60/20/20)",
+        "uci_emg_xsess": "UCI EMG for gestures, 6 gestures, inter-session (series 1 trains, series 2 tests)",
     },
     # PhysioWave (v1), README "Benchmark Results".
     "paper": {"epn612": {"acc": 0.945}},

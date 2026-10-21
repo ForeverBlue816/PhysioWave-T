@@ -43,6 +43,8 @@ The paper's methods section should state the following details.
 | `grabmyo_xsubj` | same | 17 | **subject-independent**: participants split 70/15/15 (seed 42), all sessions |
 | `ninapro_db5` | NinaPro DB5: 10 subjects, two Myo armbands (16 ch), 200 Hz | 53: 52 movements of exercises A (12), B (17) and C (23), plus rest | **repetition split**; see below |
 | `ninapro_db2` | NinaPro DB2: 40 subjects, 12 Delsys electrodes, 2 kHz | 50: 49 movements of exercises B (17), C (23) and D (9), plus rest | **repetition split**; kept, not in the default job (see below) |
+| `uci_emg` | UCI 481 "EMG data for gestures" (Lobov et al. 2018): 36 subjects, Myo armband, 8 ch, 1 ms time column (resampled to the Myo's 200 Hz) | 6: rest, fist, wrist flexion, wrist extension, radial deviation, ulnar deviation | **subject-independent**: subjects 60/20/20 (seed 42); see below |
+| `uci_emg_xsess` | same | 6 | **inter-session**: series 1 trains, series 2 tests; see below |
 
 ### `epn612`: the paper's (v1) protocol, user-dependent
 
@@ -90,6 +92,21 @@ windows, a protocol that is not this one), and with ten subjects it is the
 task where a pretrained encoder has the most to add. The DB2 code and
 config stay and run when `TASKS` names them.
 
+### `uci_emg` and `uci_emg_xsess`: the UCI EMG-for-gestures set
+
+Each of the 36 subjects recorded two series; a series holds every gesture
+once or twice for about 1.75 s, with unmarked samples between. The six
+gestures every subject performed are the classes; the unmarked samples and
+the extended palm (4 of the 72 files) are left out.
+
+- `uci_emg`: subjects 60/20/20 (seed 42, 22/7/7), both series of a subject on
+  its side. The question is generalisation to people never trained on.
+- `uci_emg_xsess`: series 1 trains, 10% of its gesture segments (whole
+  segments) validate, series 2 of the same subjects tests: the same people,
+  a later recording.
+- Not in the default job: `TASKS="uci_emg uci_emg_xsess"` runs them after
+  `bash scripts/download_emg_downstream.sh uci_emg` (18 MB) on a login node.
+
 ### Preprocessing
 
 Preprocessing is the pretraining corpus's:
@@ -107,6 +124,9 @@ No quality filter is applied to a benchmark. Windows are as follows:
 
 - **EPN-612** stays at 200 Hz. Each sample gives one window of 5 s, which is
   40 patches of 0.125 s.
+- **UCI** is resampled from its 1 ms time column to 200 Hz, the Myo's own
+  rate, and windowed like DB5: 1 s windows, 0.25 s stride, inside one gesture
+  segment; 50 Hz mains.
 - **DB5** stays at its 200 Hz too: 1 s windows (8 patches of 0.125 s) with a
   0.25 s stride, inside a single label.
 - **GRABMyo and DB2** are resampled to 2000 Hz and cut into 1 s windows with a

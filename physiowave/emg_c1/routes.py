@@ -122,7 +122,8 @@ DATASET_IDS: Tuple[str, ...] = tuple(PRETRAIN_DATASETS)
 
 #: Downstream evaluation only, never pretrained on.
 DOWNSTREAM_ONLY: Tuple[str, ...] = ("db5", "ninapro_db5", "epn612", "epn_612",
-                                    "grabmyo", "db2", "ninapro_db2")
+                                    "grabmyo", "db2", "ninapro_db2", "uci_emg",
+                                    "uci_emg_xsess")
 
 #: Per rank. 128 / 192 / 512 tokens a window, so ~24 k tokens a step on each
 #: route; BATCH_SIZE_BY_ROUTE overrides at submission.

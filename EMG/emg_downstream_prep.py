@@ -38,6 +38,15 @@ TASKS
                  Rest is subsampled per subject and exercise to the mean
                  window count of one movement, so it does not outnumber them
                  50 to 1. --exercises picks a subset (B, C, D).
+  uci_emg        UCI 481 "EMG data for gestures" (Lobov et al., 2018): 36
+                 subjects, Myo armband, 8 ch, a 1 ms time column (the Myo's
+                 200 Hz oversampled), two series per subject, each a run of
+                 six gestures held ~1.75 s: rest, fist, wrist flexion, wrist
+                 extension, radial deviation, ulnar deviation (the unmarked
+                 samples and the extended palm, which 4 of 72 files have, are
+                 left out). SUBJECT-INDEPENDENT: subjects 60/20/20 (seed 42).
+  uci_emg_xsess  The same, INTER-SESSION: series 1 trains (10% of its
+                 segments validate), series 2 of the same subjects tests.
   ninapro_db5    NinaPro DB5 (Zenodo 1000116): 10 subjects, two Myo armbands
                  (16 ch) at 200 Hz, exercises A (12 finger movements, labels
                  1-12), B (17 hand/wrist, 13-29) and C (23 grasps, 30-52) +
@@ -55,6 +64,8 @@ not information): one 5 s window per sample, 40 patches of 0.125 s.
 GRABMyo and DB2 are at 2000 Hz in 1 s windows with a 0.5 s stride, the
 pretraining window; a window must lie inside one label. DB5 stays at its
 200 Hz like EPN, in 1 s windows (8 patches of 0.125 s) with a 0.25 s stride.
+UCI is resampled 1000 -> 200 Hz, the Myo's rate, and windowed like DB5; a
+window must lie inside one gesture segment.
 
 None of these montages is a pretraining route, so the downstream model builds
 its own wavelet frontend and patch embedding and takes the pretrained channel
@@ -102,6 +113,10 @@ GRAB_CLASSES = ["lateral_prehension", "thumb_adduction", "thumb_little_oppositio
                 "wrist_extension", "wrist_flexion", "forearm_supination",
                 "forearm_pronation", "hand_open", "hand_close", "rest"]
 GRAB_CHANNELS = [f"F{k}" for k in range(1, 17)] + [f"W{k}" for k in range(1, 13)]
+UCI_CLASSES = ["rest", "fist", "wrist_flexion", "wrist_extension", "radial_deviation",
+               "ulnar_deviation"]
+UCI_CHANNELS = [f"uci{k}" for k in range(1, 9)]
+UCI_FS = 1000.0            # the files' time column steps 1 ms; the Myo itself streams 200 Hz
 DB2_CHANNELS = [f"db2_e{k}" for k in range(1, 13)]
 DB5_CHANNELS = [f"db5_e{k}" for k in range(1, 17)]
 #: exercise letter -> (E index in the file name, its global label range)
@@ -124,6 +139,8 @@ TASKS = {
     "grabmyo_xsubj": {"fs": 2000, "window": 1.0, "stride": 0.5,  "mains": 60.0},
     "ninapro_db2":   {"fs": 2000, "window": 1.0, "stride": 0.5,  "mains": 50.0},
     "ninapro_db5":   {"fs": 200,  "window": 1.0, "stride": 0.25, "mains": 50.0},
+    "uci_emg":       {"fs": 200,  "window": 1.0, "stride": 0.25, "mains": 50.0},
+    "uci_emg_xsess": {"fs": 200,  "window": 1.0, "stride": 0.25, "mains": 50.0},
 }
 
 
@@ -132,13 +149,16 @@ def classes_for(task: str) -> List[str]:
         return EPN_CLASSES
     if task.startswith("grabmyo"):
         return GRAB_CLASSES
+    if task.startswith("uci"):
+        return UCI_CLASSES
     n = max(r.stop for _, r in NINAPRO[task]["exercises"].values()) - 1
     return ["rest"] + [f"m{k}" for k in range(1, n + 1)]
 
 
 def channels_for(task: str) -> List[str]:
     return EPN_CHANNELS if task.startswith("epn") else \
-        GRAB_CHANNELS if task.startswith("grabmyo") else NINAPRO[task]["channels"]
+        GRAB_CHANNELS if task.startswith("grabmyo") else \
+        UCI_CHANNELS if task.startswith("uci") else NINAPRO[task]["channels"]
 
 
 def config_for(task: str) -> ECGPreprocessConfig:
@@ -256,6 +276,47 @@ def grab_unit(args):
         split = None                                           # by subject, later
     seg = f"{subject}/s{sess}/g{gest}/t{trial}"
     return [(split, subject, seg, gest - 1, wi) for wi in w]
+
+
+# --------------------------------------------------------------------------- #
+# UCI EMG data for gestures
+# --------------------------------------------------------------------------- #
+
+_UCI = re.compile(r"^(\d)_raw_data_.*\.txt$")
+
+
+def uci_units(raw: str) -> List[str]:
+    """``<subject>/<series>_raw_data_<stamp>.txt`` anywhere under ``raw``."""
+    return sorted(f for f in glob.glob(os.path.join(raw, "**", "*_raw_data_*.txt"), recursive=True)
+                  if _UCI.match(os.path.basename(f)))
+
+
+def uci_unit(args):
+    path, task = args
+    import pandas as pd
+    series = int(_UCI.match(os.path.basename(path)).group(1))
+    subject = f"uci_s{os.path.basename(os.path.dirname(path))}"
+    # tab-separated: time (ms), channel1..channel8 (V), class. One row of the
+    # 72 files has no class; it goes.
+    df = pd.read_csv(path, sep="\t").dropna(subset=["class"])
+    x = df[[f"channel{k}" for k in range(1, 9)]].to_numpy(np.float64).T * 1000.0   # V -> mV
+    lab = df["class"].to_numpy().astype(np.int64)
+    seg_id = np.cumsum(np.r_[True, lab[1:] != lab[:-1]]) - 1
+    w, starts = pipeline(x, UCI_FS, task, f"{subject}/s{series}")
+    ratio = UCI_FS / TASKS[task]["fs"]
+    W_in = int(TASKS[task]["window"] * UCI_FS)
+    rows = []
+    for wi, st in zip(w, starts):
+        a = int(round(st * ratio))
+        seg = lab[a:a + W_in]
+        if seg.size < W_in or seg.min() != seg.max():
+            continue                                 # straddles a label change
+        k = int(seg[0])
+        if not 1 <= k <= len(UCI_CLASSES):
+            continue                                 # 0 unmarked; 7 extended palm, 4 files
+        split = ("train" if series == 1 else "test") if task == "uci_emg_xsess" else None
+        rows.append((split, subject, f"{subject}/s{series}/seg{int(seg_id[a])}", k - 1, wi))
+    return rows
 
 
 # --------------------------------------------------------------------------- #
@@ -420,6 +481,9 @@ def main(argv=None) -> int:
     elif task.startswith("grabmyo"):
         units = [(s, task) for s in grab_units(args.raw_dir)]
         fn = grab_unit
+    elif task.startswith("uci"):
+        units = [(f, task) for f in uci_units(args.raw_dir)]
+        fn = uci_unit
     else:
         exercises = args.exercises or "".join(NINAPRO[task]["exercises"])
         bad = set(exercises) - set(NINAPRO[task]["exercises"])
@@ -454,7 +518,10 @@ def main(argv=None) -> int:
     elif task == "grabmyo_xsubj":
         side = _subject_sides({it[1] for it in items}, 0.15, 0.15)
         items = [(side[it[1]],) + it[1:] for it in items]
-    elif task.startswith("ninapro"):
+    elif task == "uci_emg":
+        side = _subject_sides({it[1] for it in items}, 0.2, 0.2)
+        items = [(side[it[1]],) + it[1:] for it in items]
+    elif task.startswith("ninapro") or task == "uci_emg_xsess":
         segs = sorted({it[2] for it in items if it[0] == "train"})
         pick = np.random.default_rng(SEED).permutation(len(segs))[:int(round(0.1 * len(segs)))]
         val_segs = {segs[i] for i in pick}
