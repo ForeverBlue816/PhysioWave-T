@@ -1,6 +1,6 @@
 # SeizeIT2 multimodal figures: ralf_frozen_szo
 
-Drawn by `scripts/visualize_seizeit2.py` at commit `4d48452b64bb1676a93fe15fe879d3ff58bd012c` from the synced results of `ralf_frozen_szo` (branch `cineca-results`, snapshot 2026-10-21 05:22) and of `weighted_logit_frozen_szo`, `concat_frozen_szo` and the eight EEG-alone runs. Vector figures with editable text; the arrays behind each are in `figure_data/` (not committed), what produced each in `figure_metadata/`.
+Drawn by `scripts/visualize_seizeit2.py` at commit `4efc2346f770b0a6580e31cd7922c224a606ab53` from the synced results of `ralf_frozen_szo` (branch `cineca-results`, snapshot 2026-10-21 05:22) and of `weighted_logit_frozen_szo`, `concat_frozen_szo` and the eight EEG-alone runs. Vector figures with editable text; the arrays behind each are in `figure_data/` (not committed), what produced each in `figure_metadata/`.
 
 ## fig_main
 

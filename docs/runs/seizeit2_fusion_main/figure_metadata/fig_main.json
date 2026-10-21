@@ -2,9 +2,9 @@
   "checkpoint": "runs/fusion/ralf_frozen_szo/best.pth (on the cluster; results synced on branch cineca-results)",
   "epoch": 5,
   "run": "ralf_frozen_szo",
-  "git_commit": "4d48452b64bb1676a93fe15fe879d3ff58bd012c",
+  "git_commit": "4efc2346f770b0a6580e31cd7922c224a606ab53",
   "figure": "fig_main",
-  "generated_utc": "2026-10-21T04:09:59.183881+00:00",
+  "generated_utc": "2026-10-21T04:17:18.654358+00:00",
   "figure_text": [
     "SeizeIT2, official split, 29 test patients (2,912 h, 181 seizures). (a), (b): the dataset paper's event scoring (any-overlap, recording means), the 11 FA/h line is the SVM's operating point; each EEG-alone encoder in (a) at its better of frozen / fine-tuned; (d): the window-level test set, the metric the runs are selected on; (c) corruption severity 0.7",
     "SeizeIT2, official split, 29 test patients (2,912 h, 181 seizures). (a), (b): the dataset paper's event scoring (any-overlap, recording means), the 11 FA/h line is the SVM's operating point; each EEG-alone encoder in (a) at its better of frozen / fine-tuned; (d): the window-level test set, the metric the runs are selected on; (c) corruption severity 0.7"

@@ -737,21 +737,23 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
                           "eeg_runs": [r.name for r in eeg_runs], "reliability_run": ralf.name}
 
         def letter(ax, ch, title):
-            ax.text(-0.02, 1.06, ch, transform=ax.transAxes, fontsize=9, fontweight="bold",
-                    ha="right", va="bottom")
-            ax.set_title(title, loc="left", pad=5)
+            # the letter and the title on one baseline
+            ax.text(-0.015, 1.04, ch, transform=ax.transAxes, fontsize=9.5, fontweight="bold",
+                    ha="right", va="baseline")
+            ax.text(0.01, 1.04, title, transform=ax.transAxes, fontsize=7.5, ha="left",
+                    va="baseline")
 
         # (a) sensitivity against FA/h: the main fusion run and every EEG-alone
         # encoder at its better mode
         _plot_curve(a, main.curve("complete"), MAIN["ours"],
-                    f"PhysioWave-T, EEG+ECG+EMG ({main.short_label})", lw=2.0)
+                    f"PhysioWave-T + {main.short_label} (EEG, ECG, EMG)", lw=2.0)
         data[f"curve_{main.name}"] = _curve_data(main)
         a_runs = []
         for k in keys:
             r = best_mode(k)
             a_runs.append(r.name)
             _plot_curve(a, r.curve("complete"), ENC_COLOR.get(k, MAIN["neutral"]),
-                        f"{ENC_NAME.get(k, k)}, EEG alone", lw=1.0, ls="--")
+                        f"{ENC_NAME.get(k, k)} (EEG)", lw=1.0, ls="--")
             data[f"curve_{r.name}"] = _curve_data(r)
         a.axvline(FA_BUDGET, color=MAIN["neutral"], lw=0.6, ls=":")
         a.text(FA_BUDGET * 1.12, 2, f"{FA_BUDGET:g} FA/h", fontsize=6, color=MAIN["neutral_dark"],
@@ -765,7 +767,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         a.xaxis.set_minor_formatter(NullFormatter())
         a.set_xlabel("False alarms per hour")
         a.set_ylabel("Sensitivity (%)")
-        letter(a, "a", "Event-level detection, 29 test patients")
+        letter(a, "a", "Event-level seizure detection")
         a.legend(frameon=False, loc="upper left", handlelength=2.2, labelspacing=0.4)
         meta["a_curves"] = [main.name] + a_runs
 
@@ -779,17 +781,13 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
                     else lighten(ENC_COLOR.get(k, MAIN["neutral"])) for k in keys]
             b.bar(xb + (j - 0.5) * wb, vals, wb * 0.94, color=cols)
             data[f"encoders_{mode}"] = vals
-        for i, k in enumerate(keys):            # the encoder's size above its pair of bars
-            top_ = np.nanmax([100 * (r.sens_at("complete", FA_BUDGET) or 0) for r in enc[k].values()])
-            if k in ENC_PARAMS_M:
-                b.text(i, top_ + 1.0, f"{ENC_PARAMS_M[k]:.1f}M", ha="center", va="bottom",
-                       fontsize=6, color=MAIN["neutral_dark"])
-        b.set_xticks(xb)
-        b.set_xticklabels([ENC_NAME.get(k, k) for k in keys])
+        b.set_xticks(xb)                       # the encoder's size under its name
+        b.set_xticklabels([ENC_NAME.get(k, k) + (f"\n{ENC_PARAMS_M[k]:.1f}M"
+                                                 if k in ENC_PARAMS_M else "") for k in keys])
         b.set_xlim(-0.6, len(keys) - 0.4)
-        b.set_ylim(30, 72)
+        b.set_ylim(30, 70)
         b.set_ylabel(f"Sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-        letter(b, "b", "EEG alone, one protocol (encoder parameters above)")
+        letter(b, "b", "Single-modality EEG encoders")
         from matplotlib.patches import Patch
         b.legend(handles=[Patch(color=lighten(MAIN["neutral_dark"]), label="frozen encoder"),
                           Patch(color=MAIN["neutral_dark"], label="fine-tuned")],
@@ -808,7 +806,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         off = {"eeg": -0.22, "ecg": 0.0, "emg": 0.22}       # the three dots side by side
         for i, m in enumerate(MODALITIES):
             c.axhline(M[i, 0], color=MAIN_MOD[m], lw=0.5, ls=":", alpha=0.7, zorder=1)
-            c.plot(xc + off[m], M[i], "o", color=MAIN_MOD[m], ms=3.6, label=MOD_LABEL[m],
+            c.plot(xc + off[m], M[i], "o", color=MAIN_MOD[m], ms=3.6, label=m.upper(),
                    zorder=3)
         for j, (cid, m, _) in enumerate(conds):
             if m is not None:                     # the corrupted modality: clean level -> now
@@ -827,7 +825,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         c.set_ylabel("Predicted reliability")
         c.legend(frameon=False, loc="lower left", ncol=3, handlelength=1.0, columnspacing=1.0,
                  borderaxespad=0.2, handletextpad=0.4)
-        letter(c, "c", f"{ralf.short_label} reliability head under corrupted inputs")
+        letter(c, "c", "Reliability under corrupted inputs")
         data["reliability"] = M
         data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])
         meta["corruption_severity"] = (ralf.results or {}).get("corruption_severity")
@@ -842,7 +840,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
             data[f"auprc_subsets_{r.name}"] = v
             d.plot(x, v, marker="o", ms=3.8 if r is main else 2.8, color=fus_col[r.name],
                    lw=1.8 if r is main else 0.9, zorder=3 if r is main else 2)
-            ends.append((v[-1], r.short_label, fus_col[r.name]))
+            ends.append((v[-1], r.short_label[0].upper() + r.short_label[1:], fus_col[r.name]))
         ends.sort()
         ys = [e[0] for e in ends]
         for i in range(1, len(ys)):
@@ -856,8 +854,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         lo = np.nanmin([v for k_, v in data.items() if k_.startswith("auprc_subsets_")])
         d.set_ylim(np.floor(lo * 20) / 20 - 0.02, 0.44)
         d.set_ylabel("Window-level AUPRC")
-        d.set_xlabel("Modalities kept at test time")
-        letter(d, "d", "Modality subsets of the fusion")
+        letter(d, "d", "Modality combinations")
         meta["subsets"] = subsets
 
         sev = meta["corruption_severity"]
