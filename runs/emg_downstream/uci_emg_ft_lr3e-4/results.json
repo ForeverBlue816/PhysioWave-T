@@ -1,0 +1,45 @@
+{
+  "best_epoch": 9,
+  "select_by": "acc",
+  "best_val": 0.7838383838383839,
+  "hparams": {
+    "epochs": 30,
+    "batch_size": 64,
+    "lr": 0.0003,
+    "weight_decay": 0.05,
+    "warmup_epochs": 5,
+    "warmup_ratio": 0.1,
+    "grad_clip": 1.0,
+    "label_smoothing": 0.0,
+    "min_lr_ratio": 0.01,
+    "precision": "bf16",
+    "select_by": "acc",
+    "patience": 10,
+    "min_delta": 0.0,
+    "encoder_lr_scale": 1.0,
+    "layer_decay": 0.75,
+    "class_weight": "none"
+  },
+  "frozen_encoder": false,
+  "total_params": 10701770,
+  "trainable_params": 10701770,
+  "multilabel": false,
+  "class_names": [
+    "rest",
+    "fist",
+    "wrist_flexion",
+    "wrist_extension",
+    "radial_deviation",
+    "ulnar_deviation"
+  ],
+  "pretrained": true,
+  "test": {
+    "loss": 0.9909006489647759,
+    "acc": 0.7199074074074074,
+    "balanced_acc": 0.7269150319114538,
+    "kappa": 0.6643550624133148,
+    "weighted_f1": 0.7177966526727054,
+    "macro_f1": 0.7207414220053378,
+    "auroc": 0.9469495436304437
+  }
+}

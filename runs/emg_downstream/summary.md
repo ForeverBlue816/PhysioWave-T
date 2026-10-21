@@ -84,4 +84,26 @@ pretrained - scratch (Acc, each chosen on validation): +0.1286
 
 pretrained - scratch (Acc, each chosen on validation): -0.0601
 
+## UCI EMG for gestures (Lobov et al. 2018), 6 gestures, subject-independent (36 subjects, 60/20/20)
+
+| | lr | Acc | BalAcc | F1-mac | Kappa | val | |
+|---|---|---|---|---|---|---|---|
+|   C1 fine-tuned | 3e-04 | 0.7199 | 0.7269 | 0.7207 | 0.6644 | 0.7838 | ep 9 |
+| ✓ C1 fine-tuned | 1e-04 | 0.6921 | 0.6969 | 0.6929 | 0.6311 | 0.7859 | ep 10 |
+| ✓ C1 linear probe | 1e-03 | 0.7477 | 0.7498 | 0.7437 | 0.6973 | 0.7879 | ep 11 |
+| ✓ C1 from scratch | 1e-04 | 0.7106 | 0.7108 | 0.6978 | 0.6524 | 0.7616 | ep 7 |
+
+pretrained - scratch (Acc, each chosen on validation): -0.0185
+
+## UCI EMG for gestures, 6 gestures, inter-session (series 1 trains, series 2 tests)
+
+| | lr | Acc | BalAcc | F1-mac | Kappa | val | |
+|---|---|---|---|---|---|---|---|
+|   C1 fine-tuned | 3e-04 | 0.7199 | 0.7187 | 0.7212 | 0.6635 | 0.7538 | ep 9 |
+| ✓ C1 fine-tuned | 1e-04 | 0.7120 | 0.7101 | 0.7100 | 0.6540 | 0.7615 | ep 26 |
+| ✓ C1 linear probe | 1e-03 | 0.6916 | 0.6901 | 0.6879 | 0.6296 | 0.6769 | ep 20 |
+| ✓ C1 from scratch | 1e-04 | 0.7089 | 0.7087 | 0.7075 | 0.6506 | 0.7154 | ep 21 |
+
+pretrained - scratch (Acc, each chosen on validation): +0.0031
+
 \* v1 used max-abs normalisation, 1024-sample inputs and its own training recipe on the same split. Indicative, not like-for-like.

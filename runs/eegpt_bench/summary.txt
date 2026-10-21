@@ -12,6 +12,8 @@ bcic2b          EEGPT               0.7212  0.4426  0.8059  auroc              p
 kaggleern       EEGPT               0.5837  0.1882  0.6621  auroc              probe  (Table 4, fold mean)
               0 ft                  0.6171  0.2059  0.6632  auroc         25,813,366  6 (auroc)
               0 scratch             0.5746  0.0995  0.6038  auroc         25,813,366  11 (auroc)
+              0 probe:lr1e-3        0.5369  0.0670  0.5703  auroc            533,877  11 (auroc)
+              0 probe:lr2.5e-4      0.5334  0.0733  0.5811  auroc            533,877  25 (auroc)
 
   bcic2a f0: pretrained - scratch kappa = +0.0741
   bcic2a f0 [eegptprep]: pretrained - scratch kappa = -0.0139

@@ -748,5 +748,153 @@
       "select_by": "acc",
       "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/ninapro_db5_scratch_e38ld"
     }
+  ],
+  "uci_emg": [
+    {
+      "mode": "ft",
+      "tag": "",
+      "test": {
+        "loss": 0.8012319648707354,
+        "acc": 0.6921296296296297,
+        "balanced_acc": 0.6968904234353529,
+        "kappa": 0.6310561159948886,
+        "weighted_f1": 0.6922814782377055,
+        "macro_f1": 0.6928910863942545,
+        "auroc": 0.9479527721038975
+      },
+      "lr": 0.0001,
+      "best_val": 0.7858585858585858,
+      "best_epoch": 10,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_ft"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4",
+      "test": {
+        "loss": 0.9909006489647759,
+        "acc": 0.7199074074074074,
+        "balanced_acc": 0.7269150319114538,
+        "kappa": 0.6643550624133148,
+        "weighted_f1": 0.7177966526727054,
+        "macro_f1": 0.7207414220053378,
+        "auroc": 0.9469495436304437
+      },
+      "lr": 0.0003,
+      "best_val": 0.7838383838383839,
+      "best_epoch": 9,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_ft_lr3e-4"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3",
+      "test": {
+        "loss": 0.652051266696718,
+        "acc": 0.7476851851851852,
+        "balanced_acc": 0.7498264616185288,
+        "kappa": 0.6973000771406531,
+        "weighted_f1": 0.7436706744134357,
+        "macro_f1": 0.743736630450366,
+        "auroc": 0.9571243107724019
+      },
+      "lr": 0.001,
+      "best_val": 0.7878787878787878,
+      "best_epoch": 11,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_probe_lr1e-3"
+    },
+    {
+      "mode": "scratch",
+      "tag": "",
+      "test": {
+        "loss": 0.8869170524455883,
+        "acc": 0.7106481481481481,
+        "balanced_acc": 0.7107993455634531,
+        "kappa": 0.6524179481072869,
+        "weighted_f1": 0.6968452175997276,
+        "macro_f1": 0.6978097634428585,
+        "auroc": 0.9409736519322903
+      },
+      "lr": 0.0001,
+      "best_val": 0.7616161616161616,
+      "best_epoch": 7,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_scratch"
+    }
+  ],
+  "uci_emg_xsess": [
+    {
+      "mode": "ft",
+      "tag": "",
+      "test": {
+        "loss": 0.9309799233165714,
+        "acc": 0.7120377655389457,
+        "balanced_acc": 0.7101028641429726,
+        "kappa": 0.6539721503168794,
+        "weighted_f1": 0.710351440638877,
+        "macro_f1": 0.7099746725280772,
+        "auroc": 0.9412424972894687
+      },
+      "lr": 0.0001,
+      "best_val": 0.7615384615384615,
+      "best_epoch": 26,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_xsess_ft"
+    },
+    {
+      "mode": "ft",
+      "tag": "lr3e-4",
+      "test": {
+        "loss": 1.0054867698112686,
+        "acc": 0.7199055861526357,
+        "balanced_acc": 0.7186999901273382,
+        "kappa": 0.6634917943420487,
+        "weighted_f1": 0.7209593940045557,
+        "macro_f1": 0.7211607734234676,
+        "auroc": 0.9412643773294427
+      },
+      "lr": 0.0003,
+      "best_val": 0.7538461538461538,
+      "best_epoch": 9,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_xsess_ft_lr3e-4"
+    },
+    {
+      "mode": "probe",
+      "tag": "lr1e-3",
+      "test": {
+        "loss": 0.7883146476032789,
+        "acc": 0.6915814319433516,
+        "balanced_acc": 0.6901433046394508,
+        "kappa": 0.6296350258614409,
+        "weighted_f1": 0.688877100586613,
+        "macro_f1": 0.6879365766568625,
+        "auroc": 0.935930976683499
+      },
+      "lr": 0.001,
+      "best_val": 0.676923076923077,
+      "best_epoch": 20,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_xsess_probe_lr1e-3"
+    },
+    {
+      "mode": "scratch",
+      "tag": "",
+      "test": {
+        "loss": 1.5094520053368305,
+        "acc": 0.7088906372934697,
+        "balanced_acc": 0.7087342234794418,
+        "kappa": 0.6505514772814247,
+        "weighted_f1": 0.7079068540177862,
+        "macro_f1": 0.7075382270618551,
+        "auroc": 0.9279755609224224
+      },
+      "lr": 0.0001,
+      "best_val": 0.7153846153846154,
+      "best_epoch": 21,
+      "select_by": "acc",
+      "dir": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/emg_downstream/uci_emg_xsess_scratch"
+    }
   ]
 }

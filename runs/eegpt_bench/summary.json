@@ -139,6 +139,34 @@
       "kappa": 0.09952849967054889,
       "weighted_f1": 0.5849019407057722,
       "auroc": 0.6037642373403108
+    },
+    {
+      "task": "kaggleern",
+      "fold": 0,
+      "mode": "probe",
+      "tag": "lr1e-3",
+      "best_epoch": 11,
+      "best_val": 0.6391972312497362,
+      "select_by": "auroc",
+      "trainable": 533877,
+      "balanced_acc": 0.5368824072648914,
+      "kappa": 0.06701157059460983,
+      "weighted_f1": 0.6679430004810222,
+      "auroc": 0.5703016776973988
+    },
+    {
+      "task": "kaggleern",
+      "fold": 0,
+      "mode": "probe",
+      "tag": "lr2.5e-4",
+      "best_epoch": 25,
+      "best_val": 0.6125648925843077,
+      "select_by": "auroc",
+      "trainable": 533877,
+      "balanced_acc": 0.5334385100815762,
+      "kappa": 0.07325708826256783,
+      "weighted_f1": 0.6998056653580291,
+      "auroc": 0.5811352034272228
     }
   ],
   "sweep_runs": [

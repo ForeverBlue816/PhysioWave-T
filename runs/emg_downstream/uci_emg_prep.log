@@ -1,0 +1,11 @@
+uci_emg: 72 unit(s) under /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/raw/uci_emg
+  40 windows so far
+  75 windows so far
+  110 windows so far
+  146 windows so far
+  175 windows so far
+  train    1,627 windows    22 subjects      528 segments
+  val        495 windows     7 subjects      168 segments
+  test       432 windows     7 subjects      167 segments
+  subject overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}; segment overlap {'train/val': 0, 'train/test': 0, 'val/test': 0}; 0 unit(s) failed
+wrote /leonardo_scratch/large/userexternal/ychen003/bio/emg/downstream/c1/uci_emg/{train,val,test}.h5 and split.json in 29s
