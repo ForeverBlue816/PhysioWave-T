@@ -18,6 +18,11 @@
 #                          pretrained frontend loads too (EEG/finetune_eeg_c1.sh)
 #                 +cw      class-balanced cross-entropy
 #                 +els<x>  ft: pretrained parameters at x times the lr
+#                 +tp      EEGPT's PhysioP300 head (physiowave/eeg_c1/heads.py):
+#                          a gain per electrode, per-position projection kept
+#                          in time order and flattened, dropout 0.5, max-norm
+#                          output. A frozen encoder's tokens averaged over
+#                          time cannot say "at 300 ms"; this head can.
 #               e.g. "ft@1e-3+route+cw+els0.1 probe@1e-3+route+cw scratch+route+cw"
 #   SEEDS       "42"; several, e.g. "42 43 44", run every token once per seed
 #               (directories other than seed 42 end in _s<seed>; the table
@@ -56,6 +61,7 @@ export EPOCHS="${EPOCHS:-20}" NUM_GPUS=1 PROGRESS="${PROGRESS:-log}" OUT_ROOT
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-4}" NUM_WORKERS="${NUM_WORKERS:-4}"
 SEEDS="${SEEDS:-42}"
 ROUTE_ID="${ROUTE_ID:-E64_256}"
+TP_HEAD="model.eeg_c1.pool=time model.eeg_c1.channel_pool=attn model.eeg_c1.spatial_filter=scale model.eeg_c1.head_dropout=0.5 model.eeg_c1.head_max_norm=1.0"
 RUNS=()
 for t in ${TASKS}; do for m in ${MODES}; do for s in ${SEEDS}; do
     RUNS+=("${t}:${m}:${s}"); done; done; done
@@ -75,20 +81,21 @@ sys.exit(0 if "test" in json.load(open(sys.argv[1])) else 1)
 PY
 }
 worker() {
-    local gpu="$1" i spec task token seed base mode lr v route cw els out rc=0
+    local gpu="$1" i spec task token seed base mode lr v route cw els runset out rc=0
     local -a parts flags
     for ((i = gpu; i < ${#RUNS[@]}; i += N_GPUS)); do
         IFS=: read -r task token seed <<< "${RUNS[$i]}"
         IFS=+ read -r -a flags <<< "${token}"
         base="${flags[0]}"; flags=("${flags[@]:1}")
         mode="${base%%@*}"; lr=""; [[ "${base}" == *@* ]] && lr="${base#*@}"
-        route=""; cw=""; els=""
+        route=""; cw=""; els=""; runset=""
         parts=(); [[ -n "${lr}" ]] && parts+=("lr${lr}")
         for v in ${flags[@]+"${flags[@]}"}; do
             case "${v}" in
                 route) route="${ROUTE_ID}"; parts+=(route) ;;
                 cw)    cw=balanced; parts+=(cw) ;;
                 els*)  els="${v#els}"; parts+=("${v}") ;;
+                tp)    runset="${TP_HEAD}"; parts+=(tp) ;;
                 *) echo "[gpu ${gpu}] ${token}: unknown variant +${v}"; rc=1; continue 2 ;;
             esac
         done
@@ -101,6 +108,7 @@ worker() {
         echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: start $(date +%H:%M)"
         if CUDA_VISIBLE_DEVICES="${gpu}" TASK="${task}" MODE="${mode}" LR="${lr}" \
                 SEED="${seed}" ROUTE="${route}" CLASS_WEIGHT="${cw}" ENC_LR_SCALE="${els}" \
+                SET="${SET:-}${runset:+ ${runset}}" \
                 OUTPUT_DIR="${out}" bash EEG/finetune_eeg_c1.sh \
                 > "${out}.log" 2>&1; then
             echo "[gpu ${gpu}] ${task} ${token} seed ${seed}: done $(date +%H:%M)"

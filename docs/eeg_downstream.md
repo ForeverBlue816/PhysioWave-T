@@ -66,6 +66,15 @@ ft@1e-3+route+cw+els0.1 probe@1e-3+cw probe@1e-3+route+cw scratch+cw scratch+rou
   frontend and the head learn at the lr. `ft@1e-3+els0.1` puts the fresh parts
   at the probe's 1e-3 and the Transformer at 1e-4 and below. A single lr of
   1e-4 trains the fresh frontend and head ten times slower than the probe does.
+- `+tp`: EEGPT's PhysioP300 head (`physiowave/eeg_c1/heads.py`): a learnable
+  gain per electrode, the tokens pooled over electrodes by one learned query,
+  projected per time position to 16 and flattened in time order, dropout 0.5,
+  a max-norm output (about 10k trainable on the full model). With the default
+  head (all tokens averaged, then a linear layer: 2k parameters) the
+  route-placed probe stays at chance, train loss included, because a mean over
+  the time positions cannot say where in the window the P300 is; the
+  fresh-frontend probe hides this because its frontend trains. Give the
+  scratch arm the same head.
 - Seeds other than 42 add `_s<seed>` to the directory. The table averages the
   seeds of one configuration (std underneath) and selects on the mean
   validation score.
