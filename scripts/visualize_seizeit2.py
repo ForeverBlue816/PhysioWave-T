@@ -143,7 +143,8 @@ class Run:
         for suf in ("_szo", "_sze"):
             n = n.replace(suf, "")
         if n.startswith("eeg_"):
-            enc = {"c1": "C1", "c1native": "C1 (native)", "c1siena": "C1+Siena", "eegpt": "EEGPT",
+            enc = {"c1": "PhysioWave-T", "c1native": "PhysioWave-T (native)",
+                   "c1siena": "PhysioWave-T + Siena", "eegpt": "EEGPT",
                    "labram": "LaBraM", "luna_base": "LUNA-B", "luna_large": "LUNA-L",
                    "luna_huge": "LUNA-H"}
             import re as _re                                  # eeg_<encoder>_<mode>[_lr<lr>]
@@ -184,8 +185,9 @@ class Run:
     def short_label(self) -> str:
         """``RALF``, ``weighted logit``, ``concat`` for a fusion run; the encoder
         and mode for an EEG-alone run."""
-        if self.name.startswith("eeg_"):
-            return self.label.replace(", EEG", "")
+        if self.name.startswith("eeg_"):          # the encoder alone; the mode is metadata
+            import re as _re
+            return _re.sub(r" (frozen|finetune|scratch)(?: lr .+)?, EEG$", "", self.label)
         name = {"ralf": "RALF", "weighted_logit": "weighted logit",
                 "concat": "concat"}.get(self.fusion, self.fusion)
         return name if self.mode == "frozen" else f"{name} ({self.mode})"
@@ -641,11 +643,6 @@ def fig_learning_curves(w: FigureWriter, main: Run, others: List[Run], eeg_runs:
 
 CORRUPTION_TICK = {"noise": "noise", "bad channel": "bad ch.", "drift": "drift",
                    "saturation": "satur.", "dropout": "dropout"}
-#: EEG-alone encoders in (a): the baselines, muted so the fusion runs stay the
-#: salient series; the same hue order as LINE_COLORS, lightened.
-MUTED = ["#7FA9CF", "#E5A070", "#6FC6A8", "#DDB3CB", "#E6C070", "#9ACBE8", "#8A8A8A"]
-
-
 def _alignment_audit(fig, out_json: str):
     """The nature-figure skill's render-time panel-alignment gate, when its
     scripts directory is named in $PW_FIGURE_AUDIT; otherwise nothing."""
@@ -684,30 +681,31 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
                       "eeg_runs": [r.name for r in eeg_runs], "published": PUBLISHED,
                       "reliability_run": ralf.name}
 
-    # (a) sensitivity against FA/h: fusion solid and saturated, EEG alone muted
-    # and dashed, the published detectors as points
+    # (a) sensitivity against FA/h, three curves and two points: the main fusion
+    # run; the same encoder on EEG alone; the strongest other EEG-alone encoder at
+    # the budget. The other fusion rules are (b)'s, the other encoders the table's.
     fus_col = {r.name: LINE_COLORS[i % len(LINE_COLORS)] for i, r in enumerate(fusion)}
-    for r in fusion:
-        cur = r.curve("complete")
+    pw = next((r for r in eeg_runs if r.name.startswith("eeg_c1_")), None)
+    rest = [r for r in eeg_runs if r is not pw and r.curve("complete")]
+    rival = max(rest, key=lambda r: r.sens_at("complete", FA_BUDGET) or 0) if rest else None
+    cur = main.curve("complete")
+    _plot_curve(a, cur, fus_col[main.name], f"PhysioWave-T, EEG+ECG+EMG ({main.short_label})", lw=2.0)
+    data[f"curve_{main.name}"] = np.array([[x["th"], x["official"]["fa_ovlp_h"],
+                                            x["official"]["sens_ovlp"]] for x in cur])
+    for r, col in ((pw, MOD_COLOR["eeg"]), (rival, "0.45")):
+        cur = r.curve("complete") if r else None
         if cur:
-            _plot_curve(a, cur, fus_col[r.name], f"{r.short_label}, EEG+ECG+EMG",
-                        lw=2.0 if r is main else 1.1)
+            _plot_curve(a, cur, col, f"{r.short_label}, EEG alone", lw=1.0, ls="--")
             data[f"curve_{r.name}"] = np.array([[x["th"], x["official"]["fa_ovlp_h"],
                                                  x["official"]["sens_ovlp"]] for x in cur])
-    for i, r in enumerate(eeg_runs):
-        cur = r.curve("complete")
-        if cur:
-            _plot_curve(a, cur, MUTED[i % len(MUTED)], f"{r.short_label}, EEG alone",
-                        lw=0.9, ls="--")
-            data[f"curve_{r.name}"] = np.array([[x["th"], x["official"]["fa_ovlp_h"],
-                                                 x["official"]["sens_ovlp"]] for x in cur])
+    meta["a_curves"] = [r.name for r in (main, pw, rival) if r is not None]
     for lab, se, fa, mk in PUBLISHED:
         a.plot(fa, se, marker=mk, color="black", ms=5, ls="none", label=lab, zorder=5)
     a.axvline(FA_BUDGET, color="0.5", lw=0.6, ls=":")
     a.text(FA_BUDGET * 1.12, 97, f"{FA_BUDGET:g} FA/h", fontsize=5.5, color="0.35",
            ha="left", va="top")
     a.set_xscale("log")
-    a.set_xlim(0.05, 400)                 # room at the right for the legend, clear of the curves
+    a.set_xlim(0.05, 200)
     a.set_ylim(0, 100)
     from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
     a.xaxis.set_major_locator(FixedLocator([0.1, 1, 10, 100]))
@@ -716,8 +714,8 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
     a.set_xlabel("false alarms / h")
     a.set_ylabel("sensitivity (%)")
     a.set_title("(a) event-level detection on the 29 test patients", fontsize=8)
-    a.legend(frameon=False, fontsize=5.5, loc="lower right", handlelength=2.0,
-             labelspacing=0.3)
+    a.legend(frameon=False, fontsize=6, loc="upper left", handlelength=2.0,
+             labelspacing=0.35)                  # the curves are below 25 % at low FA
 
     # (b) modality subsets at the budget, one line per fusion run, labelled at its end
     order = ["eeg_only", "ecg_only", "emg_only", "eeg_ecg", "eeg_emg", "ecg_emg", "complete"]
@@ -747,7 +745,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
     b.set_xlim(-0.5, len(subsets) - 0.5)
     b.set_ylim(30, 90)
     b.set_ylabel(f"sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-    b.set_title("(b) modalities kept at test time", fontsize=8)
+    b.set_title("(b) PhysioWave-T fusion: modalities kept at test time", fontsize=8)
     meta["subsets"] = subsets
 
     # (c) RALF's reliability head on the clean set and under each corruption
@@ -770,7 +768,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
     c.set_ylim(0, 1.22)
     c.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     c.set_ylabel("predicted reliability")
-    c.set_title(f"(c) {ralf.short_label}: reliability head, corrupted inputs", fontsize=8)
+    c.set_title(f"(c) {ralf.short_label} reliability head under corrupted inputs", fontsize=8)
     c.legend(frameon=False, fontsize=5.5, loc="upper right", ncol=3, handlelength=1.2,
              columnspacing=0.8)
     data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])
@@ -799,8 +797,8 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         d.plot(xd, [sr[s_] for s_ in subs], "o", mfc="white", mec=MOD_COLOR["eeg"], mew=1.0,
                ms=4, label=f"{ref.short_label}, EEG alone (threshold {th_ref:.2f})", zorder=2)
         d.plot(xd, [sm[s_] for s_ in subs], "o", color=fus_col[main.name], ms=4.2, zorder=3,
-               label=f"{main.short_label}, EEG+ECG+EMG (threshold {th_main:.2f}): better on "
-                     f"{better}, equal on {same}, worse on {len(subs) - better - same} patients")
+               label=f"PhysioWave-T, EEG+ECG+EMG ({main.short_label}, threshold {th_main:.2f}): "
+                     f"better on {better}, equal on {same}, worse on {len(subs) - better - same}")
         for i, s_ in enumerate(subs):
             d.text(i, -5, str(int(pm[s_]["n_seizures"])), ha="center", va="top", fontsize=5.5)
         d.set_xticks(xd)

@@ -303,14 +303,16 @@ multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
 
 ## Figures (`scripts/visualize_seizeit2.py`)
 
-`fig_main` is the four-panel summary for the paper, SeizeIT2 only: (a)
-sensitivity against FA/h, the fusion runs against the EEG-alone encoders and
-the published SVM and ChronoNet; (b) what each modality subset of the fusion
+`fig_main` is the four-panel summary for the paper, SeizeIT2 only. The
+encoders are named PhysioWave-T in every label (the run directories keep
+`c1`). (a) sensitivity against FA/h, three curves and two points: the main
+fusion run, PhysioWave-T on EEG alone, the strongest other EEG-alone encoder
+at 11 FA/h (which one is in the metadata), the published SVM and ChronoNet;
+the other encoders stay in the table; (b) what each modality subset of the fusion
 runs reaches at 11 FA/h; (c) the main run's reliability head on the clean set
 and under each corruption, the corrupted modality marked; (d) per test
 patient, C1 EEG alone against the main run, each at its own threshold for 11
-FA/h on the whole test set. `ONLY=fig_main` draws it alone; (a) is the hero
-panel, the baselines muted; (c) always shows the RALF run among those given,
+FA/h on the whole test set. `ONLY=fig_main` draws it alone; (c) always shows the RALF run among those given,
 so `RUN=weighted_logit_frozen_szo` makes weighted logit the main line of (a),
 (b) and (d) under its own name. With the nature-figure skill installed
 (`~/ai-skills/nature-skills`), `PW_FIGURE_AUDIT=<its scripts dir>` runs its
