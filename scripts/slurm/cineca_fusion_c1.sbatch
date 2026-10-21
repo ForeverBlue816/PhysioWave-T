@@ -14,6 +14,10 @@
 #   RUNS      "ralf:frozen concat:frozen weighted_logit:frozen ralf:finetune ralf:scratch"
 #             fusion:encoder_mode pairs. frozen = the pretrained core fixed,
 #             finetune = layer-wise decay, scratch = no encoder loaded.
+#             A VARIANT is fusion:mode:label:key=value,key=value -- the label
+#             names the directory (<fusion>_<mode>_<label>[_<TAG>]) and the
+#             overrides go to --set, e.g.
+#               "ralf:frozen:lr1e-4:train.lr=1e-4,train.epochs=15,train.patience=6"
 #   TASKS     "mpdb seizeit2"   (data from scripts/slurm/cineca_fusion_prep.sbatch)
 #   EEG_CKPT  $PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth
 #   ECG_CKPT  $PW_CKPT_ROOT/pretrain_ecg_c1_moe/best.pth
@@ -21,6 +25,7 @@
 #   SEEDS     "42"; several seeds run every RUNS entry, directories suffixed _s<seed> except 42
 #   TAG       suffix on every run directory
 #   SET       extra --set overrides, space separated
+#   EXTRA     raw physiowave.fusion.train flags, e.g. "--device cpu --max-steps 2"
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
@@ -68,10 +73,13 @@ echo "eeg     ${EEG_CKPT}"; echo "ecg     ${ECG_CKPT}"; echo "emg     ${EMG_CKPT
 echo "output  ${OUT_ROOT}"
 
 worker() {
-    local gpu="$1" i spec fusion mode out log rc=0
+    local gpu="$1" i spec fusion mode label overrides seed out log rc=0
     for ((i = gpu; i < ${#RUN_LIST[@]}; i += N_GPUS)); do
-        spec="${RUN_LIST[$i]}"; fusion="${spec%%:*}"; rest="${spec#*:}"; mode="${rest%%:*}"; seed="${rest#*:}"
-        out="${OUT_ROOT}/${fusion}_${mode}${TAG:+_${TAG}}$([[ "${seed}" != "42" ]] && echo "_s${seed}")"
+        spec="${RUN_LIST[$i]}"; seed="${spec##*:}"; spec="${spec%:*}"
+        IFS=: read -r fusion mode label overrides <<< "${spec}"
+        local -a extra=()
+        [[ -n "${overrides:-}" ]] && IFS=, read -r -a extra <<< "${overrides}"
+        out="${OUT_ROOT}/${fusion}_${mode}${label:+_${label}}${TAG:+_${TAG}}$([[ "${seed}" != "42" ]] && echo "_s${seed}")"
         if [[ -f "${out}/results.json" && "${FORCE:-0}" != "1" ]]; then
             echo "[gpu ${gpu}] ${spec}: already done, skipped"; continue
         fi
@@ -79,10 +87,11 @@ worker() {
         echo "[gpu ${gpu}] ${spec}: start $(date +%H:%M) -> ${log}"
         # shellcheck disable=SC2086
         if CUDA_VISIBLE_DEVICES="${gpu}" python -m physiowave.fusion.train \
-                --config fusion/c1_ralf --output-dir "${out}" \
+                --config fusion/c1_ralf --output-dir "${out}" ${EXTRA:-} \
                 --set "${TASK_SETS[@]}" "encoders.eeg=${EEG_CKPT}" "encoders.ecg=${ECG_CKPT}" \
                       "encoders.emg=${EMG_CKPT}" "model.fusion=${fusion}" \
-                      "model.encoder_mode=${mode}" "seed=${seed}" ${SET:-} > "${log}" 2>&1; then
+                      "model.encoder_mode=${mode}" "seed=${seed}" ${extra[@]+"${extra[@]}"} ${SET:-} \
+                      > "${log}" 2>&1; then
             echo "[gpu ${gpu}] ${spec}: done $(date +%H:%M)"
         else
             echo "[gpu ${gpu}] ${spec}: FAILED -- see ${log}"; rc=1

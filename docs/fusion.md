@@ -417,6 +417,47 @@ rates do not help sensitivity; 1e-5 doubles AUPR but loses 6.5 points of
 s@11, and validation does not choose it. The original `pretrain_eeg_c1_moe`
 encoder stays the one reported.
 
+## RALF: why it peaks early and collapses, and the sweep that follows
+
+The frozen RALF run reaches its best validation AUPRC at epoch 5 (0.380)
+and epoch 7 (0.378), then falls to 0.14 by epoch 12 with AUROC under 0.5;
+the fine-tuned and from-scratch RALF runs do the same, while concat and
+weighted logit at the same settings stay flat around 0.34. The training
+losses say what breaks: the reliability loss, 0.04 through epoch 7, is 0.13
+at epoch 8 and 0.47 by epoch 15, and the task loss follows it (0.31 to
+0.58). Epoch 7 is where the schedule reaches its peak: `warmup_ratio` 0.1
+of 60 epochs is six epochs of warm-up, and with `patience` 10 the cosine
+never comes down. The gate is the exposure: a modality's tokens are scaled
+by its reliability before the cross-attention, so a reliability head driven
+off course by the full learning rate takes the fusion's input with it.
+RALF's best epochs are the ones trained at a fraction of 3e-4.
+
+Two switches on `RALFCore` address the mechanism (`configs/fusion/c1_ralf.yaml`,
+both default to the original behaviour): `gate_floor` keeps a modality's
+tokens at least that fraction of their size at reliability 0, and
+`gate_detach` stops the task loss from reaching the reliability head through
+the gate, so the head learns from its corruption target alone. The fusion
+job takes a per-run variant, `fusion:mode:label:key=value,...`, so one job
+runs the sweep (frozen encoders, SeizeIT2, one GPU each, about an hour an
+epoch):
+
+```bash
+J=$(sbatch --parsable --export=ALL,TASKS=seizeit2,TAG=szo,RUNS="\
+ralf:frozen:lr1e-4:train.lr=1e-4,train.epochs=15,train.patience=6 \
+ralf:frozen:lr1e-4rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3 \
+ralf:frozen:lr1e-4gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3 \
+ralf:frozen:ep12:train.epochs=12,train.patience=6" scripts/slurm/cineca_fusion_c1.sbatch)
+sbatch --dependency=afterok:$J --export=ALL,RUN_DIRS="ralf_frozen_lr1e-4_szo ralf_frozen_lr1e-4rw_szo ralf_frozen_lr1e-4gd_szo ralf_frozen_ep12_szo" \
+    scripts/slurm/cineca_seizeit2_events.sbatch
+```
+
+`lr1e-4` is the schedule fix alone (peak at epoch 1.5, decayed by 15);
+`lr1e-4rw` adds a lighter reliability loss; `lr1e-4gd` the detached, floored
+gate; `ep12` keeps 3e-4 but lets the cosine finish, to separate the rate
+from the schedule. The directories sit beside `ralf_frozen_szo`, and
+`collect_seizeit2_events.py` tabulates them with it. Choose on validation
+AUPRC as before; the event-level numbers follow.
+
 ## Files
 
 | file | what |

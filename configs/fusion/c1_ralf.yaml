@@ -33,6 +33,10 @@ model:
   depth: 2
   dropout: 0.1
   residual_weight: 0.5         # reliability-weighted unimodal logits, added to the fused ones
+  gate_floor: 0.0              # RALF: a modality's tokens keep at least this fraction of their
+                               # size at reliability 0 (0 = they vanish with it)
+  gate_detach: false           # RALF: the task loss does not reach the reliability head through
+                               # the gate; the head learns from its corruption target alone
 train:
   epochs: 60
   batch_size: 32

@@ -260,6 +260,33 @@ def test_cores_handle_two_tasks_and_missing_modalities(fusion):
     assert core.consistency_loss(o["logits"], o["logits"].clone()).abs() < 1e-6
 
 
+def test_ralf_gate_floor_and_detach():
+    from physiowave.fusion.model import RALFCore
+    dims = {"eeg": 16, "ecg": 16, "emg": 16}
+    torch.manual_seed(0)
+    feats = {m: torch.randn(3, 4, 16, requires_grad=True) for m in dims}
+    plain = RALFCore(list(dims), dims, {"a": 2}, embed_dim=32, num_heads=4)
+    floored = RALFCore(list(dims), dims, {"a": 2}, embed_dim=32, num_heads=4, gate_floor=0.5)
+    floored.load_state_dict(plain.state_dict())
+    # the floor only changes the gate: reliabilities and unimodal logits agree
+    o1, o2 = plain(feats, "a"), floored(feats, "a")
+    for m in dims:
+        assert torch.allclose(o1["reliability"][m], o2["reliability"][m])
+        assert torch.allclose(o1["unimodal_logits"][m], o2["unimodal_logits"][m])
+    assert not torch.allclose(o1["fusion_logits"], o2["fusion_logits"])
+    with pytest.raises(ValueError, match="gate_floor"):
+        RALFCore(list(dims), dims, {"a": 2}, embed_dim=32, num_heads=4, gate_floor=1.0)
+    # detached: the fusion logits send no gradient into the reliability head
+    det = RALFCore(list(dims), dims, {"a": 2}, embed_dim=32, num_heads=4, gate_detach=True)
+    det.load_state_dict(plain.state_dict())
+    for core in (plain, det):
+        core.zero_grad()
+        core(feats, "a")["fusion_logits"].sum().backward()
+    g = lambda core: core.reliability_head["eeg"][1].weight.grad
+    assert g(plain) is not None and g(plain).abs().sum() > 0
+    assert g(det) is None or g(det).abs().sum() == 0
+
+
 # --------------------------------------------------------------------------- #
 # End to end on smoke encoders
 # --------------------------------------------------------------------------- #

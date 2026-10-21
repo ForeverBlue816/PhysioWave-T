@@ -92,11 +92,22 @@ class _Core(nn.Module):
 
 
 class RALFCore(_Core):
+    """``gate_floor`` keeps a modality's tokens at least that fraction of their
+    size however low its reliability (0 = the tokens vanish with it);
+    ``gate_detach`` stops the task loss from reaching the reliability head
+    through the gate, so the head learns reliability from its own target only.
+    Both default to the original behaviour."""
+
     def __init__(self, modalities, encoder_dims, tasks, embed_dim=256, num_fusion_tokens=8,
-                 num_heads=8, depth=2, dropout=0.1, residual_weight=0.5):
+                 num_heads=8, depth=2, dropout=0.1, residual_weight=0.5,
+                 gate_floor=0.0, gate_detach=False):
         super().__init__(modalities, encoder_dims, tasks, embed_dim, dropout)
         D = self.embed_dim
         self.residual_weight = float(residual_weight)
+        self.gate_floor = float(gate_floor)
+        self.gate_detach = bool(gate_detach)
+        if not 0.0 <= self.gate_floor < 1.0:
+            raise ValueError(f"gate_floor must be in [0, 1), got {gate_floor}")
         self.reliability_head = nn.ModuleDict({
             m: nn.Sequential(nn.LayerNorm(D), nn.Linear(D, D // 2), nn.GELU(),
                              nn.Linear(D // 2, 1)) for m in self.modalities})
@@ -129,7 +140,10 @@ class RALFCore(_Core):
             r = torch.sigmoid(self.reliability_head[m](pooled).float()).squeeze(-1) * present[m]
             reliability[m] = r
             uni[m] = self.unimodal_head[m][task](pooled)
-            seq.append(h * r.view(B, 1, 1).to(h.dtype))
+            g = self.gate_floor + (1.0 - self.gate_floor) * r
+            if self.gate_detach:
+                g = g.detach()
+            seq.append(h * g.view(B, 1, 1).to(h.dtype))
             key_mask.append(present[m].view(B, 1).expand(B, h.shape[1]) > 0.5)
         mem = torch.cat(seq, dim=1)
         keep = torch.cat(key_mask, dim=1)

@@ -165,7 +165,8 @@ def build_model(cfg: Dict, tasks: Dict[str, Dict[str, MultimodalWindows]], out_d
             reports[t][m] = rep
     n_classes = {t: len(s["train"].class_names) for t, s in tasks.items()}
     core_kw = {k: mcfg[k] for k in ("embed_dim", "num_fusion_tokens", "num_heads", "depth",
-                                    "dropout", "residual_weight") if k in mcfg}
+                                    "dropout", "residual_weight", "gate_floor", "gate_detach")
+               if k in mcfg}
     model = C1Multimodal(encoders, metas, n_classes, fusion=mcfg.get("fusion", "ralf"),
                          summary_tokens=int(mcfg.get("summary_tokens", 4)),
                          summary_heads=int(mcfg.get("summary_heads", 4)),
