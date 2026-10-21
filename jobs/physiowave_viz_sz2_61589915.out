@@ -1,0 +1,24 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+  font: Times New Roman (bold)
+  ralf_frozen_szo: results yes, events yes, predictions 778, epochs 16
+  concat_frozen_szo: results yes, events yes, predictions 778, epochs 13
+  weighted_logit_frozen_szo: results yes, events yes, predictions 778, epochs 13
+  ralf_finetune_szo: results yes, events yes, predictions 778, epochs 16
+  ralf_scratch_szo: results yes, events yes, predictions 778, epochs 13
+  eeg_c1_finetune_sze: results yes, events yes, predictions 778, epochs 6
+  eeg_luna_huge_finetune_sze: results yes, events yes, predictions 778, epochs 7
+  eeg_labram_finetune_sze: results yes, events yes, predictions 778, epochs 7
+  eeg_eegpt_frozen_sze: results yes, events yes, predictions 778, epochs 11
+  wrote docs/runs/seizeit2_fusion/figures/fig_main.svg, docs/runs/seizeit2_fusion/figures/fig_main.pdf
+wrote 1 figure(s) to docs/runs/seizeit2_fusion
+figures in docs/runs/seizeit2_fusion; on a login node: git add docs/runs/seizeit2_fusion && git commit && git push
