@@ -18,6 +18,8 @@
 #             names the directory (<fusion>_<mode>_<label>[_<TAG>]) and the
 #             overrides go to --set, e.g.
 #               "ralf:frozen:lr1e-4:train.lr=1e-4,train.epochs=15,train.patience=6"
+#             Pass such RUNS in the environment (RUNS="..." sbatch <this>), not
+#             through --export, which splits its argument at every comma.
 #   TASKS     "mpdb seizeit2"   (data from scripts/slurm/cineca_fusion_prep.sbatch)
 #   EEG_CKPT  $PW_CKPT_ROOT/pretrain_eeg_c1_moe/best.pth
 #   ECG_CKPT  $PW_CKPT_ROOT/pretrain_ecg_c1_moe/best.pth

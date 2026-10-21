@@ -442,17 +442,20 @@ runs the sweep (frozen encoders, SeizeIT2, one GPU each, about an hour an
 epoch):
 
 ```bash
-J=$(sbatch --parsable --export=ALL,TASKS=seizeit2,TAG=szo,RUNS="\
-ralf:frozen:lr1e-4:train.lr=1e-4,train.epochs=15,train.patience=6 \
-ralf:frozen:lr1e-4rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3 \
-ralf:frozen:lr1e-4gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3 \
-ralf:frozen:ep12:train.epochs=12,train.patience=6" scripts/slurm/cineca_fusion_c1.sbatch)
-sbatch --dependency=afterok:$J --export=ALL,RUN_DIRS="ralf_frozen_lr1e-4_szo ralf_frozen_lr1e-4rw_szo ralf_frozen_lr1e-4gd_szo ralf_frozen_ep12_szo" \
-    scripts/slurm/cineca_seizeit2_events.sbatch
+# RUNS goes in the environment, not in --export: sbatch splits --export at every
+# comma, which cuts the key=value,key=value overrides apart (sbatch exports the
+# whole environment by default, so the prefix form carries RUNS intact).
+J=$(TASKS=seizeit2 TAG=szo RUNS="\
+ralf:frozen:e15:train.lr=1e-4,train.epochs=15,train.patience=6 \
+ralf:frozen:e15rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3 \
+ralf:frozen:e15gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3 \
+ralf:frozen:ep12:train.epochs=12,train.patience=6" sbatch --parsable scripts/slurm/cineca_fusion_c1.sbatch)
+RUN_DIRS="ralf_frozen_e15_szo ralf_frozen_e15rw_szo ralf_frozen_e15gd_szo ralf_frozen_ep12_szo" \
+    sbatch --dependency=afterok:$J scripts/slurm/cineca_seizeit2_events.sbatch
 ```
 
-`lr1e-4` is the schedule fix alone (peak at epoch 1.5, decayed by 15);
-`lr1e-4rw` adds a lighter reliability loss; `lr1e-4gd` the detached, floored
+`e15` is the schedule fix alone (peak at epoch 1.5, decayed by 15);
+`e15rw` adds a lighter reliability loss; `e15gd` the detached, floored
 gate; `ep12` keeps 3e-4 but lets the cosine finish, to separate the rate
 from the schedule. The directories sit beside `ralf_frozen_szo`, and
 `collect_seizeit2_events.py` tabulates them with it. Choose on validation
