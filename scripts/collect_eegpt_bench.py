@@ -36,7 +36,7 @@ EEGPT = {
 }
 #: The third column EEGPT reports: weighted F1 for multi-class, AUROC for binary.
 THIRD = {"bcic2a": "weighted_f1", "bcic2b": "auroc", "kaggleern": "auroc"}
-MODE_ORDER = {"ft": 0, "scratch": 1}
+MODE_ORDER = {"ft": 0, "probe": 1, "scratch": 2}
 
 
 def main(argv=None) -> int:
@@ -48,7 +48,7 @@ def main(argv=None) -> int:
 
     rows = []
     for path in glob.glob(os.path.join(args.root, "*", "results.json")):
-        m = re.fullmatch(r"(bcic2a|bcic2b|kaggleern)_f(\d+)_(ft|scratch)(?:_(\w+))?",
+        m = re.fullmatch(r"(bcic2a|bcic2b|kaggleern)_f(\d+)_(ft|probe|scratch)(?:_([\w.\-]+))?",
                          os.path.basename(os.path.dirname(path)))
         if not m:
             continue

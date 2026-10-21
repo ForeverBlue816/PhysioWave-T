@@ -8,8 +8,14 @@
 #
 # TASK    bcic2a | bcic2b | kaggleern
 # MODE    ft       every parameter trains, from the pretrained encoder
+#         probe    what pretraining supplied is frozen (freeze_scope
+#                  pretrained): the montage's own fresh frontend and patcher,
+#                  the pool and the head train -- the closest to EEGPT's
+#                  frozen-encoder probe these montages allow
 #         scratch  the same architecture, from random initialisation -- the
 #                  control. Without it "ft" is a number, not a result.
+# LR      overrides the config's lr; with LR set the output directory gains
+#         _lr<LR>, so two learning rates of one mode do not share a directory.
 # FOLD    which fold's split (default 0). One fold, not an average -- see the
 #         note on protocol below.
 # TAG     optional suffix on the output directory, to keep runs of different
@@ -55,8 +61,8 @@ NUM_GPUS="${NUM_GPUS:-1}"
 
 NCLS="$(eegpt_num_classes "${TASK}")" || exit 1
 case "${MODE}" in
-    ft|scratch) ;;
-    *) echo "ERROR: MODE must be ft or scratch, not '${MODE}'" >&2; exit 1 ;;
+    ft|probe|scratch) ;;
+    *) echo "ERROR: MODE must be ft, probe or scratch, not '${MODE}'" >&2; exit 1 ;;
 esac
 
 [[ "${PW_ALLOW_NO_GPU:-0}" == "1" ]] || pw_require_gpu || exit 1
@@ -66,6 +72,7 @@ DATA_DIR="${DATA_DIR:-$(eegpt_split_dir "${TASK}" "${FOLD}")}"
 # TAG names WHICH encoder, so two of them -- best.pth and latest.pth, say --
 # do not write into the same directory: TAG=final -> bcic2a_f0_ft_final.
 RUN_TAG="$(eegpt_tag "${TASK}")"
+[[ -n "${LR:-}" ]] && RUN_TAG="lr${LR}${RUN_TAG:+_${RUN_TAG}}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${MODE}${RUN_TAG:+_${RUN_TAG}}}"
 # pw_check_output_dir wants the parent to exist, and on a first run
 # $PW_CKPT_ROOT/eegpt_bench does not. Checking the parent first keeps what the
@@ -111,6 +118,13 @@ PY
                 "pretraining checkpoint" >&2; exit 1 ;;
     esac
     SET_ARGS+=("model.eeg_c1.pretrained=${ENCODER}")
+    # probe: freeze what pretraining SUPPLIED. These montages sit on no route,
+    # so their frontend is built fresh; freezing it too would freeze random
+    # filters and understate the probe.
+    if [[ "${MODE}" == "probe" ]]; then
+        EXTRA_ARGS+=(--freeze-encoder)
+        SET_ARGS+=("model.eeg_c1.freeze_scope=${FREEZE_SCOPE:-pretrained}")
+    fi
 fi
 if [[ -n "${LR:-}" ]]; then
     EXTRA_ARGS+=(--lr "${LR}")

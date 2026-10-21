@@ -8,7 +8,9 @@
 # Runs MODES side by side, one GPU each, on one node: ft (the pretrained
 # encoder, every parameter fine-tuned) and scratch (the same model from random
 # initialisation -- the control). The difference between the two is the
-# measurement; either alone is only a number.
+# measurement; either alone is only a number. probe (what pretraining supplied
+# frozen) runs when named; a token MODE@LR sets that run's lr, e.g.
+#   MODES="probe@1e-3 probe@2.5e-4"
 #
 # All three tasks:
 #
@@ -69,12 +71,14 @@ export DATA_DIR
 
 pids=()
 for i in "${!MODE_LIST[@]}"; do
-    mode="${MODE_LIST[$i]}"
+    token="${MODE_LIST[$i]}"; mode="${token%%@*}"
+    lr="${LR:-}"; [[ "${token}" == *@* ]] && lr="${token#*@}"
     run_tag="$(eegpt_tag "${TASK}")"
+    [[ -n "${lr}" ]] && run_tag="lr${lr}${run_tag:+_${run_tag}}"
     log="${PW_CKPT_ROOT}/eegpt_bench/${TASK}_f${FOLD}_${mode}${run_tag:+_${run_tag}}.log"
     mkdir -p "$(dirname "${log}")"
-    echo "  starting ${mode} on GPU ${i}  -> ${log}"
-    CUDA_VISIBLE_DEVICES="${i}" MODE="${mode}" \
+    echo "  starting ${token} on GPU ${i}  -> ${log}"
+    CUDA_VISIBLE_DEVICES="${i}" MODE="${mode}" LR="${lr}" \
         bash EEG/finetune_eegpt_bench.sh > "${log}" 2>&1 &
     pids+=($!)
 done
