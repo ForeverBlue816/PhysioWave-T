@@ -1,0 +1,93 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+============================================================
+  EEG C1 downstream  (job 61555058, 1 node, 4 GPUs)
+  tasks   physio_p300
+  modes   ft@1e-3+cw+els0.1 ft@1e-3+route+cw+els0.1 probe@1e-3+cw probe@1e-3+route+cw scratch+cw scratch+route+cw   epochs 20   seeds 42 43 44
+  encoder /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/eeg_downstream
+============================================================
+[gpu 2] physio_p300 ft@1e-3+cw+els0.1 seed 44: start 20:27
+[gpu 1] physio_p300 ft@1e-3+cw+els0.1 seed 43: start 20:27
+[gpu 0] physio_p300 ft@1e-3+cw+els0.1 seed 42: start 20:27
+[gpu 3] physio_p300 ft@1e-3+route+cw+els0.1 seed 42: start 20:27
+[gpu 3] physio_p300 ft@1e-3+route+cw+els0.1 seed 42: done 20:42
+[gpu 3] physio_p300 probe@1e-3+cw seed 43: start 20:42
+[gpu 0] physio_p300 ft@1e-3+cw+els0.1 seed 42: done 20:50
+[gpu 1] physio_p300 ft@1e-3+cw+els0.1 seed 43: done 20:50
+[gpu 0] physio_p300 ft@1e-3+route+cw+els0.1 seed 43: start 20:50
+[gpu 1] physio_p300 ft@1e-3+route+cw+els0.1 seed 44: start 20:50
+[gpu 2] physio_p300 ft@1e-3+cw+els0.1 seed 44: done 20:50
+[gpu 2] physio_p300 probe@1e-3+cw seed 42: start 20:50
+[gpu 3] physio_p300 probe@1e-3+cw seed 43: done 21:02
+[gpu 3] physio_p300 probe@1e-3+route+cw seed 44: start 21:02
+[gpu 0] physio_p300 ft@1e-3+route+cw+els0.1 seed 43: done 21:04
+[gpu 0] physio_p300 probe@1e-3+cw seed 44: start 21:04
+[gpu 1] physio_p300 ft@1e-3+route+cw+els0.1 seed 44: done 21:04
+[gpu 1] physio_p300 probe@1e-3+route+cw seed 42: start 21:04
+[gpu 3] physio_p300 probe@1e-3+route+cw seed 44: done 21:07
+[gpu 3] physio_p300 scratch+route+cw seed 42: start 21:07
+[gpu 1] physio_p300 probe@1e-3+route+cw seed 42: done 21:09
+[gpu 1] physio_p300 scratch+cw seed 43: start 21:09
+[gpu 2] physio_p300 probe@1e-3+cw seed 42: done 21:10
+[gpu 2] physio_p300 probe@1e-3+route+cw seed 43: start 21:10
+[gpu 2] physio_p300 probe@1e-3+route+cw seed 43: done 21:15
+[gpu 2] physio_p300 scratch+cw seed 44: start 21:15
+[gpu 3] physio_p300 scratch+route+cw seed 42: done 21:21
+[gpu 0] physio_p300 probe@1e-3+cw seed 44: done 21:24
+[gpu 0] physio_p300 scratch+cw seed 42: start 21:24
+[gpu 1] physio_p300 scratch+cw seed 43: done 21:31
+[gpu 1] physio_p300 scratch+route+cw seed 44: start 21:31
+[gpu 2] physio_p300 scratch+cw seed 44: done 21:37
+[gpu 1] physio_p300 scratch+route+cw seed 44: done 21:45
+[gpu 0] physio_p300 scratch+cw seed 42: done 21:46
+[gpu 0] physio_p300 scratch+route+cw seed 43: start 21:46
+[gpu 0] physio_p300 scratch+route+cw seed 43: done 22:00
+====================================================================================================
+Sleep-EDF (Sleep Cassette), 5 stages, Fpz-Cz + Pz-Oz, subject-disjoint holdout
+----------------------------------------------------------------------------------------------------
+                                            lr     BalAcc      Kappa       F1-w        Acc      val  ep
+    C1 fine-tuned                        1e-04     0.6942     0.7281     0.7985     0.8094   0.6800  6
+  ✓ C1 fine-tuned                        3e-05     0.6918     0.7170     0.7871     0.8010   0.6820  6
+  ✓ C1 linear probe                      1e-03     0.6654     0.7200     0.7897     0.8052   0.6817  8
+  ✓ C1 from scratch                      4e-04     0.6924     0.7363     0.8043     0.8152   0.6906  8
+    EEGPT (frozen + 4-layer head)*                 0.6917     0.6857        -          -  
+  pretrained - scratch (BalAcc, each chosen on validation): -0.0006
+====================================================================================================
+PhysioNet P300 (erpbci), target vs non-target, subject-disjoint split
+----------------------------------------------------------------------------------------------------
+                                            lr     BalAcc      Kappa      AUROC       F1-w      val  ep
+    C1 fine-tuned [cw_els0.1]            1e-03     0.6682     0.2619     0.7265     0.7576   0.7850  9/9/7  n=3
+                                         ± std     0.0011     0.0347     0.0124     0.0330
+  ✓ C1 fine-tuned [route_cw_els0.1]      1e-03     0.6567     0.2286     0.7194     0.7356   0.8214  6/6/8  n=3
+                                         ± std     0.0199     0.0187     0.0194     0.0303
+    C1 fine-tuned                        1e-04     0.6014     0.2465     0.7109     0.8069   0.7690  10
+    C1 fine-tuned                        3e-05     0.6179     0.2603     0.7151     0.8036   0.6733  19
+  ✓ C1 linear probe                      1e-03     0.6217     0.2981     0.7576     0.8206   0.7718  9
+    C1 linear probe [cw]                 1e-03     0.6767     0.2906     0.7417     0.7781   0.7619  8/10/8  n=3
+                                         ± std     0.0088     0.0127     0.0051     0.0177
+    C1 linear probe [route_cw]           1e-03     0.5075     0.0068     0.5277     0.4635   0.5105  0/2/0  n=3
+                                         ± std     0.0091     0.0078     0.0156     0.1318
+    C1 from scratch                      5e-04     0.5857     0.2381     0.7489     0.8116   0.7652  13
+    C1 from scratch [cw]                 5e-04     0.6586     0.2776     0.7362     0.7806   0.7641  10/13/14  n=3
+                                         ± std     0.0198     0.0215     0.0049     0.0291
+  ✓ C1 from scratch [route_cw]           5e-04     0.6512     0.2337     0.7194     0.7486   0.7985  5/9/6  n=3
+                                         ± std     0.0027     0.0222     0.0108     0.0249
+    EEGPT (linear probe)*                          0.6502     0.2999     0.7168        -  
+    LaBraM (linear probe)*                         0.6477     0.2935     0.7068        -  
+  pretrained - scratch (BalAcc, each chosen on validation): +0.0055
+====================================================================================================
+  ✓ the run of each mode with the best validation score; only it is compared.
+  n=K: mean over K seeds (std below), selected on the mean validation score.
+  * EEGPT's table: Sleep-EDF 10-fold, P300 leave-one-subject-out, each
+    scored on the fold it also validates on. Here one subject-disjoint
+    split with a held-out test set nothing selects on. Indicative only.
