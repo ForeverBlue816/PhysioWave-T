@@ -303,22 +303,25 @@ multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
 
 ## Figures (`scripts/visualize_seizeit2.py`)
 
-`fig_main` is the four-panel summary for the paper, SeizeIT2 only; the
-encoders are named PhysioWave-T in every label (the run directories keep
-`c1`). (a) sensitivity against FA/h, three curves and two points: the main
-fusion run, PhysioWave-T on EEG alone, the strongest other EEG-alone encoder
-at 11 FA/h (named in the metadata), the published SVM and ChronoNet; (b) the
-EEG-alone encoders under one protocol, frozen and fine-tuned, at 11 FA/h;
-(c) the RALF run's reliability head on the clean set and under each
-corruption, the corrupted modality marked; (d) what each modality subset of
-the fusion runs reaches at 11 FA/h, the rules labelled at their ends. One
-palette: navy for ours, greys for the other encoders and rules, one red for
-the published detectors. `ONLY=fig_main` draws it alone; (c) always shows the
-RALF run among those given. With the nature-figure skill installed
+`fig_main` is the four-panel summary for the paper, SeizeIT2 only, in a
+Nature-style dress of its own (sans-serif, bold panel letters, one hue per
+encoder: PhysioWave-T navy, LUNA-L teal, LaBraM violet, EEGPT red; the
+encoders are named PhysioWave-T in every label, the run directories keep
+`c1`). (a) sensitivity against FA/h: the main fusion run and every EEG-alone
+encoder at its better of frozen / fine-tuned; (b) those encoders frozen (the
+hue lightened) and fine-tuned at 11 FA/h; (c) the RALF run's reliability head
+as a heat map, modalities down, the clean set and each corruption across, the
+corrupted modality's cell outlined; (d) the window-level AUPRC, the metric the
+runs are selected on, of every modality subset of the fusion runs, the rules
+labelled at their ends. The published SVM and ChronoNet are in the tables,
+not on the figure. `ONLY=fig_main` draws it alone; (c) always shows the RALF
+run among those given. With the nature-figure skill installed
 (`~/ai-skills/nature-skills`), `PW_FIGURE_AUDIT=<its scripts dir>` runs its
 panel-alignment gate at render time; its `audit_pdf_text.py` (5 pt floor) and
 `audit_figure_collisions.py` pass on the exported PDF, the remaining warnings
-being labels that sit outside a panel's frame on purpose. The other figures,
+being labels that sit outside a panel's frame on purpose. On a machine without
+Arial or Helvetica the figure falls back to DejaVu Sans; a `.ttf` under
+`~/.fonts` is picked up. The other figures,
 from the same artefacts: the cached per-second
 probabilities, `events_cross.json`, `results.json`, `history.json` and one
 test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG

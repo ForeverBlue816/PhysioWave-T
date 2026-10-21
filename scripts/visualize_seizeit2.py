@@ -643,14 +643,24 @@ def fig_learning_curves(w: FigureWriter, main: Run, others: List[Run], eeg_runs:
 
 CORRUPTION_TICK = {"noise": "noise", "bad channel": "bad ch.", "drift": "drift",
                    "saturation": "satur.", "dropout": "dropout"}
-#: fig_main's palette: one signal family (ours, navy), one neutral family (the
-#: other encoders and fusion rules), one accent (the published detectors).
-#: The per-modality colours of (c) are three members of the same restrained set.
-MAIN = {"ours": "#0F4D92", "ours_light": "#3775BA", "neutral": "#767676",
-        "neutral_light": "#CFCECE", "neutral_dark": "#4D4D4D", "accent": "#B64342",
-        "teal": "#42949E"}
+#: fig_main's palette: one hue per encoder (PhysioWave-T navy, the others
+#: teal, violet, red), greys for the fusion rules that are not ours. A frozen
+#: encoder is its hue lightened.
+ENC_COLOR = {"c1": "#0F4D92", "luna_large": "#42949E", "labram": "#9A4D8E", "eegpt": "#B64342",
+             "luna_huge": "#2E7A84", "luna_base": "#7FC1C8", "c1native": "#3775BA",
+             "c1siena": "#5B8FD0"}
+ENC_NAME = {"c1": "PhysioWave-T", "luna_large": "LUNA-L", "luna_huge": "LUNA-H",
+            "luna_base": "LUNA-B", "labram": "LaBraM", "eegpt": "EEGPT",
+            "c1native": "PhysioWave-T (native)", "c1siena": "PhysioWave-T + Siena"}
+MAIN = {"ours": "#0F4D92", "neutral": "#8C8C8C", "neutral_dark": "#4D4D4D", "teal": "#42949E"}
 MAIN_MOD = {"eeg": "#0F4D92", "ecg": "#B64342", "emg": "#42949E"}
 MAIN_FUSION = {"ralf": MAIN["ours"], "weighted_logit": MAIN["teal"], "concat": MAIN["neutral"]}
+
+
+def lighten(color: str, amount: float = 0.55) -> tuple:
+    """``color`` blended towards white by ``amount``."""
+    r, g, b, _ = matplotlib.colors.to_rgba(color)
+    return (r + (1 - r) * amount, g + (1 - g) * amount, b + (1 - b) * amount, 1.0)
 
 
 def _alignment_audit(fig, out_json: str):
@@ -683,162 +693,172 @@ def _curve_data(r: Run, cond: str = "complete"):
 def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run]):
     """The four-panel summary figure, SeizeIT2 only.
 
-    (a) the hero: the main fusion run against the published detectors, the
-    same encoder on EEG alone and the strongest other EEG-alone encoder;
-    (b) the EEG-alone encoders under one protocol, frozen and fine-tuned;
-    (c) the mechanism RALF adds, its reliability head under corruption;
-    (d) what each modality subset of the fusion runs reaches at the budget.
-    Fusion runs of the main run's encoder mode only.
+    (a) the hero: the main fusion run against the EEG-alone encoders (each at
+    its better mode); (b) those encoders frozen and fine-tuned at the budget;
+    (c) the mechanism RALF adds, its reliability head under corruption; (d) the
+    window-level AUPRC -- the metric the runs are selected on -- of every
+    modality subset of the fusion runs. Fusion runs of the main run's mode only.
     """
     others = [r for r in others if r.mode == main.mode]
     fusion = [main] + others
     ralf = next((r for r in fusion if r.fusion == "ralf"), main)
-    fig = plt.figure(figsize=(7.2, 5.3))
-    outer = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.95], hspace=0.6,
-                             left=0.07, right=0.985, top=0.94, bottom=0.1)
-    top = outer[0].subgridspec(1, 2, width_ratios=[1.8, 1.2], wspace=0.36)
-    bot = outer[1].subgridspec(1, 2, width_ratios=[1.25, 1.75], wspace=0.34)
-    a, b = fig.add_subplot(top[0]), fig.add_subplot(top[1])
-    c, d = fig.add_subplot(bot[0]), fig.add_subplot(bot[1])
-    data, meta = {}, {"fa_budget": FA_BUDGET, "fusion_runs": [r.name for r in fusion],
-                      "eeg_runs": [r.name for r in eeg_runs], "published": PUBLISHED,
-                      "reliability_run": ralf.name}
     fus_col = {r.name: MAIN_FUSION.get(r.fusion, MAIN["neutral_dark"]) for r in fusion}
     fus_col[main.name] = MAIN["ours"]
-
-    # (a) three curves and two points: the main fusion run; the same encoder on
-    # EEG alone; the strongest other EEG-alone encoder at the budget
-    pw = next((r for r in eeg_runs if r.name.startswith("eeg_c1_finetune")), None) \
-        or next((r for r in eeg_runs if r.name.startswith("eeg_c1_")), None)
-    rest = [r for r in eeg_runs if _encoder_key(r) != "c1" and r.curve("complete")]
-    rival = max(rest, key=lambda r: r.sens_at("complete", FA_BUDGET) or 0) if rest else None
-    _plot_curve(a, main.curve("complete"), MAIN["ours"],
-                f"PhysioWave-T, EEG+ECG+EMG ({main.short_label})", lw=2.0)
-    data[f"curve_{main.name}"] = _curve_data(main)
-    for r, col in ((pw, MAIN["ours_light"]), (rival, MAIN["neutral"])):
-        if r is not None and r.curve("complete"):
-            _plot_curve(a, r.curve("complete"), col, f"{r.short_label}, EEG alone", lw=1.0, ls="--")
-            data[f"curve_{r.name}"] = _curve_data(r)
-    for lab, se, fa, mk in PUBLISHED:
-        a.plot(fa, se, marker=mk, color=MAIN["accent"], ms=5, ls="none", label=lab, zorder=5)
-    a.axvline(FA_BUDGET, color=MAIN["neutral"], lw=0.6, ls=":")
-    a.text(FA_BUDGET * 1.12, 97, f"{FA_BUDGET:g} FA/h", fontsize=5.5, color=MAIN["neutral_dark"],
-           ha="left", va="top")
-    a.set_xscale("log")
-    a.set_xlim(0.05, 200)
-    a.set_ylim(0, 100)
-    from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
-    a.xaxis.set_major_locator(FixedLocator([0.1, 1, 10, 100]))
-    a.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
-    a.xaxis.set_minor_formatter(NullFormatter())
-    a.set_xlabel("false alarms / h")
-    a.set_ylabel("sensitivity (%)")
-    a.set_title("(a) event-level detection on the 29 test patients", fontsize=8)
-    a.legend(frameon=False, fontsize=6, loc="upper left", handlelength=2.0, labelspacing=0.35)
-    meta["a_curves"] = [r.name for r in (main, pw, rival) if r is not None]
-
-    # (b) the EEG-alone encoders under one protocol: frozen and fine-tuned,
-    # PhysioWave-T first, the others by their fine-tuned sensitivity
-    enc = {}
+    # the EEG-alone encoders: per encoder, its runs by mode
+    enc: Dict[str, Dict[str, Run]] = {}
     for r in eeg_runs:
         k = _encoder_key(r)
-        if k and "lr" not in r.name and r.curve("complete"):
-            enc.setdefault(k, {})[r.mode] = 100 * (r.sens_at("complete", FA_BUDGET) or 0)
-    keys = sorted(enc, key=lambda k: (k != "c1", -max(enc[k].values())))
-    xb = np.arange(len(keys))
-    wb = 0.38
-    for j, mode in enumerate(("frozen", "finetune")):
-        vals = [enc[k].get(mode, np.nan) for k in keys]
-        cols = [(MAIN["ours_light"] if mode == "frozen" else MAIN["ours"]) if k == "c1"
-                else (MAIN["neutral_light"] if mode == "frozen" else MAIN["neutral"]) for k in keys]
-        b.bar(xb + (j - 0.5) * wb, vals, wb, color=cols)
-        data[f"encoders_{mode}"] = vals
-    b.axhline(PUBLISHED[0][1], color=MAIN["neutral_dark"], lw=0.7, ls="--")
-    names = {"c1": "PhysioWave-T", "luna_large": "LUNA-L", "luna_huge": "LUNA-H",
-             "luna_base": "LUNA-B", "labram": "LaBraM", "eegpt": "EEGPT"}
-    b.set_xticks(xb)
-    b.set_xticklabels([names.get(k, k) for k in keys], fontsize=5.5)
-    b.set_xlim(-0.6, len(keys) - 0.4)
-    b.set_ylim(30, 80)
-    b.set_ylabel(f"sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-    b.set_title("(b) EEG alone, one protocol", fontsize=8)
-    from matplotlib.patches import Patch
-    b.legend(handles=[Patch(color=MAIN["neutral_light"], label="frozen encoder"),
-                      Patch(color=MAIN["neutral"], label="fine-tuned"),
-                      Line2D([], [], color=MAIN["neutral_dark"], lw=0.7, ls="--",
-                             label=f"SVM, bte-EEG ({PUBLISHED[0][1]:g})")],
-             frameon=False, fontsize=5.5, loc="upper right", handlelength=1.4, borderaxespad=0.3,
-             labelspacing=0.3)
-    data["encoders"] = np.array(keys)
-    meta["encoders"] = keys
+        if k and "_lr" not in r.name and r.curve("complete"):
+            enc.setdefault(k, {})[r.mode] = r
+    keys = sorted(enc, key=lambda k: (k != "c1", -max(
+        r.sens_at("complete", FA_BUDGET) or 0 for r in enc[k].values())))
 
-    # (c) RALF's reliability head on the clean set and under each corruption
-    t = ralf.test()
-    conds = [("complete", None, "clean")] + [(cid, m, lab) for cid, m, lab in CORRUPTIONS if cid in t]
-    width = 0.26
-    xs = np.arange(len(conds))
-    rel = {}
-    for j, m in enumerate(MODALITIES):
-        v = [t.get(cid, {}).get(f"reliability_{m}", np.nan) for cid, _, _ in conds]
-        rel[m] = v
-        c.bar(xs + (j - 1) * width, v, width, color=MAIN_MOD[m], label=MOD_LABEL[m])
-    for i, (cid, m, lab) in enumerate(conds):
-        if m is not None:                         # the corrupted modality's bar
-            j = MODALITIES.index(m)
-            c.plot(i + (j - 1) * width, rel[m][i] + 0.035, marker="v", color="black", ms=3)
-    c.set_xticks(xs)
-    c.set_xticklabels(["clean"] + [f"{m.upper()}\n{CORRUPTION_TICK.get(lab, lab)}"
-                                  for _, m, lab in conds[1:]], fontsize=5.5)
-    c.set_ylim(0, 1.22)
-    c.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    c.set_ylabel("predicted reliability")
-    c.set_title(f"(c) {ralf.short_label} reliability head under corrupted inputs", fontsize=8)
-    c.legend(frameon=False, fontsize=5.5, loc="upper right", ncol=3, handlelength=1.2,
-             columnspacing=0.8)
-    data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])
-    for m in MODALITIES:
-        data[f"reliability_{m}"] = rel[m]
-    meta["corruption_severity"] = (ralf.results or {}).get("corruption_severity")
+    def best_mode(k: str) -> Run:
+        return max(enc[k].values(), key=lambda r: r.sens_at("complete", FA_BUDGET) or 0)
 
-    # (d) modality subsets at the budget, one line per fusion rule, labelled at its end
-    order = ["eeg_only", "ecg_only", "emg_only", "eeg_ecg", "eeg_emg", "ecg_emg", "complete"]
-    subsets = [cnd for cnd in order if any(r.curve(cnd) for r in fusion)]
-    x = np.arange(len(subsets))
-    ends = []
-    for r in fusion:
-        se = [100 * (r.sens_at(cnd, FA_BUDGET) if r.curve(cnd) else np.nan) for cnd in subsets]
-        data[f"sens_subsets_{r.name}"] = se
-        d.plot(x, se, marker="o", ms=3.8 if r is main else 2.8, color=fus_col[r.name],
-               lw=1.8 if r is main else 0.9, zorder=3 if r is main else 2)
-        ends.append((se[-1], r.short_label, fus_col[r.name]))
-    ends.sort()
-    ys = [e[0] for e in ends]
-    for i in range(1, len(ys)):
-        ys[i] = max(ys[i], ys[i - 1] + 3.2)
-    for (y0, lab, col), y in zip(ends, ys):
-        d.annotate(lab, (x[-1], y0), (x[-1] + 0.3, y), fontsize=6, color=col, va="center",
-                   ha="left", annotation_clip=False)
-    d.axhline(PUBLISHED[0][1], color=MAIN["neutral_dark"], lw=0.7, ls="--")
-    d.legend(handles=[Line2D([], [], color=MAIN["neutral_dark"], lw=0.7, ls="--",
-                             label=f"SVM, bte-EEG ({PUBLISHED[0][1]:g})")],
-             frameon=False, fontsize=5.5, loc="lower right", handlelength=1.8, borderaxespad=0.3)
-    d.set_xticks(x)
-    d.set_xticklabels([SUBSET_LABEL[cnd].replace("+", "\n+") for cnd in subsets], fontsize=6)
-    d.set_xlim(-0.4, len(subsets) - 0.6)
-    d.set_ylim(30, 90)
-    d.set_ylabel(f"sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-    d.set_xlabel("modalities kept at test time")
-    d.set_title("(d) PhysioWave-T fusion: what each modality adds", fontsize=8)
-    meta["subsets"] = subsets
+    rc = {"font.family": "sans-serif",
+          "font.sans-serif": ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"],
+          "font.weight": "normal", "axes.labelweight": "normal", "axes.titleweight": "normal",
+          "font.size": 7, "axes.labelsize": 7, "axes.titlesize": 7.5, "xtick.labelsize": 6.5,
+          "ytick.labelsize": 6.5, "legend.fontsize": 6, "axes.linewidth": 0.6,
+          "xtick.major.width": 0.6, "ytick.major.width": 0.6, "xtick.major.size": 2.5,
+          "ytick.major.size": 2.5, "axes.spines.top": False, "axes.spines.right": False}
+    with plt.rc_context(rc):
+        fig = plt.figure(figsize=(7.2, 5.0))
+        outer = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.9], hspace=0.5,
+                                 left=0.07, right=0.985, top=0.93, bottom=0.1)
+        top = outer[0].subgridspec(1, 2, width_ratios=[1.75, 1.25], wspace=0.34)
+        bot = outer[1].subgridspec(1, 2, width_ratios=[1.35, 1.65], wspace=0.3)
+        a, b = fig.add_subplot(top[0]), fig.add_subplot(top[1])
+        c, d = fig.add_subplot(bot[0]), fig.add_subplot(bot[1])
+        data, meta = {}, {"fa_budget": FA_BUDGET, "fusion_runs": [r.name for r in fusion],
+                          "eeg_runs": [r.name for r in eeg_runs], "reliability_run": ralf.name}
 
-    sev = meta["corruption_severity"]
-    fig.suptitle("SeizeIT2, official split, 29 test patients (2,912 h, 181 seizures): the dataset "
-                 "paper's scoring (any-overlap, recording means); (a), (b), (d) share the "
-                 f"{FA_BUDGET:g} FA/h budget, the SVM's operating point"
-                 + (f"; (c) corruption severity {sev:g}" if sev is not None else ""),
-                 y=1.0, fontsize=7)
-    _alignment_audit(fig, os.path.join(w.meta_dir, "fig_main.alignment.json"))
-    w.save(fig, "fig_main", data=data, meta=meta)
+        def letter(ax, ch, title):
+            ax.text(-0.02, 1.06, ch, transform=ax.transAxes, fontsize=9, fontweight="bold",
+                    ha="right", va="bottom")
+            ax.set_title(title, loc="left", pad=5)
+
+        # (a) sensitivity against FA/h: the main fusion run and every EEG-alone
+        # encoder at its better mode
+        _plot_curve(a, main.curve("complete"), MAIN["ours"],
+                    f"PhysioWave-T, EEG+ECG+EMG ({main.short_label})", lw=2.0)
+        data[f"curve_{main.name}"] = _curve_data(main)
+        a_runs = []
+        for k in keys:
+            r = best_mode(k)
+            a_runs.append(r.name)
+            _plot_curve(a, r.curve("complete"), ENC_COLOR.get(k, MAIN["neutral"]),
+                        f"{ENC_NAME.get(k, k)}, EEG alone", lw=1.0, ls="--")
+            data[f"curve_{r.name}"] = _curve_data(r)
+        a.axvline(FA_BUDGET, color=MAIN["neutral"], lw=0.6, ls=":")
+        a.text(FA_BUDGET * 1.12, 2, f"{FA_BUDGET:g} FA/h", fontsize=6, color=MAIN["neutral_dark"],
+               ha="left", va="bottom")
+        a.set_xscale("log")
+        a.set_xlim(0.05, 100)
+        a.set_ylim(0, 100)
+        from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
+        a.xaxis.set_major_locator(FixedLocator([0.1, 1, 10, 100]))
+        a.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:g}"))
+        a.xaxis.set_minor_formatter(NullFormatter())
+        a.set_xlabel("False alarms per hour")
+        a.set_ylabel("Sensitivity (%)")
+        letter(a, "a", "Event-level detection, 29 test patients")
+        a.legend(frameon=False, loc="upper left", handlelength=2.2, labelspacing=0.4)
+        meta["a_curves"] = [main.name] + a_runs
+
+        # (b) the EEG-alone encoders frozen and fine-tuned, at the budget
+        xb = np.arange(len(keys))
+        wb = 0.36
+        for j, mode in enumerate(("frozen", "finetune")):
+            vals = [100 * (enc[k][mode].sens_at("complete", FA_BUDGET) or 0) if mode in enc[k]
+                    else np.nan for k in keys]
+            cols = [ENC_COLOR.get(k, MAIN["neutral"]) if mode == "finetune"
+                    else lighten(ENC_COLOR.get(k, MAIN["neutral"])) for k in keys]
+            b.bar(xb + (j - 0.5) * wb, vals, wb * 0.94, color=cols)
+            data[f"encoders_{mode}"] = vals
+        b.set_xticks(xb)
+        b.set_xticklabels([ENC_NAME.get(k, k) for k in keys])
+        b.set_xlim(-0.6, len(keys) - 0.4)
+        b.set_ylim(30, 70)
+        b.set_ylabel(f"Sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
+        letter(b, "b", "EEG alone, one protocol")
+        from matplotlib.patches import Patch
+        b.legend(handles=[Patch(color=lighten(MAIN["neutral_dark"]), label="frozen encoder"),
+                          Patch(color=MAIN["neutral_dark"], label="fine-tuned")],
+                 frameon=False, loc="upper right", handlelength=1.2, borderaxespad=0.2)
+        data["encoders"] = np.array(keys)
+        meta["encoders"] = keys
+
+        # (c) RALF's reliability head: a heat map, conditions across, modalities down
+        t = ralf.test()
+        conds = [("complete", None, "clean")] + [(cid, m, lab) for cid, m, lab in CORRUPTIONS
+                                                 if cid in t]
+        M = np.array([[t.get(cid, {}).get(f"reliability_{m}", np.nan) for cid, _, _ in conds]
+                      for m in MODALITIES])
+        cmap = matplotlib.colors.LinearSegmentedColormap.from_list("rel", ["#FFFFFF", MAIN["ours"]])
+        c.imshow(M, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+        for i in range(M.shape[0]):
+            for j in range(M.shape[1]):
+                v = M[i, j]
+                c.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6,
+                       color="white" if v > 0.55 else MAIN["neutral_dark"])
+        for j, (cid, m, _) in enumerate(conds):
+            if m is not None:                     # the corrupted modality's cell
+                i = MODALITIES.index(m)
+                c.add_patch(matplotlib.patches.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
+                                                         ec="black", lw=0.8))
+        c.set_xticks(range(len(conds)))
+        c.set_xticklabels(["clean"] + [f"{m.upper()}\n{CORRUPTION_TICK.get(lab, lab)}"
+                                      for _, m, lab in conds[1:]], fontsize=6)
+        c.set_yticks(range(len(MODALITIES)))
+        c.set_yticklabels([MOD_LABEL[m] for m in MODALITIES])
+        c.tick_params(length=0)
+        for sp in c.spines.values():
+            sp.set_visible(False)
+        letter(c, "c", f"{ralf.short_label} reliability head under corrupted inputs")
+        data["reliability"] = M
+        data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])
+        meta["corruption_severity"] = (ralf.results or {}).get("corruption_severity")
+
+        # (d) window-level AUPRC of every modality subset, one line per fusion rule
+        order = ["eeg_only", "ecg_only", "emg_only", "eeg_ecg", "eeg_emg", "ecg_emg", "complete"]
+        subsets = [cnd for cnd in order if any(cnd in r.test() for r in fusion)]
+        x = np.arange(len(subsets))
+        ends = []
+        for r in fusion:
+            v = [r.test().get(cnd, {}).get("auprc", np.nan) for cnd in subsets]
+            data[f"auprc_subsets_{r.name}"] = v
+            d.plot(x, v, marker="o", ms=3.8 if r is main else 2.8, color=fus_col[r.name],
+                   lw=1.8 if r is main else 0.9, zorder=3 if r is main else 2)
+            ends.append((v[-1], r.short_label, fus_col[r.name]))
+        ends.sort()
+        ys = [e[0] for e in ends]
+        for i in range(1, len(ys)):
+            ys[i] = max(ys[i], ys[i - 1] + 0.016)
+        for (y0, lab, col), y in zip(ends, ys):
+            d.annotate(lab, (x[-1], y0), (x[-1] + 0.25, y), fontsize=6.5, color=col,
+                       va="center", ha="left", annotation_clip=False)
+        d.set_xticks(x)
+        d.set_xticklabels([SUBSET_LABEL[cnd].replace("+", "\n+") for cnd in subsets])
+        d.set_xlim(-0.4, len(subsets) - 0.6)
+        lo = np.nanmin([v for k_, v in data.items() if k_.startswith("auprc_subsets_")])
+        d.set_ylim(np.floor(lo * 20) / 20 - 0.02, 0.44)
+        d.set_ylabel("Window-level AUPRC")
+        d.set_xlabel("Modalities kept at test time")
+        letter(d, "d", "Modality subsets of the fusion")
+        meta["subsets"] = subsets
+
+        sev = meta["corruption_severity"]
+        fig.suptitle("SeizeIT2, official split, 29 test patients (2,912 h, 181 seizures). (a), (b): "
+                     "the dataset paper's event scoring (any-overlap, recording means), the "
+                     f"{FA_BUDGET:g} FA/h line is the SVM's operating point; each EEG-alone encoder in "
+                     "(a) at its better of frozen / fine-tuned; (d): the window-level test set, "
+                     "the metric the runs are selected on"
+                     + (f"; (c) corruption severity {sev:g}" if sev is not None else ""),
+                     y=1.0, fontsize=6)
+        _alignment_audit(fig, os.path.join(w.meta_dir, "fig_main.alignment.json"))
+        w.save(fig, "fig_main", data=data, meta=meta)
 
 
 # --------------------------------------------------------------------------- #
