@@ -309,7 +309,14 @@ the published SVM and ChronoNet; (b) what each modality subset of the fusion
 runs reaches at 11 FA/h; (c) the main run's reliability head on the clean set
 and under each corruption, the corrupted modality marked; (d) per test
 patient, C1 EEG alone against the main run, each at its own threshold for 11
-FA/h on the whole test set. `ONLY=fig_main` draws it alone. The other figures,
+FA/h on the whole test set. `ONLY=fig_main` draws it alone; (a) is the hero
+panel, the baselines muted; (c) always shows the RALF run among those given,
+so `RUN=weighted_logit_frozen_szo` makes weighted logit the main line of (a),
+(b) and (d) under its own name. With the nature-figure skill installed
+(`~/ai-skills/nature-skills`), `PW_FIGURE_AUDIT=<its scripts dir>` runs its
+panel-alignment gate at render time; its `audit_pdf_text.py` (5 pt floor) and
+`audit_figure_collisions.py` pass on the exported PDF apart from the three
+direct labels that sit outside panel (b)'s frame on purpose. The other figures,
 from the same artefacts: the cached per-second
 probabilities, `events_cross.json`, `results.json`, `history.json` and one
 test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG
