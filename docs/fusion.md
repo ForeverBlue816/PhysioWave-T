@@ -303,22 +303,22 @@ multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
 
 ## Figures (`scripts/visualize_seizeit2.py`)
 
-`fig_main` is the four-panel summary for the paper, SeizeIT2 only. The
+`fig_main` is the four-panel summary for the paper, SeizeIT2 only; the
 encoders are named PhysioWave-T in every label (the run directories keep
 `c1`). (a) sensitivity against FA/h, three curves and two points: the main
 fusion run, PhysioWave-T on EEG alone, the strongest other EEG-alone encoder
-at 11 FA/h (which one is in the metadata), the published SVM and ChronoNet;
-the other encoders stay in the table; (b) what each modality subset of the fusion
-runs reaches at 11 FA/h; (c) the main run's reliability head on the clean set
-and under each corruption, the corrupted modality marked; (d) per test
-patient, C1 EEG alone against the main run, each at its own threshold for 11
-FA/h on the whole test set. `ONLY=fig_main` draws it alone; (c) always shows the RALF run among those given,
-so `RUN=weighted_logit_frozen_szo` makes weighted logit the main line of (a),
-(b) and (d) under its own name. With the nature-figure skill installed
+at 11 FA/h (named in the metadata), the published SVM and ChronoNet; (b) the
+EEG-alone encoders under one protocol, frozen and fine-tuned, at 11 FA/h;
+(c) the RALF run's reliability head on the clean set and under each
+corruption, the corrupted modality marked; (d) what each modality subset of
+the fusion runs reaches at 11 FA/h, the rules labelled at their ends. One
+palette: navy for ours, greys for the other encoders and rules, one red for
+the published detectors. `ONLY=fig_main` draws it alone; (c) always shows the
+RALF run among those given. With the nature-figure skill installed
 (`~/ai-skills/nature-skills`), `PW_FIGURE_AUDIT=<its scripts dir>` runs its
 panel-alignment gate at render time; its `audit_pdf_text.py` (5 pt floor) and
-`audit_figure_collisions.py` pass on the exported PDF apart from the three
-direct labels that sit outside panel (b)'s frame on purpose. The other figures,
+`audit_figure_collisions.py` pass on the exported PDF, the remaining warnings
+being labels that sit outside a panel's frame on purpose. The other figures,
 from the same artefacts: the cached per-second
 probabilities, `events_cross.json`, `results.json`, `history.json` and one
 test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG
