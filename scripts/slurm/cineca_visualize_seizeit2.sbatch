@@ -15,8 +15,10 @@
 #   RUN       the main run directory under $PW_CKPT_ROOT/fusion   (ralf_frozen_szo)
 #   COMPARE   other trimodal runs   (concat_frozen_szo weighted_logit_frozen_szo
 #                                    ralf_finetune_szo ralf_scratch_szo)
-#   EEG_RUNS  EEG-only runs         (eeg_c1_finetune_sze eeg_eegpt_frozen_sze
-#                                    eeg_labram_finetune_sze)
+#   EEG_RUNS  EEG-only runs         (eeg_c1_finetune_sze eeg_luna_huge_finetune_sze
+#                                    eeg_labram_finetune_sze eeg_eegpt_frozen_sze);
+#             the first C1 fine-tuned one is panel (d)'s EEG-alone side
+#   ONLY      figure names to draw, e.g. ONLY=fig_main (default: all)
 #   EXAMPLE   recording for the example figure (default: the ranked choice)
 #   WINDOW_START  start of the 4 s per-modality input window, seconds from the
 #             seizure onset (default: centred on the seizure)
@@ -46,7 +48,7 @@ FUSION_ROOT="${FUSION_ROOT:-/leonardo_scratch/large/userexternal/ychen003/bio/fu
 OUT_ROOT="${OUT_ROOT:-${PW_CKPT_ROOT}/fusion}"
 RUN="${RUN:-ralf_frozen_szo}"
 COMPARE="${COMPARE:-concat_frozen_szo weighted_logit_frozen_szo ralf_finetune_szo ralf_scratch_szo}"
-EEG_RUNS="${EEG_RUNS:-eeg_c1_finetune_sze eeg_eegpt_frozen_sze eeg_labram_finetune_sze}"
+EEG_RUNS="${EEG_RUNS:-eeg_c1_finetune_sze eeg_luna_huge_finetune_sze eeg_labram_finetune_sze eeg_eegpt_frozen_sze}"
 NAME="${NAME:-seizeit2_fusion}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
 
@@ -66,6 +68,7 @@ python scripts/visualize_seizeit2.py --raw-dir "${FUSION_ROOT}/raw/seizeit2" \
     --run-dir "${OUT_ROOT}/${RUN}" --compare ${COMPARE_DIRS} --eeg-runs ${EEG_DIRS} \
     --out-dir "docs/runs/${NAME}" --format "${FORMAT:-svg,pdf}" \
     ${EXAMPLE:+--example "${EXAMPLE}"} ${WINDOW_START:+--window-start "${WINDOW_START}"} \
+    ${ONLY:+--only ${ONLY}} \
     $([[ "${PAPER:-1}" == "1" ]] && echo --paper) || exit 1
 rm -rf "docs/runs/${NAME}/figure_data"          # the arrays: large, redrawable
 echo "figures in docs/runs/${NAME}; on a login node: git add docs/runs/${NAME} && git commit && git push"

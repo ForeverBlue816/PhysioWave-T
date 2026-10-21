@@ -303,7 +303,14 @@ multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
 
 ## Figures (`scripts/visualize_seizeit2.py`)
 
-Six paper figures from the runs' own artefacts: the cached per-second
+`fig_main` is the four-panel summary for the paper, SeizeIT2 only: (a)
+sensitivity against FA/h, the fusion runs against the EEG-alone encoders and
+the published SVM and ChronoNet; (b) what each modality subset of the fusion
+runs reaches at 11 FA/h; (c) the main run's reliability head on the clean set
+and under each corruption, the corrupted modality marked; (d) per test
+patient, C1 EEG alone against the main run, each at its own threshold for 11
+FA/h on the whole test set. `ONLY=fig_main` draws it alone. The other figures,
+from the same artefacts: the cached per-second
 probabilities, `events_cross.json`, `results.json`, `history.json` and one
 test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG
 and EMG, the probability under every modality subset, the gate and the

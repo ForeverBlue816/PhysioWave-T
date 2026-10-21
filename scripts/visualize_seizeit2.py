@@ -22,6 +22,14 @@ learning curves are history.json.
                            post-processing. The recording is CHOSEN: the
                            candidates are ranked and the ranking is kept in
                            figure_metadata, so the caption can say so.
+  fig_main                 the four-panel summary: (a) sensitivity against
+                           FA/h, the fusion runs against the EEG-alone
+                           encoders and the published detectors; (b) what each
+                           modality subset of the fusion runs reaches at <= 11
+                           FA/h; (c) the main run's reliability head under
+                           each corruption; (d) per test patient, EEG alone
+                           against the main run at each one's <= 11 FA/h
+                           threshold.
   fig_sensitivity_fa       sensitivity against false alarms per hour (the
                            dataset paper's scoring) over the threshold curve:
                            every run, every modality subset of the main run,
@@ -162,8 +170,40 @@ class Run:
               and r["official"]["fa_ovlp_h"] <= budget]
         return max(ok) if ok else 0.0
 
+    def th_at(self, cond: str, budget: float) -> Optional[float]:
+        """The threshold of the best sensitivity reachable within ``budget`` FA/h."""
+        cur = self.curve(cond)
+        if not cur:
+            return None
+        ok = [(r["official"]["sens_ovlp"], r["th"]) for r in cur
+              if r["official"]["fa_ovlp_h"] == r["official"]["fa_ovlp_h"]
+              and r["official"]["fa_ovlp_h"] <= budget]
+        return max(ok)[1] if ok else None
+
+    @property
+    def short_label(self) -> str:
+        """``RALF``, ``weighted logit``, ``concat`` for a fusion run; the encoder
+        and mode for an EEG-alone run."""
+        if self.name.startswith("eeg_"):
+            return self.label.replace(", EEG", "")
+        return {"ralf": "RALF", "weighted_logit": "weighted logit",
+                "concat": "concat"}.get(self.fusion, self.fusion)
+
     def predictions(self) -> List[str]:
         return sorted(glob.glob(os.path.join(self.pred_dir, "*.npz")))
+
+    def per_patient(self, th: float, cond: str = "complete") -> Dict[str, Dict[str, float]]:
+        """Pooled event counts per test patient at one threshold, from the
+        cached per-second probabilities."""
+        per: Dict[str, Dict[str, float]] = {}
+        for f in self.predictions():
+            z = np.load(f)
+            sub = os.path.basename(f).split("_run-")[0]
+            r = score_recording(gated(z, cond), z["label"], th)
+            d = per.setdefault(sub, {"n_seizures": 0, "hit": 0, "false_events": 0, "hours": 0.0})
+            for key in d:
+                d[key] += r[key]
+        return per
 
 
 def gated(z, cond: str) -> np.ndarray:
@@ -543,14 +583,7 @@ def fig_reliability(w: FigureWriter, main: Run, others: List[Run]):
 
 
 def fig_per_patient(w: FigureWriter, main: Run):
-    per: Dict[str, Dict[str, float]] = {}
-    for f in main.predictions():
-        z = np.load(f)
-        sub = os.path.basename(f).split("_run-")[0]
-        r = score_recording(gated(z, "complete"), z["label"], 0.5)
-        d = per.setdefault(sub, {"n_seizures": 0, "hit": 0, "false_events": 0, "hours": 0.0})
-        for key in d:
-            d[key] += r[key]
+    per = main.per_patient(0.5)
     subs = sorted(per, key=lambda s: (per[s]["n_seizures"] == 0,
                                       -(per[s]["hit"] / per[s]["n_seizures"]) if per[s]["n_seizures"] else 0))
     sens = [100 * per[s]["hit"] / per[s]["n_seizures"] if per[s]["n_seizures"] else np.nan for s in subs]
@@ -603,6 +636,151 @@ def fig_learning_curves(w: FigureWriter, main: Run, others: List[Run], eeg_runs:
     fig.suptitle("Learning curves; the dot is the epoch the test figures come from", y=1.03)
     w.save(fig, "fig_learning_curves", data=data,
            meta={"runs": [r.name for r in [main] + others + eeg_runs]})
+
+
+CORRUPTION_TICK = {"noise": "noise", "bad channel": "bad ch.", "drift": "drift",
+                   "saturation": "satur.", "dropout": "dropout"}
+
+
+def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run]):
+    """The four-panel summary figure, SeizeIT2 only."""
+    fusion = [main] + others
+    fig, axes = plt.subplots(2, 2, figsize=(7.2, 5.6))
+    fig.subplots_adjust(wspace=0.28, hspace=0.55, left=0.08, right=0.99, top=0.95, bottom=0.1)
+    (a, b), (c, d) = axes
+    data, meta = {}, {"fa_budget": FA_BUDGET, "fusion_runs": [r.name for r in fusion],
+                      "eeg_runs": [r.name for r in eeg_runs], "published": PUBLISHED}
+
+    # (a) sensitivity against FA/h: fusion solid, EEG alone dashed, published as points
+    fus_col = {r.name: LINE_COLORS[i % len(LINE_COLORS)] for i, r in enumerate(fusion)}
+    eeg_col = {r.name: LINE_COLORS[(i + len(fusion)) % len(LINE_COLORS)] for i, r in enumerate(eeg_runs)}
+    for r in fusion:
+        cur = r.curve("complete")
+        if cur:
+            _plot_curve(a, cur, fus_col[r.name], f"{r.short_label}, EEG+ECG+EMG",
+                        lw=1.9 if r is main else 1.2)
+            data[f"curve_{r.name}"] = np.array([[x["th"], x["official"]["fa_ovlp_h"],
+                                                 x["official"]["sens_ovlp"]] for x in cur])
+    for r in eeg_runs:
+        cur = r.curve("complete")
+        if cur:
+            _plot_curve(a, cur, eeg_col[r.name], f"{r.short_label}, EEG alone", lw=0.9, ls="--")
+            data[f"curve_{r.name}"] = np.array([[x["th"], x["official"]["fa_ovlp_h"],
+                                                 x["official"]["sens_ovlp"]] for x in cur])
+    for lab, se, fa, mk in PUBLISHED:
+        a.plot(fa, se, marker=mk, color="black", ms=4.5, ls="none", label=lab, zorder=5)
+    a.axvline(FA_BUDGET, color="0.5", lw=0.6, ls=":")
+    a.text(FA_BUDGET * 1.12, 97, f"{FA_BUDGET:g} FA/h", fontsize=5.5, color="0.35", ha="left", va="top")
+    a.set_xscale("log")
+    a.set_xlim(0.05, 150)
+    a.set_ylim(0, 100)
+    a.set_xlabel("false alarms / h")
+    a.set_ylabel("sensitivity (%)")
+    a.grid(True, which="both", lw=0.3, alpha=0.4)
+    a.set_title("(a) event-level detection, 29 test patients", fontsize=8)
+    a.legend(frameon=False, fontsize=5, loc="lower right", handlelength=1.8, labelspacing=0.25)
+
+    # (b) modality subsets at the budget, one marker-line per fusion run
+    order = ["eeg_only", "ecg_only", "emg_only", "eeg_ecg", "eeg_emg", "ecg_emg", "complete"]
+    subsets = [c for c in order if any(r.curve(c) for r in fusion)]
+    x = np.arange(len(subsets))
+    for r in fusion:
+        se = [100 * (r.sens_at(c, FA_BUDGET) if r.curve(c) else np.nan) for c in subsets]
+        data[f"sens_subsets_{r.name}"] = se
+        b.plot(x, se, marker="o", ms=4 if r is main else 3, color=fus_col[r.name],
+               lw=1.6 if r is main else 1.0, label=r.short_label)
+    b.axhline(PUBLISHED[0][1], color="black", lw=0.7, ls="--")
+    b.text(-0.3, PUBLISHED[0][1] - 1.2, f"SVM, bte-EEG ({PUBLISHED[0][1]:g})", fontsize=5.5,
+           ha="left", va="top")
+    b.set_xticks(x)
+    b.set_xticklabels([SUBSET_LABEL[c] for c in subsets], rotation=30, ha="right", fontsize=6.5)
+    b.set_ylim(30, 90)
+    b.set_ylabel(f"sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
+    b.set_title("(b) modalities kept at test time", fontsize=8)
+    b.legend(frameon=False, fontsize=5.5, loc="upper left", handlelength=1.8)
+    b.grid(True, axis="y", lw=0.3, alpha=0.4)
+    meta["subsets"] = subsets
+
+    # (c) the main run's reliability head on the clean set and under each corruption
+    t = main.test()
+    conds = [("complete", None, "clean")] + [(cid, m, lab) for cid, m, lab in CORRUPTIONS if cid in t]
+    width = 0.26
+    xs = np.arange(len(conds))
+    rel = {}
+    for j, m in enumerate(MODALITIES):
+        v = [t.get(cid, {}).get(f"reliability_{m}", np.nan) for cid, _, _ in conds]
+        rel[m] = v
+        c.bar(xs + (j - 1) * width, v, width, color=MOD_COLOR[m], label=MOD_LABEL[m])
+    for i, (cid, m, lab) in enumerate(conds):
+        if m is not None:                         # mark the corrupted modality's bar
+            j = MODALITIES.index(m)
+            c.plot(i + (j - 1) * width, rel[m][i] + 0.03, marker="v", color="black", ms=3.2)
+    c.set_xticks(xs)
+    c.set_xticklabels(["clean"] + [f"{MOD_LABEL[m]}\n{CORRUPTION_TICK.get(lab, lab)}"
+                                  for _, m, lab in conds[1:]], fontsize=6)
+    c.set_ylim(0, 1.2)
+    c.set_ylabel("predicted reliability")
+    sev = (main.results or {}).get("corruption_severity")
+    c.set_title(f"(c) {main.short_label}: reliability head under corrupted inputs", fontsize=8)
+    c.legend(frameon=False, fontsize=5.5, loc="upper right", ncol=3, handlelength=1.2,
+             columnspacing=0.8, bbox_to_anchor=(1.0, 1.0))
+    data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])
+    for m in MODALITIES:
+        data[f"reliability_{m}"] = rel[m]
+    meta["corruption_severity"] = sev
+
+    # (d) per test patient: EEG alone against the main run, each at its own
+    # threshold for the budget on the whole test set
+    ref = next((r for r in eeg_runs if r.name.startswith("eeg_c1_finetune")), None) \
+        or (eeg_runs[0] if eeg_runs else None)
+    th_main = main.th_at("complete", FA_BUDGET)
+    th_ref = ref.th_at("complete", FA_BUDGET) if ref else None
+    if ref is not None and th_main is not None and th_ref is not None \
+            and main.predictions() and ref.predictions():
+        pm, pr = main.per_patient(th_main), ref.per_patient(th_ref)
+        subs = [s_ for s_ in pm if pm[s_]["n_seizures"] > 0 and s_ in pr]
+        sm = {s_: 100 * pm[s_]["hit"] / pm[s_]["n_seizures"] for s_ in subs}
+        sr = {s_: 100 * pr[s_]["hit"] / pr[s_]["n_seizures"] for s_ in subs}
+        subs.sort(key=lambda s_: (-sm[s_], -sr[s_]))
+        xd = np.arange(len(subs))
+        for i, s_ in enumerate(subs):
+            d.plot([i, i], [sr[s_], sm[s_]], color="0.6", lw=0.8, zorder=1)
+        d.plot(xd, [sr[s_] for s_ in subs], "o", mfc="white", mec=MOD_COLOR["eeg"], mew=1.0,
+               ms=4, label=f"{ref.short_label}, EEG alone (th {th_ref:.2f})", zorder=2)
+        d.plot(xd, [sm[s_] for s_ in subs], "o", color=fus_col[main.name], ms=4.2,
+               label=f"{main.short_label}, EEG+ECG+EMG (th {th_main:.2f})", zorder=3)
+        for i, s_ in enumerate(subs):
+            d.text(i, -5, str(int(pm[s_]["n_seizures"])), ha="center", va="top", fontsize=5)
+        d.set_xticks(xd)
+        d.set_xticklabels([s_.replace("sub-", "") for s_ in subs], rotation=90, fontsize=5.5)
+        d.set_xlim(-0.7, len(subs) - 0.3)
+        d.set_ylim(-16, 108)
+        d.set_yticks([0, 25, 50, 75, 100])
+        d.set_ylabel("sensitivity (%)")
+        d.set_xlabel("test patient (below: annotated seizures)", labelpad=1)
+        better = sum(sm[s_] > sr[s_] for s_ in subs)
+        same = sum(sm[s_] == sr[s_] for s_ in subs)
+        d.set_title(f"(d) per patient, each model at its ≤ {FA_BUDGET:g} FA/h threshold\n"
+                    f"fusion better on {better}, equal on {same}, worse on "
+                    f"{len(subs) - better - same} of {len(subs)} patients", fontsize=8)
+        d.legend(frameon=False, fontsize=5.5, loc="upper right", handlelength=1.2)
+        data.update({"patients": np.array(subs), "sens_main": [sm[s_] for s_ in subs],
+                     "sens_ref": [sr[s_] for s_ in subs],
+                     "n_seizures": [pm[s_]["n_seizures"] for s_ in subs]})
+        meta.update({"per_patient_ref": ref.name, "th_main": th_main, "th_ref": th_ref,
+                     "patients_without_seizures": sorted(s_ for s_ in pm if pm[s_]["n_seizures"] == 0)})
+    else:
+        why = "no EEG-alone run" if ref is None else "cached predictions missing"
+        d.text(0.5, 0.5, f"(d) per-patient panel: {why}", ha="center", va="center",
+               transform=d.transAxes, fontsize=7)
+        d.set_axis_off()
+        print(f"  fig_main (d): {why}")
+    fig.suptitle("SeizeIT2, official split, 29 test patients (2,912 h, 181 seizures): the dataset "
+                 "paper's scoring (any-overlap, recording means); (a), (b), (d) share the "
+                 f"{FA_BUDGET:g} FA/h budget, the SVM's operating point"
+                 + (f"; (c) corruption severity {sev:g}" if sev is not None else ""),
+                 y=1.0, fontsize=7)
+    w.save(fig, "fig_main", data=data, meta=meta)
 
 
 # --------------------------------------------------------------------------- #
@@ -674,6 +852,8 @@ def main(argv=None) -> int:
             fig_seizure_example(w, main_run, args.raw_dir, args.example, args.margin, ex)
         if do("fig_signal"):
             fig_signal_strips(w, main_run, ex, args.window_start)
+    if do("fig_main") and main_run.events:
+        fig_main(w, main_run, others, eeg_runs)
     if do("fig_sensitivity_fa") and main_run.events:
         fig_sensitivity_fa(w, main_run, others, eeg_runs)
     if do("fig_modality_subsets") and main_run.events:
