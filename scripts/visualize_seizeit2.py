@@ -652,6 +652,11 @@ ENC_COLOR = {"c1": "#0F4D92", "luna_large": "#42949E", "labram": "#9A4D8E", "eeg
 ENC_NAME = {"c1": "PhysioWave-T", "luna_large": "LUNA-L", "luna_huge": "LUNA-H",
             "luna_base": "LUNA-B", "labram": "LaBraM", "eegpt": "EEGPT",
             "c1native": "PhysioWave-T (native)", "c1siena": "PhysioWave-T + Siena"}
+#: Encoder parameters in millions, the encoder alone (every run adds the same
+#: channel adapter and head): the architectures as physiowave/fusion/baselines.py
+#: builds them, and PhysioWave-T on its E19_256 route (EEGC1Downstream without
+#: the head). Recount with the snippet in docs/fusion.md when one changes.
+ENC_PARAMS_M = {"c1": 25.4, "eegpt": 25.3, "labram": 5.8, "luna_large": 40.4, "luna_huge": 303.4}
 MAIN = {"ours": "#0F4D92", "neutral": "#8C8C8C", "neutral_dark": "#4D4D4D", "teal": "#42949E"}
 MAIN_MOD = {"eeg": "#0F4D92", "ecg": "#B64342", "emg": "#42949E"}
 MAIN_FUSION = {"ralf": MAIN["ours"], "weighted_logit": MAIN["teal"], "concat": MAIN["neutral"]}
@@ -716,10 +721,7 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
     def best_mode(k: str) -> Run:
         return max(enc[k].values(), key=lambda r: r.sens_at("complete", FA_BUDGET) or 0)
 
-    rc = {"font.family": "sans-serif",
-          "font.sans-serif": ["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans"],
-          "font.weight": "normal", "axes.labelweight": "normal", "axes.titleweight": "normal",
-          "font.size": 7, "axes.labelsize": 7, "axes.titlesize": 7.5, "xtick.labelsize": 6.5,
+    rc = {"font.size": 7, "axes.labelsize": 7, "axes.titlesize": 7.5, "xtick.labelsize": 6.5,
           "ytick.labelsize": 6.5, "legend.fontsize": 6, "axes.linewidth": 0.6,
           "xtick.major.width": 0.6, "ytick.major.width": 0.6, "xtick.major.size": 2.5,
           "ytick.major.size": 2.5, "axes.spines.top": False, "axes.spines.right": False}
@@ -777,12 +779,17 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
                     else lighten(ENC_COLOR.get(k, MAIN["neutral"])) for k in keys]
             b.bar(xb + (j - 0.5) * wb, vals, wb * 0.94, color=cols)
             data[f"encoders_{mode}"] = vals
+        for i, k in enumerate(keys):            # the encoder's size above its pair of bars
+            top_ = np.nanmax([100 * (r.sens_at("complete", FA_BUDGET) or 0) for r in enc[k].values()])
+            if k in ENC_PARAMS_M:
+                b.text(i, top_ + 1.0, f"{ENC_PARAMS_M[k]:.1f}M", ha="center", va="bottom",
+                       fontsize=6, color=MAIN["neutral_dark"])
         b.set_xticks(xb)
         b.set_xticklabels([ENC_NAME.get(k, k) for k in keys])
         b.set_xlim(-0.6, len(keys) - 0.4)
-        b.set_ylim(30, 70)
+        b.set_ylim(30, 72)
         b.set_ylabel(f"Sensitivity at ≤ {FA_BUDGET:g} FA/h (%)")
-        letter(b, "b", "EEG alone, one protocol")
+        letter(b, "b", "EEG alone, one protocol (encoder parameters above)")
         from matplotlib.patches import Patch
         b.legend(handles=[Patch(color=lighten(MAIN["neutral_dark"]), label="frozen encoder"),
                           Patch(color=MAIN["neutral_dark"], label="fine-tuned")],
@@ -790,32 +797,36 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         data["encoders"] = np.array(keys)
         meta["encoders"] = keys
 
-        # (c) RALF's reliability head: a heat map, conditions across, modalities down
+        # (c) RALF's reliability head: one line per modality across the clean set
+        # and the corruptions; the corrupted modality's point ringed
         t = ralf.test()
         conds = [("complete", None, "clean")] + [(cid, m, lab) for cid, m, lab in CORRUPTIONS
                                                  if cid in t]
+        xc = np.arange(len(conds))
         M = np.array([[t.get(cid, {}).get(f"reliability_{m}", np.nan) for cid, _, _ in conds]
                       for m in MODALITIES])
-        cmap = matplotlib.colors.LinearSegmentedColormap.from_list("rel", ["#FFFFFF", MAIN["ours"]])
-        c.imshow(M, cmap=cmap, vmin=0, vmax=1, aspect="auto")
-        for i in range(M.shape[0]):
-            for j in range(M.shape[1]):
-                v = M[i, j]
-                c.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=6,
-                       color="white" if v > 0.55 else MAIN["neutral_dark"])
+        off = {"eeg": -0.22, "ecg": 0.0, "emg": 0.22}       # the three dots side by side
+        for i, m in enumerate(MODALITIES):
+            c.axhline(M[i, 0], color=MAIN_MOD[m], lw=0.5, ls=":", alpha=0.7, zorder=1)
+            c.plot(xc + off[m], M[i], "o", color=MAIN_MOD[m], ms=3.6, label=MOD_LABEL[m],
+                   zorder=3)
         for j, (cid, m, _) in enumerate(conds):
-            if m is not None:                     # the corrupted modality's cell
+            if m is not None:                     # the corrupted modality: clean level -> now
                 i = MODALITIES.index(m)
-                c.add_patch(matplotlib.patches.Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
-                                                         ec="black", lw=0.8))
-        c.set_xticks(range(len(conds)))
+                xj = j + off[m]
+                c.annotate("", (xj, M[i, j] + 0.035), (xj, M[i, 0] - 0.025),
+                           arrowprops={"arrowstyle": "-|>", "color": MAIN_MOD[m],
+                                       "lw": 0.8, "shrinkA": 0, "shrinkB": 0}, zorder=2)
+                c.plot(xj, M[i, j], "o", ms=6.8, mfc="none", mec="black", mew=0.8, zorder=4)
+        c.set_xticks(xc)
         c.set_xticklabels(["clean"] + [f"{m.upper()}\n{CORRUPTION_TICK.get(lab, lab)}"
                                       for _, m, lab in conds[1:]], fontsize=6)
-        c.set_yticks(range(len(MODALITIES)))
-        c.set_yticklabels([MOD_LABEL[m] for m in MODALITIES])
-        c.tick_params(length=0)
-        for sp in c.spines.values():
-            sp.set_visible(False)
+        c.set_xlim(-0.5, len(conds) - 0.5)
+        c.set_ylim(0, 1.05)
+        c.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+        c.set_ylabel("Predicted reliability")
+        c.legend(frameon=False, loc="lower left", ncol=3, handlelength=1.0, columnspacing=1.0,
+                 borderaxespad=0.2, handletextpad=0.4)
         letter(c, "c", f"{ralf.short_label} reliability head under corrupted inputs")
         data["reliability"] = M
         data["reliability_conditions"] = np.array([cid for cid, _, _ in conds])

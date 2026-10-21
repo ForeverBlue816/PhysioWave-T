@@ -304,14 +304,14 @@ multimodal runs do (weighted_logit 78.9 %, RALF 74.4 % at <= 11 FA/h).
 ## Figures (`scripts/visualize_seizeit2.py`)
 
 `fig_main` is the four-panel summary for the paper, SeizeIT2 only, in a
-Nature-style dress of its own (sans-serif, bold panel letters, one hue per
-encoder: PhysioWave-T navy, LUNA-L teal, LaBraM violet, EEGPT red; the
+Nature-style layout of its own (the house Times New Roman bold, bold panel
+letters, short left-aligned titles, thin spines; one hue per encoder: PhysioWave-T navy, LUNA-L teal, LaBraM violet, EEGPT red; the
 encoders are named PhysioWave-T in every label, the run directories keep
 `c1`). (a) sensitivity against FA/h: the main fusion run and every EEG-alone
 encoder at its better of frozen / fine-tuned; (b) those encoders frozen (the
 hue lightened) and fine-tuned at 11 FA/h; (c) the RALF run's reliability head
-as a heat map, modalities down, the clean set and each corruption across, the
-corrupted modality's cell outlined; (d) the window-level AUPRC, the metric the
+on the clean set and under each corruption, three dots per condition, an arrow
+from the clean level to the corrupted modality's value; (d) the window-level AUPRC, the metric the
 runs are selected on, of every modality subset of the fusion runs, the rules
 labelled at their ends. The published SVM and ChronoNet are in the tables,
 not on the figure. `ONLY=fig_main` draws it alone; (c) always shows the RALF
@@ -319,9 +319,24 @@ run among those given. With the nature-figure skill installed
 (`~/ai-skills/nature-skills`), `PW_FIGURE_AUDIT=<its scripts dir>` runs its
 panel-alignment gate at render time; its `audit_pdf_text.py` (5 pt floor) and
 `audit_figure_collisions.py` pass on the exported PDF, the remaining warnings
-being labels that sit outside a panel's frame on purpose. On a machine without
-Arial or Helvetica the figure falls back to DejaVu Sans; a `.ttf` under
-`~/.fonts` is picked up. The other figures,
+being labels that sit outside a panel's frame on purpose. The figure needs no
+cluster artefact, so it is drawn locally from the synced results into
+`docs/runs/seizeit2_fusion_main/` (svg, pdf, png, metadata). Panel (b)'s
+parameter counts are `ENC_PARAMS_M` in the script, the encoder alone, counted
+from the architectures:
+
+```python
+from physiowave.fusion.baselines import EEGPTBackbone, LaBraMBackbone, LUNABackbone, LUNA_SIZES
+from physiowave.eeg_c1.downstream import EEGC1Downstream
+from physiowave.eeg_c1.routes import SLOTS_19
+n = lambda m, excl=(): sum(p.numel() for k, p in m.named_parameters() if not k.startswith(excl))
+n(EEGPTBackbone()), n(LaBraMBackbone()), n(LUNABackbone(**LUNA_SIZES["luna_large"]))
+n(EEGC1Downstream(in_channels=19, window_samples=1024, sampling_rate=256, patch_samples=128,
+                  num_classes=2, channel_names=list(SLOTS_19), route_id="E19_256", embed_dim=512,
+                  depth=8, num_heads=8, mlp_ratio=4.0, norm="rmsnorm", ffn="swiglu", qk_norm=True,
+                  channel_embed_dim=64), ("head",))
+```
+The other figures,
 from the same artefacts: the cached per-second
 probabilities, `events_cross.json`, `results.json`, `history.json` and one
 test recording. `fig_seizure_example` (a seizure with the recorded EEG, ECG
