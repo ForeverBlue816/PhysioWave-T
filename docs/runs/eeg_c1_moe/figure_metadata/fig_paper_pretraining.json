@@ -1,10 +1,10 @@
 {
   "checkpoint": null,
-  "plotting_script_git_commit": "67504a6a72c2cb6fdafbce9c492ce39952aeb2a4",
+  "plotting_script_git_commit": "d8b7ccd9f544467928161fe5ed977de189f57881",
   "note": "drawn without the checkpoint",
   "metrics_last_epoch": 59,
   "figure": "fig_paper_pretraining",
-  "generated_utc": "2026-10-22T05:45:13.551738+00:00",
+  "generated_utc": "2026-10-22T05:45:40.459039+00:00",
   "figure_text": [
     "Multi-route EEG pretraining: seven corpora on four routes (montage x sampling rate) sharing one Transformer; (c) masked dual-reconstruction loss on held-out subjects",
     "Multi-route EEG pretraining: seven corpora on four routes (montage x sampling rate) sharing one Transformer; (c) masked dual-reconstruction loss on held-out subjects"

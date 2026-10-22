@@ -1818,6 +1818,12 @@ def fig_paper_pretraining(w: FigureWriter, manifest: Dict, epoch_rows: List[Dict
 
     a.barh(y, counts, color=colors, height=0.68)
     a.set_xscale("log")
+    from matplotlib.ticker import FuncFormatter, NullFormatter
+    # Plain labels: the mathtext exponents of 10^k render below the 5 pt floor.
+    a.xaxis.set_major_formatter(FuncFormatter(
+        lambda v, _: next((f"{v / d:g}{u}" for d, u in ((1e6, "M"), (1e3, "k"))
+                           if v >= d), f"{v:g}")))
+    a.xaxis.set_minor_formatter(NullFormatter())
     a.set_yticks(y)
     a.set_yticklabels(labels)
     a.invert_yaxis()
