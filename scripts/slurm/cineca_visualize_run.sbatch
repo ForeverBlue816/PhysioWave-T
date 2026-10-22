@@ -17,7 +17,11 @@
 #   RUN_DIR     the run directory (holds best.pth, metrics_epoch.jsonl)
 #   NAME        docs/runs/<NAME>                     (<m>_c1_moe)
 #   CHECKPOINT  best.pth (lowest val total loss); latest.pth for the last epoch
-#   RECON_WINDOWS  windows per route the reconstruction figures choose from (4)
+#   RECON_WINDOWS  windows per route the reconstruction figures choose from (4);
+#               fig_paper_reconstruction draws the median of them, so 8 for it
+#   ONLY        figure names to draw, space separated (default: all), e.g.
+#               ONLY="fig_paper_pretraining fig_paper_reconstruction" -- pass it in
+#               the environment (ONLY="..." sbatch ...), not through --export
 #   FORMAT      svg,pdf (vector, text editable); png also accepted
 #   PAPER       1 (default): manuscript figures -- no figure-level title or
 #               notes and no corner stamp; that text is kept in
@@ -59,5 +63,6 @@ echo "visualising ${RUN_DIR} (${CHECKPOINT}) -> docs/runs/${NAME}"
 python scripts/visualize_eeg_pretraining.py --run-dir "${RUN_DIR}" \
     --checkpoint "${CHECKPOINT}" --format "${FORMAT:-svg,pdf}" \
     --recon-windows "${RECON_WINDOWS:-4}" --threads "${OMP_NUM_THREADS}" \
+    ${ONLY:+--only ${ONLY}} \
     $([[ "${PAPER:-1}" == "1" ]] && echo --paper) || exit 1
 bash scripts/collect_pretrain_run.sh "${RUN_DIR}" "${NAME}"

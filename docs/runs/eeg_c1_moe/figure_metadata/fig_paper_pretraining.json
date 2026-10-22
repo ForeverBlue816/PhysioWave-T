@@ -1,0 +1,33 @@
+{
+  "checkpoint": null,
+  "plotting_script_git_commit": "67504a6a72c2cb6fdafbce9c492ce39952aeb2a4",
+  "note": "drawn without the checkpoint",
+  "metrics_last_epoch": 59,
+  "figure": "fig_paper_pretraining",
+  "generated_utc": "2026-10-22T05:45:13.551738+00:00",
+  "figure_text": [
+    "Multi-route EEG pretraining: seven corpora on four routes (montage x sampling rate) sharing one Transformer; (c) masked dual-reconstruction loss on held-out subjects",
+    "Multi-route EEG pretraining: seven corpora on four routes (montage x sampling rate) sharing one Transformer; (c) masked dual-reconstruction loss on held-out subjects"
+  ],
+  "paper_mode": true,
+  "metric": "loss_total",
+  "datasets": [
+    "tueg",
+    "faced",
+    "tdbrain",
+    "physionet_mi",
+    "m3cv",
+    "hbn",
+    "hgd"
+  ],
+  "routes": {
+    "tueg": "E19_256",
+    "faced": "E32_512",
+    "tdbrain": "E32_512",
+    "physionet_mi": "E64_256",
+    "m3cv": "E64_256",
+    "hbn": "E128_512",
+    "hgd": "E128_512"
+  },
+  "source": "dataset_manifest.json and metrics_epoch.jsonl of pretrain_eeg_c1_moe (branch cineca-results)"
+}

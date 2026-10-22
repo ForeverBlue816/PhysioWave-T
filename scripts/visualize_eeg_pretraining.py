@@ -1763,6 +1763,311 @@ def fig_raw_waveform_reconstruction(w: FigureWriter, rows, grid, ranks,
                              "single-route version.")})
 
 
+# --------------------------------------------------------------------------- #
+# Paper composites: (A) the multi-route corpus and its convergence, (B) masked
+# reconstruction. Drawn from the same artefacts as the working figures above.
+# --------------------------------------------------------------------------- #
+
+#: Display names for the paper; the registry keys stay the dataset ids.
+DATASET_LABEL = {"tueg": "TUEG", "faced": "FACED", "tdbrain": "TDBRAIN",
+                 "physionet_mi": "PhysioNet-MI", "m3cv": "M3CV", "hbn": "HBN",
+                 "hgd": "HGD"}
+#: The figures that need no checkpoint: everything they draw is in the run's
+#: dataset_manifest.json and metrics_epoch.jsonl.
+MODEL_FREE_FIGURES = {"fig_dataset_routes", "fig_pretraining_convergence",
+                      "fig_route_convergence", "fig_dual_objective",
+                      "fig_route_cost", "fig_paper_pretraining"}
+
+
+def _route_label(rid: str) -> str:
+    r = ROUTES[rid]
+    return f"{rid.split('_')[0]}: {r.n_channels} ch, {r.sampling_rate:g} Hz"
+
+
+def _panel_letter(ax, ch: str, title: str):
+    """The panel letter and its title on one baseline, above the axes."""
+    ax.text(-0.015, 1.04, ch, transform=ax.transAxes, fontsize=10, fontweight="bold",
+            ha="right", va="baseline")
+    ax.text(0.01, 1.04, title, transform=ax.transAxes, fontsize=8, ha="left",
+            va="baseline")
+
+
+def fig_paper_pretraining(w: FigureWriter, manifest: Dict, epoch_rows: List[Dict]):
+    """(a) corpus size per dataset, (b) the sampling policy against what the
+    run realised, (c) validation loss of every route on one shared Transformer."""
+    datasets = [d for d in PRETRAIN_DATASETS
+                if manifest.get("datasets", {}).get(d, {}).get("n_windows")]
+    if not datasets:
+        print("  fig_paper_pretraining: the run manifest has no dataset sizes")
+        return
+    route_of = {d: PRETRAIN_DATASETS[d].route_id for d in datasets}
+    counts = [manifest["datasets"][d]["n_windows"] for d in datasets]
+    mix = manifest.get("realised_mixture", {})
+    target = [100 * manifest.get("target_weights", {}).get(d, 0.0) for d in datasets]
+    realised = [100 * mix.get("by_step", {}).get(d, 0.0) for d in datasets]
+    labels = [DATASET_LABEL.get(d, d) for d in datasets]
+    colors = [ROUTE_COLOR[route_of[d]] for d in datasets]
+
+    fig = plt.figure(figsize=(7.2, 2.75))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.25], wspace=0.55,
+                          left=0.11, right=0.99, top=0.86, bottom=0.27)
+    a, b, c = (fig.add_subplot(gs[i]) for i in range(3))
+    data = {"datasets": np.asarray(datasets), "n_windows": counts,
+            "target_pct": target, "realised_pct": realised}
+    y = np.arange(len(datasets))
+
+    a.barh(y, counts, color=colors, height=0.68)
+    a.set_xscale("log")
+    a.set_yticks(y)
+    a.set_yticklabels(labels)
+    a.invert_yaxis()
+    a.set_xlabel("Training windows (4 s)")
+    _panel_letter(a, "a", "Pretraining corpora")
+
+    hb = 0.36
+    b.barh(y - hb / 2, target, height=hb, color="white", edgecolor="0.35", lw=0.7,
+           label="Target")
+    b.barh(y + hb / 2, realised, height=hb, color=colors, label="Realised")
+    b.set_yticks(y)
+    b.set_yticklabels([])
+    b.invert_yaxis()
+    b.set_xlabel("Share of optimiser steps (%)")
+    from matplotlib.patches import Patch
+    b.legend(handles=[Patch(facecolor="white", edgecolor="0.35", label="Target"),
+                      Patch(facecolor="0.55", label="Realised")],
+             frameon=False, loc="center right", bbox_to_anchor=(1.0, 0.6),
+             handlelength=1.2)
+    _panel_letter(b, "b", "Temperature sampling")
+
+    metric = _first_key(epoch_rows, ("loss_total", "loss_masked_mse"))
+
+    def by_epoch(key):
+        xs, ys = [], []
+        for r in epoch_rows:
+            v = r.get(key)
+            if isinstance(v, (int, float)) and np.isfinite(v):
+                xs.append(int(r.get("epoch", len(xs))))
+                ys.append(float(v))
+        return np.asarray(xs), np.asarray(ys)
+    for rid, col in ROUTE_COLOR.items():
+        x, yv = by_epoch(f"val/route/{rid}/{metric}")
+        if x.size:
+            c.plot(x, yv, color=col, lw=1.3, label=_route_label(rid))
+            data[f"val_{rid}_epoch"], data[f"val_{rid}"] = x, yv
+    mx, my = by_epoch("val/macro_route_loss_total")
+    if mx.size:
+        c.plot(mx, my, color="0.15", lw=1.3, ls="--", label="Macro average")
+        data["val_macro_epoch"], data["val_macro"] = mx, my
+    c.set_xlabel("Epoch")
+    c.set_ylabel("Validation loss")
+    c.set_xlim(left=0)
+    _panel_letter(c, "c", "Convergence per route")
+
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], color=col, lw=4, label=_route_label(rid))
+               for rid, col in ROUTE_COLOR.items()]
+    handles.append(Line2D([], [], color="0.15", lw=1.3, ls="--", label="Macro average (c)"))
+    fig.legend(handles=handles, loc="lower center", ncol=5, frameon=False,
+               bbox_to_anchor=(0.55, 0.0), handlelength=1.6, columnspacing=1.2)
+    fig.suptitle("Multi-route EEG pretraining: seven corpora on four routes "
+                 "(montage x sampling rate) sharing one Transformer; (c) masked "
+                 "dual-reconstruction loss on held-out subjects", y=1.02)
+    w.save(fig, "fig_paper_pretraining", data,
+           {"metric": metric, "datasets": datasets,
+            "routes": {d: route_of[d] for d in datasets}})
+
+
+def _mixed_channel(ex: Dict, route, mask_ratio: float) -> Optional[int]:
+    """A valid channel with both masked and visible patches, the masked share
+    closest to the mask ratio (the rule of fig_raw_waveform_reconstruction)."""
+    mask, valid = ex["mask"], ex["valid"]
+    n_patches = route.patches_per_channel
+    n_masked = mask.sum(axis=1)
+    ok = valid.all(axis=1)
+    mixed = np.where(ok & (n_masked > 0) & (n_masked < n_patches))[0]
+    if mixed.size:
+        want = max(1, min(n_patches - 1, int(round(mask_ratio * n_patches))))
+        return int(mixed[np.argmin(np.abs(n_masked[mixed] - want))])
+    fallback = np.where(n_masked > 0)[0]
+    return int(fallback[np.argmax(n_masked[fallback])]) if fallback.size else None
+
+
+def _median_window(rows, grid, ranks, i: int) -> Optional[int]:
+    """The surveyed window of route ``rows[i]`` whose masked raw NMSE is the
+    median of the survey: neither the best example nor the worst."""
+    rid = rows[i][0]
+    cand = [(ranks.get((rid, k), {}).get("raw"), k) for k in range(len(grid))
+            if grid[k][i] is not None]
+    cand = [(r, k) for r, k in cand if r is not None]
+    if not cand:
+        return None
+    n = len(cand)
+    target = (n + 1) // 2
+    return min(cand, key=lambda t: abs(t[0] - target))[1]
+
+
+def fig_paper_reconstruction(w: FigureWriter, rows, grid, ranks, model, datasets,
+                             mask_seed: int, device):
+    """(a) masked reconstruction of one channel per route, on the window whose
+    masked raw NMSE is the median of the survey; (b) the masks of the same
+    windows; (c) frequency-guided selection: patch importance of the first
+    route's window against the patches that were masked."""
+    if not rows or not grid:
+        return
+    picks = []
+    for i, (rid, dsid) in enumerate(rows):
+        k = _median_window(rows, grid, ranks, i)
+        if k is None:
+            continue
+        ex = grid[k][i]
+        ch = _mixed_channel(ex, ROUTES[rid], model.mask_ratio)
+        if ch is not None:
+            picks.append((i, rid, dsid, k, ex, ch))
+    if not picks:
+        return
+    n = len(picks)
+    fig = plt.figure(figsize=(7.2, 1.05 * n + 0.9))
+    outer = fig.add_gridspec(1, 2, width_ratios=[2.25, 1.0], wspace=0.3,
+                             left=0.035, right=0.99, top=0.9, bottom=0.15)
+    left = outer[0].subgridspec(n, 1, hspace=0.18)
+    right = outer[1].subgridspec(2, 1, height_ratios=[1.0, 1.0], hspace=0.55)
+    data, meta_rows = {}, []
+
+    for j, (i, rid, dsid, k, ex, ch) in enumerate(picks):
+        route = ROUTES[rid]
+        pt, n_p = route.patch_t, route.patches_per_channel
+        target, pred = ex["target_raw"][ch], ex["pred_raw"][ch]
+        m = _expand(ex["mask"][ch:ch + 1], pt)[0]
+        t = np.arange(target.size) / route.sampling_rate
+        tm, pm = target[m].astype(np.float64), pred[m].astype(np.float64)
+        pc, tc = pm - pm.mean(), tm - tm.mean()
+        den = float(np.linalg.norm(pc) * np.linalg.norm(tc))
+        corr = float(np.dot(pc, tc) / den) if den > 0 else float("nan")
+        nmse = float(np.mean((pm - tm) ** 2) / max(float(np.mean(tm ** 2)), 1e-12))
+        ax = fig.add_subplot(left[j])
+        for pi in range(n_p):
+            if ex["mask"][ch, pi]:
+                ax.axvspan(pi * pt / route.sampling_rate, (pi + 1) * pt / route.sampling_rate,
+                           color="0.88", lw=0, zorder=0)
+        ax.plot(t, target, color="0.15", lw=0.6, zorder=2, label="Target")
+        ax.plot(t, np.where(m, pred, np.nan), color=ROUTE_COLOR[rid], lw=0.8, zorder=3,
+                label="Reconstruction (masked)")
+        ax.set_xlim(float(t[0]), float(t[-1]))
+        lo = float(np.nanmin(target)); hi = float(np.nanmax(target))
+        ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.42 * (hi - lo))   # a band for the labels
+        ax.set_yticks([])
+        ax.spines["left"].set_visible(False)
+        box = {"facecolor": "white", "edgecolor": "none", "pad": 0.6, "alpha": 0.85}
+        ax.text(0.006, 0.95, f"{DATASET_LABEL.get(dsid, dsid)} ({rid.split('_')[0]}), "
+                f"{_slot_name(dsid, route, ch)}", transform=ax.transAxes, ha="left",
+                va="top", fontsize=6.5, bbox=box, zorder=5)
+        ax.text(0.994, 0.95, f"r = {corr:.2f}", transform=ax.transAxes, ha="right",
+                va="top", fontsize=6.5, bbox=box, zorder=5)
+        if j == n - 1:
+            ax.set_xlabel("Time (s)")
+        else:
+            ax.tick_params(axis="x", bottom=False, labelbottom=False)
+            ax.spines["bottom"].set_visible(False)
+        if j == 0:
+            _panel_letter(ax, "a", "Masked raw reconstruction, one channel per route")
+            handles, labels_ = ax.get_legend_handles_labels()
+            from matplotlib.lines import Line2D
+            handles = [Line2D([], [], color="0.15", lw=0.8),
+                       Line2D([], [], color="0.45", lw=1.4),
+                       matplotlib.patches.Patch(color="0.88")]
+            fig.legend(handles, ["Target (z-scored EEG)", "Reconstruction (route colour)",
+                                 "Masked patch"], loc="lower left", ncol=3, frameon=False,
+                       bbox_to_anchor=(0.03, 0.0), handlelength=1.6, columnspacing=1.4)
+        rk = ranks.get((rid, k), {})
+        data[f"{rid}_time"], data[f"{rid}_target"] = t, target
+        data[f"{rid}_pred"], data[f"{rid}_mask"] = pred, ex["mask"][ch]
+        meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                          "channel": _slot_name(dsid, route, ch),
+                          "window_index": ex["window_index"],
+                          "subject_id": ex["subject_id"],
+                          "recording_id": ex["recording_id"], "mask_seed": mask_seed,
+                          "raw_corr": corr, "raw_nmse": nmse,
+                          "window_raw_nmse_rank": rk.get("raw"),
+                          "n_windows_surveyed": rk.get("n")})
+
+    # (b) the masks of the same windows, one small map per route
+    mb = right[0].subgridspec(1, n, wspace=0.25)
+    for j, (i, rid, dsid, k, ex, ch) in enumerate(picks):
+        ax = fig.add_subplot(mb[j])
+        shown = np.where(ex["valid"], ex["mask"].astype(float), np.nan)
+        cmap = matplotlib.colors.ListedColormap(["white", ROUTE_COLOR[rid]])
+        cmap.set_bad("0.85")
+        ax.imshow(shown, aspect="auto", cmap=cmap, vmin=0, vmax=1, interpolation="nearest")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(True)
+            sp.set_linewidth(0.5)
+        ax.set_title(f"{ROUTES[rid].n_channels} ch", fontsize=7, pad=2)
+        if j == 0:
+            ax.set_ylabel("Channel", fontsize=7)
+            ax.text(-0.07, 1.16, "b", transform=ax.transAxes, fontsize=10,
+                    fontweight="bold", ha="right", va="baseline")
+            ax.text(0.0, 1.16, "Masks of the same windows", transform=ax.transAxes,
+                    fontsize=8, ha="left", va="baseline")
+        data[f"{rid}_mask_map"] = ex["mask"]
+    fig.text(0.5 * (outer[1].get_position(fig).x0 + outer[1].get_position(fig).x1),
+             right[0].get_position(fig).y0 - 0.03, "Time patch (0.5 s)", ha="center",
+             va="top", fontsize=7)
+
+    # (c) frequency-guided selection on the first route's window
+    i0, rid0, dsid0, k0, ex0, _ = picks[0]
+    route0 = ROUTES[rid0]
+    ds0 = datasets[dsid0]
+    with torch.no_grad():
+        batch = collate_windows([ds0[ex0["window_index"]]])
+        spec = model.wavelet_frontends[rid0](batch["x"].to(device))
+        tok = model.patch_embed_by_rate[route0.rate_key](spec.unsqueeze(1))
+        imp = torch.abs(torch.fft.rfft(tok, dim=1)).sum(dim=2)
+        imp = torch.nn.functional.interpolate(imp.unsqueeze(1), size=tok.shape[1],
+                                              mode="linear", align_corners=True)
+        imp = imp.squeeze(1)[0].cpu().numpy()
+    sel = ex0["mask"].reshape(-1).astype(bool)
+    valid0 = ex0["valid"].reshape(-1).astype(bool)
+    imp, sel = imp[valid0], sel[valid0]
+    order = np.argsort(-imp)
+    ranks_pct = np.empty_like(order, dtype=float)
+    ranks_pct[order] = 100.0 * np.arange(order.size) / max(order.size - 1, 1)
+    ax = fig.add_subplot(right[1])
+    bins = np.linspace(0, 100, 11)
+    masked_share = []
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        inb = (ranks_pct >= lo) & (ranks_pct < hi if hi < 100 else ranks_pct <= hi)
+        masked_share.append(100.0 * sel[inb].mean() if inb.any() else np.nan)
+    centers = 0.5 * (bins[:-1] + bins[1:])
+    ax.bar(centers, masked_share, width=9.0, color=ROUTE_COLOR[rid0])
+    ax.axhline(100 * model.mask_ratio, color="0.2", lw=0.8, ls="--")
+    ax.text(99, 100 * model.mask_ratio + 2, f"uniform ({100 * model.mask_ratio:.0f}%)",
+            ha="right", va="bottom", fontsize=6.5)
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 105)
+    ax.set_xlabel("Patch importance rank (%)")
+    ax.set_ylabel("Patches masked (%)")
+    _panel_letter(ax, "c", "Frequency-guided masking")
+    top = ranks_pct < 30
+    data.update({"importance": imp, "selected": sel, "importance_rank_pct": ranks_pct,
+                 "masked_share_by_decile": np.asarray(masked_share)})
+    fig.suptitle("Masked dual reconstruction on held-out subjects. (a) One channel per "
+                 "route, on the window whose masked raw NMSE is the median of "
+                 f"{len(grid)} surveyed (not a selected best example); the "
+                 "reconstruction is drawn on masked patches only, which alone are "
+                 "supervised. (b) The masks of the same windows (coloured: masked "
+                 "patch; white: visible; grey: no electrode in that slot). (c) Share of patches masked by importance decile, "
+                 f"{DATASET_LABEL.get(dsid0, dsid0)}.", y=1.02, fontsize=7)
+    w.save(fig, "fig_paper_reconstruction", data,
+           {"rows": meta_rows, "n_windows_surveyed": len(grid),
+            "selection_rule": "per route, the surveyed window with the median masked "
+                              "raw NMSE rank; the channel with masked and visible "
+                              "patches whose masked share is closest to the mask ratio",
+            "masked_share_top30pct": float(100.0 * sel[top].mean()) if top.any() else None,
+            "mask_ratio": float(model.mask_ratio)})
+
+
 #: Threads for the figures that run the model. A login node has many cores and
 #: a small per-user thread quota, and torch defaults to one thread per core: the
 #: figure that first touches the model then dies with "libgomp: Thread creation
@@ -1898,6 +2203,10 @@ def main(argv=None) -> int:
     ckpt_path = (args.checkpoint if os.path.isabs(args.checkpoint)
                  else os.path.join(run_dir, args.checkpoint))
     if not os.path.isfile(ckpt_path):
+        if args.only and set(args.only) <= MODEL_FREE_FIGURES:
+            # These read only the run's manifest and metrics, so a copy of the
+            # run directory without its checkpoint (the synced results) draws them.
+            return _main_model_free(args, run_dir)
         print(f"ERROR: no checkpoint at {ckpt_path}", file=sys.stderr)
         return 1
 
@@ -1988,6 +2297,8 @@ def main(argv=None) -> int:
         return todo is None or name in todo
 
     print(f"figures for {run_dir} (checkpoint {os.path.basename(ckpt_path)})")
+    if want("fig_paper_pretraining"):
+        fig_paper_pretraining(writer, run_manifest, epoch_rows)
     if want("fig_dataset_routes"):
         fig_dataset_routes(writer, run_manifest)
     if want("fig_pretraining_convergence"):
@@ -2008,10 +2319,14 @@ def main(argv=None) -> int:
         # more than a single window, and `--only fig_channel_embedding` should
         # not pay for it.
         if want("fig_mask_reconstruction") or \
-                want("fig_raw_waveform_reconstruction"):
+                want("fig_raw_waveform_reconstruction") or \
+                want("fig_paper_reconstruction"):
             rows, grid, ranks = survey_reconstruction_windows(
                 model, datasets, mask_seed, device, objective,
                 n_windows=args.recon_windows)
+            if want("fig_paper_reconstruction"):
+                fig_paper_reconstruction(writer, rows, grid, ranks, model, datasets,
+                                         mask_seed, device)
             if want("fig_mask_reconstruction"):
                 fig_mask_reconstruction(writer, rows, grid, ranks, mask_seed,
                                         objective=objective)
@@ -2036,6 +2351,39 @@ def main(argv=None) -> int:
     for ds in datasets.values():
         ds.close()
     print(f"\n{len(writer.written)} figure(s) in {writer.fig_dir}")
+    return 0
+
+
+def _main_model_free(args, run_dir: str) -> int:
+    """The figures that read only dataset_manifest.json and metrics_epoch.jsonl."""
+    formats = [f.strip().lower() for f in args.format.split(",") if f.strip()]
+    writer = FigureWriter(run_dir, formats, {"checkpoint": None,
+                                             "plotting_script_git_commit": git_commit(),
+                                             "note": "drawn without the checkpoint"},
+                          stamp=not args.no_stamp, paper=args.paper)
+    epoch_rows = read_jsonl(os.path.join(run_dir, "metrics_epoch.jsonl"))
+    step_rows = read_jsonl(os.path.join(run_dir, "metrics_step.jsonl"))
+    if epoch_rows:
+        writer.base_meta["metrics_last_epoch"] = epoch_rows[-1].get("epoch")
+    manifest = {}
+    mf = os.path.join(run_dir, "dataset_manifest.json")
+    if os.path.isfile(mf):
+        with open(mf) as f:
+            manifest = json.load(f)
+    todo = set(args.only)
+    if "fig_paper_pretraining" in todo:
+        fig_paper_pretraining(writer, manifest, epoch_rows)
+    if "fig_dataset_routes" in todo:
+        fig_dataset_routes(writer, manifest)
+    if "fig_pretraining_convergence" in todo:
+        fig_pretraining_convergence(writer, epoch_rows, step_rows)
+    if "fig_route_convergence" in todo:
+        fig_route_convergence(writer, epoch_rows)
+    if "fig_dual_objective" in todo:
+        fig_dual_objective(writer, epoch_rows)
+    if "fig_route_cost" in todo:
+        fig_route_cost(writer, epoch_rows)
+    print(f"\n{len(writer.written)} figure(s) in {writer.fig_dir} (no checkpoint)")
     return 0
 
 

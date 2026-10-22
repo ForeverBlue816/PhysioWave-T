@@ -1409,3 +1409,35 @@ def test_end_to_end_checkpoints_figures_and_refusals(tmp_path):
     assert prog.returncode == 0, prog.stderr[-2000:]
     assert "best.pth holds" not in prog.stdout
     assert "best_macro_total.pth" in prog.stdout
+
+
+def test_paper_pretraining_figure_needs_no_checkpoint(tmp_path):
+    """fig_paper_pretraining draws from the manifest and the epoch metrics alone,
+    so the synced results (no checkpoint) are enough."""
+    import json
+    import subprocess
+    import sys
+    run = tmp_path / "run"
+    run.mkdir()
+    datasets = {"tueg": "E19_256", "faced": "E32_512", "m3cv": "E64_256", "hbn": "E128_512"}
+    (run / "dataset_manifest.json").write_text(json.dumps({
+        "datasets": {d: {"route_id": r, "n_windows": 1000 * (i + 1)}
+                     for i, (d, r) in enumerate(datasets.items())},
+        "target_weights": {d: 0.25 for d in datasets},
+        "realised_mixture": {"by_step": {d: 0.25 for d in datasets}}}))
+    rows = [{"epoch": e, "global_step": 10 * e,
+             **{f"val/route/{r}/loss_total": 0.5 - 0.01 * e for r in datasets.values()},
+             "val/macro_route_loss_total": 0.5 - 0.01 * e} for e in range(5)]
+    (run / "metrics_epoch.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    script = os.path.join(ROOT, "scripts", "visualize_eeg_pretraining.py")
+    r = subprocess.run([sys.executable, script, "--run-dir", str(run), "--only",
+                        "fig_paper_pretraining", "--format", "svg", "--paper"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-1500:]
+    assert (run / "figures" / "fig_paper_pretraining.svg").exists()
+    meta = json.loads((run / "figure_metadata" / "fig_paper_pretraining.json").read_text())
+    assert meta["checkpoint"] is None and set(meta["datasets"]) == set(datasets)
+    # a model figure without a checkpoint is still refused
+    r = subprocess.run([sys.executable, script, "--run-dir", str(run), "--only",
+                        "fig_paper_reconstruction"], capture_output=True, text=True)
+    assert r.returncode != 0 and "no checkpoint" in r.stderr
