@@ -2516,8 +2516,8 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
     """(a) cosine similarity of two electrodes' name embeddings against their
     great-circle distance on the scalp, every pair of trained electrodes, with
     the untrained table as control; (b) the similarity to three seed
-    electrodes projected onto the scalp; (c) a 2-D MDS of the embedding
-    distances against the electrodes' true positions (Procrustes)."""
+    electrodes projected onto the scalp. A 2-D MDS of the embedding distances
+    against the true layout (Procrustes r) goes to the metadata only."""
     if SIGNAL != "EEG" or model.channel_encoder is None:
         return
     try:
@@ -2601,9 +2601,13 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
     data.update({"mds": Z, "mds_aligned": Zp, "layout_2d": pos2, "seeds": np.asarray(seeds)})
 
     with _paper_rc():
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.4))
-        outer = fig.add_gridspec(1, 3, width_ratios=[1.2, 1.95, 0.95], wspace=0.3,
-                                 left=0.07, right=0.975, top=0.9, bottom=0.2)
+        # Two panels. The MDS/Procrustes layout of the earlier draft is computed
+        # (stats["procrustes_r"], for the text) but not drawn: on the trained
+        # table r is 0.17 against 0.11 untrained, a picture of nothing, and the
+        # pairwise statistic in (a) is the test the claim actually rests on.
+        fig = plt.figure(figsize=(PAPER_WIDTH, 2.5))
+        outer = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.5], wspace=0.22,
+                                 left=0.075, right=0.995, top=0.9, bottom=0.17)
         # (a)
         ax = fig.add_subplot(outer[0])
         edges = np.linspace(0, 180, 13)
@@ -2625,79 +2629,68 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
         ax.set_xticks([0, 45, 90, 135, 180])
         ax.set_xlabel("Scalp distance between electrodes (°)")
         ax.set_ylabel("Cosine similarity of name embeddings")
-        s_main = stats[f"{main_f}/trained"]
-        s0 = stats[f"{main_f}/init"]
-        ptxt = ("< 0.001" if s_main["perm_p_one_sided"] < 1e-3
-                else f"= {s_main['perm_p_one_sided']:.3f}")
-        ax.text(0.98, 0.97, f"ρ = {s_main['spearman_rho']:.2f}, p {ptxt}\n"
-                f"untrained ρ = {s0['spearman_rho']:.2f}",
-                transform=ax.transAxes, ha="right", va="top", fontsize=PAPER_FONT - 0.5,
-                linespacing=1.25, zorder=6,
+
+        def _rho_line(f, lab):
+            s_ = stats.get(f"{f}/trained")
+            if s_ is None:
+                return None
+            p_ = s_["perm_p_one_sided"]
+            # The smallest p a permutation test can report is 1/(n_perm + 1).
+            ptxt = f"p < {1e-3:g}" if p_ < 1e-3 else f"p = {p_:.3f}"
+            return f"{lab}: ρ = {s_['spearman_rho']:.2f}, {ptxt}"
+        lines = [t for t in (_rho_line("10-5", "10-5"), _rho_line("EGI-128", "EGI"))
+                 if t]
+        lines.append(f"untrained: ρ = {stats[f'{main_f}/init']['spearman_rho']:.2f}")
+        ax.text(0.98, 0.97, "\n".join(lines), transform=ax.transAxes, ha="right",
+                va="top", fontsize=PAPER_FONT - 0.5, linespacing=1.25, zorder=6,
                 bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.0, "alpha": 0.85})
         ax.legend(loc="lower left", frameon=False, handlelength=1.8,
                   fontsize=PAPER_FONT - 0.5, borderaxespad=0.3)
         _letter(fig, 0.005, 0.99, "a")
         # (b)
-        # Square axes laid out by hand inside the middle column, flush with
-        # its top, so the heads fill the column instead of floating in it.
+        # Square axes laid out by hand inside the right column, flush with its
+        # top, so the heads fill the column instead of floating in it.
         box1 = outer[1].get_position(fig)
         n_s = max(1, len(seeds))
         gap = 0.012
         side_w = (box1.x1 - box1.x0 - gap * (n_s - 1)) / n_s          # figure fraction
         side_h = side_w * PAPER_WIDTH / fig.get_figheight()           # same in inches
-        side_h = min(side_h, 0.78 * (box1.y1 - box1.y0))
+        side_h = min(side_h, 0.74 * (box1.y1 - box1.y0))
         side_w = side_h * fig.get_figheight() / PAPER_WIDTH
         x_start = 0.5 * (box1.x0 + box1.x1) - 0.5 * (n_s * side_w + gap * (n_s - 1))
+        # Every trained row shares a common direction, so every pairwise cosine
+        # sits well above zero (about 0.2-0.5). A diverging map centred on zero
+        # paints that offset uniformly red and hides the fall-off with distance;
+        # a sequential map over the off-diagonal's own 2-98th percentiles shows
+        # it, with one scale for all seeds.
         off = ~np.eye(len(rows), dtype=bool)
-        v = float(np.percentile(np.abs(C[off]), 98))
-        v = v if v > 0 else 1.0
+        lo, hi = (float(v_) for v_ in np.percentile(C[off], [2, 98]))
+        if not hi > lo:
+            lo, hi = -1.0, 1.0
         im = None
         for j, s in enumerate(seeds):
             axb = fig.add_axes([x_start + j * (side_w + gap), box1.y1 - side_h,
                                 side_w, side_h], label=f"free-topomap-{j}")
             si = d["names"].index(s)
             sim = C[si].copy()
-            sim[si] = np.nan
-            shown = np.where(np.isnan(sim), v, sim)      # the seed itself: saturated
-            im, _ = mne.viz.plot_topomap(shown, info, axes=axb, show=False,
-                                         cmap="RdBu_r", vlim=(-v, v), contours=0,
+            sim[si] = hi                                  # the seed itself: saturated
+            im, _ = mne.viz.plot_topomap(sim, info, axes=axb, show=False,
+                                         cmap="Reds", vlim=(lo, hi), contours=0,
                                          sensors=False, outlines="head", sphere=None)
-            axb.scatter(pos2[:, 0], pos2[:, 1], s=1.5, color="0.25", lw=0, zorder=4)
-            axb.scatter(pos2[si, 0], pos2[si, 1], s=36, marker="*", color="black",
-                        zorder=5)
+            axb.scatter(pos2[:, 0], pos2[:, 1], s=1.5, color="0.3", lw=0, zorder=4)
+            axb.scatter(pos2[si, 0], pos2[si, 1], s=40, marker="*", color=OKABE_ITO[0],
+                        edgecolor="white", linewidth=0.4, zorder=5)
             axb.set_title(s, pad=2)
-        cax = fig.add_axes([box1.x0 + 0.15 * (box1.x1 - box1.x0),
-                            box1.y1 - side_h - 0.09,
-                            0.7 * (box1.x1 - box1.x0), 0.035])
+        cax = fig.add_axes([box1.x0 + 0.2 * (box1.x1 - box1.x0),
+                            box1.y1 - side_h - 0.085,
+                            0.6 * (box1.x1 - box1.x0), 0.035])
         cb = fig.colorbar(im, cax=cax, orientation="horizontal")
-        cb.set_ticks([-v, 0, v])
-        cb.set_ticklabels([f"{-v:.1f}", "0", f"{v:.1f}"])
+        cb.set_ticks([lo, hi])
+        cb.set_ticklabels([f"{lo:.2f}", f"{hi:.2f}"])
         cb.set_label("Cosine similarity to the starred electrode", labelpad=1)
         cb.outline.set_linewidth(0.5)
-        _letter(fig, box1.x0 - 0.035, 0.99, "b")
-        # (c)
-        axc = fig.add_subplot(outer[2])
-        ap = pos2[:, 1]                               # anterior (+) to posterior (-)
-        sc = axc.scatter(Zp[:, 0], Zp[:, 1], c=ap, cmap="viridis", s=14, lw=0.3,
-                         edgecolor="black")
-        # Equal aspect by widening the data limits, not by shrinking the axes:
-        # the panel then keeps the row's height, and the colourbar its length.
-        axc.set_aspect("equal", adjustable="datalim")
-        axc.set_xticks([])
-        axc.set_yticks([])
-        for sp in axc.spines.values():
-            sp.set_visible(True)
-            sp.set_linewidth(0.5)
-        axc.set_xlabel(f"MDS of embedding distance\nProcrustes r = {proc_r:.2f} "
-                       f"(untrained {proc_r0:.2f})", linespacing=1.3)
-        axc.apply_aspect()
-        boxc = axc.get_position()
-        cax2 = fig.add_axes([boxc.x1 + 0.008, boxc.y0, 0.012, boxc.y1 - boxc.y0])
-        cb2 = fig.colorbar(sc, cax=cax2)
-        cb2.set_ticks([float(ap.min()), float(ap.max())])
-        cb2.set_ticklabels(["post.", "ant."])
-        cb2.outline.set_linewidth(0.5)
-        _letter(fig, outer[2].get_position(fig).x0 - 0.035, 0.99, "c")
+        data["topomap_limits"] = np.asarray([lo, hi])
+        _letter(fig, box1.x0 - 0.03, 0.99, "b")
         w.save(fig, "fig_paper_channel_topology", data,
                {"stats": stats, "seeds": seeds,
                 "n_trained_electrodes": {f: len(v_["names"]) for f, v_ in fams.items()},
@@ -2709,7 +2702,11 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
                 "permutation_null": "embedding rows shuffled among electrodes, "
                                     f"{n_perm} draws, one-sided (rho < 0)",
                 "procrustes": "2-D metric MDS of 1 - cosine, aligned to the "
-                              "montage's 2-D topomap layout; r = sqrt(1 - disparity)"})
+                              "montage's 2-D topomap layout; r = sqrt(1 - disparity); "
+                              "reported, not drawn",
+                "topomap_colour": "sequential (Reds), limits the 2nd-98th "
+                                  "percentiles of the off-diagonal cosines, shared "
+                                  "by the seeds; the seed is drawn at the upper limit"})
 
 
 #: Threads for the figures that run the model. A login node has many cores and
