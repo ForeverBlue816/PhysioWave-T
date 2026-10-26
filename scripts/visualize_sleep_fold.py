@@ -56,16 +56,19 @@ import torch                                                  # noqa: E402
 from physiowave.config import load_config                     # noqa: E402
 from physiowave.models.build import build_model               # noqa: E402
 from scripts.visualize_eeg_pretraining import (               # noqa: E402
-    OKABE_ITO, PAPER_FONT, PAPER_WIDTH, FigureWriter, _cap_threads, _letter,
+    PAPER, PAPER_FONT, PAPER_WIDTH, FigureWriter, _cap_threads, _letter,
     _paper_rc, apply_style, git_commit, sha256_file)
 
 STAGES = ["W", "N1", "N2", "N3", "REM"]
-#: Okabe-Ito, fixed order, never cycled: one hue per stage.
-STAGE_COLOR = {"W": OKABE_ITO[4], "N1": OKABE_ITO[5], "N2": OKABE_ITO[0],
-               "N3": OKABE_ITO[7], "REM": OKABE_ITO[3]}
-#: The scales are ordinal (high to low frequency), so they take a sequential
-#: ramp rather than a second categorical set beside the stages.
-SCALE_CMAP = "viridis"
+#: The journal palette (visualize_eeg_pretraining.PAPER), fixed order, never
+#: cycled: one hue per stage. Wake is the warm accent; sleep deepens from pale
+#: blue to indigo; REM is the mauve. Checked for colour-vision deficiency there.
+STAGE_COLOR = {"W": PAPER["gold"], "N1": PAPER["pale_blue"], "N2": PAPER["blue"],
+               "N3": PAPER["indigo"], "REM": PAPER["mauve"]}
+#: The scales are ordinal (high to low frequency), so they take one ramp, pale
+#: blue to indigo, and a marker shape each, so the order survives greyscale.
+SCALE_COLORS = ["#C3D2E8", "#8EA5D0", "#6760A9", "#2F3263"]
+SCALE_MARKERS = ["o", "s", "^", "D"]
 
 
 # --------------------------------------------------------------------------- #
@@ -234,7 +237,9 @@ def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
     """
     from scipy.stats import spearmanr, wilcoxon
     C, S = A.shape[1], A.shape[2]
-    scale_colors = plt.get_cmap(SCALE_CMAP)(np.linspace(0.9, 0.1, S))
+    scale_colors = (SCALE_COLORS if S == len(SCALE_COLORS)
+                    else [plt.get_cmap("Blues")(v) for v in np.linspace(0.45, 1.0, S)])
+    scale_markers = [SCALE_MARKERS[s % len(SCALE_MARKERS)] for s in range(S)]
     approx = S - 1
     present = [k for k in range(len(STAGES)) if (y == k).any()]
     subjects = np.unique(subj)
@@ -275,9 +280,9 @@ def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
                                         "n_subjects": n}
                 lab = (f"{bands[s][0]} {bands[s][1]:g}–{bands[s][2]:g} Hz" if s < approx
                        else f"{bands[s][0]} <{bands[s][2]:g} Hz")
-                ax.errorbar(xs, m, yerr=h, color=scale_colors[s], marker="o", ms=3,
-                            lw=1.3, capsize=1.5, elinewidth=0.7, label=lab)
-            ax.axhline(1.0 / S, color="0.6", lw=0.5, ls=":")
+                ax.errorbar(xs, m, yerr=h, color=scale_colors[s], marker=scale_markers[s],
+                            ms=3, lw=1.3, capsize=1.5, elinewidth=0.7, label=lab)
+            ax.axhline(1.0 / S, color=PAPER["rule"], lw=0.5, ls=":")
             ax.set_xticks(xs)
             ax.set_xticklabels(stage_ticks if c == C - 1 else [])
             ax.set_xlim(-0.4, len(present) - 0.6)
@@ -289,12 +294,12 @@ def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
             per = _per_subject_stage_mean(A[:, c, approx], y, subj, subjects)
             rel = per - per[:, [W]]
             for row in rel:
-                axb.plot(xs, row[present], color="0.7", lw=0.6, zorder=1)
+                axb.plot(xs, row[present], color=PAPER["pale_blue"], lw=0.7, zorder=1)
             m = [_t_ci(rel[:, k]) for k in present]
             axb.errorbar(xs, [t[0] for t in m], yerr=[t[1] for t in m],
                          color=scale_colors[approx], marker="o", ms=3.2, lw=1.6,
                          capsize=1.5, elinewidth=0.8, zorder=3)
-            axb.axhline(0, color="0.4", lw=0.6, zorder=0)
+            axb.axhline(0, color=PAPER["rule"], lw=0.6, zorder=0)
             axb.set_xticks(xs)
             axb.set_xticklabels(stage_ticks if c == C - 1 else [])
             axb.set_xlim(-0.4, len(present) - 0.6)

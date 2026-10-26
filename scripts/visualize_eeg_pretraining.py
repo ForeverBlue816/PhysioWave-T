@@ -2128,6 +2128,24 @@ PAPER_FONT = 8.0          # body: tick labels, row labels, legends
 PAPER_TITLE = 8.5         # column and panel titles
 PAPER_LETTER = 10.0       # panel letters
 
+#: The journal composites' palette: a muted blue-violet family with one warm
+#: accent, after the pastel scientific palettes of recent Nature covers. Every
+#: categorical set below was checked for colour-vision deficiency (Machado 2009
+#: protan/deutan/tritan at severity 1, OKLab distance): all pairs of the stage
+#: set clear 15 (normal) and 8 (CVD); the scale ramp is ordinal and also carries
+#: its order in the legend and in marker shape.
+PAPER = {
+    "indigo": "#3F4280", "blue": "#7F97C2", "pale_blue": "#BBD0E8",
+    "lavender": "#8A84BF", "mauve": "#C3609E", "gold": "#DCA94F",
+    "grey": "#A9ADB8", "light": "#EEF1F6", "ink": "#2E3440", "rule": "#6B7080",
+}
+#: Light-to-dark sequential ramp, for ranks and magnitudes.
+PAPER_SEQ = ["#EEF1F6", "#BBD0E8", "#8A84BF", "#3F4280"]
+
+
+def paper_cmap(name: str = "paper_seq"):
+    return matplotlib.colors.LinearSegmentedColormap.from_list(name, PAPER_SEQ)
+
 
 def _paper_rc():
     """rcParams for the journal composites; use as a context manager."""
@@ -2515,11 +2533,12 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
                                n_perm: int = 2000, seed: int = 0):
     """(a) cosine similarity of two electrodes' name embeddings against their
     great-circle distance on the scalp, every pair of trained electrodes, with
-    the untrained table as control; (b) every electrode joined to its most
-    similar name embedding, trained and untrained; (c) the mean scalp distance from each
-    electrode to its 5 nearest embeddings, against a row-shuffled null and
-    the true scalp neighbours. A 2-D MDS of the embedding distances against
-    the true layout (Procrustes r) goes to the metadata only."""
+    the untrained table as control; (b) for six seed electrodes, every trained
+    electrode coloured by its embedding's similarity rank to the seed, with the
+    seed joined to its five most similar. The nearest-neighbour statistic
+    (mean scalp distance to the 5 most similar embeddings, against a shuffled
+    null and the untrained table) and a Procrustes r of an MDS layout are
+    computed for the text and go to the metadata only."""
     if SIGNAL != "EEG" or model.channel_encoder is None:
         return
     try:
@@ -2572,9 +2591,9 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
     d = fams[main_f]
     rows = [id_of[n] for n in d["names"]]
     C = _cosine(E_all[rows])
-    # (b) seeds: frontal midline, left temporal, occipital midline -- chosen
-    # a priori, and replaced by the nearest trained electrode if absent.
-    want = ["Fz", "T7", "Oz"]
+    # (b) seeds: the midline from front to back and the two temporal sides --
+    # chosen a priori, and replaced by the nearest trained electrode if absent.
+    want = ["Fz", "Cz", "Pz", "Oz", "T7", "T8"]
     seeds = []
     for s in want:
         if s in d["names"]:
@@ -2637,22 +2656,21 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
     stats["knn_scalp_distance"] = knn
 
     with _paper_rc():
-        # The MDS/Procrustes layout of an earlier draft is computed
-        # (stats["procrustes_r"], for the text) but not drawn: on the trained
-        # table r is 0.17 against 0.11 untrained, a picture of nothing. (a) is
-        # the global test, (c) the local one, (b) what (c) looks like.
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.5))
-        outer = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.2, 0.72], wspace=0.25,
-                                 left=0.08, right=0.975, top=0.86, bottom=0.17)
+        # (a) is the global test over all pairs; (b) shows the local structure
+        # the kNN statistic in the metadata measures. An MDS layout and a dot
+        # plot of that statistic were drawn in earlier drafts and dropped.
+        fig = plt.figure(figsize=(PAPER_WIDTH, 2.9))
+        outer = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.55], wspace=0.2,
+                                 left=0.075, right=0.99, top=0.9, bottom=0.15)
         # (a)
         ax = fig.add_subplot(outer[0])
         edges = np.linspace(0, 180, 13)
-        style = {("10-5", "trained"): (OKABE_ITO[0], "-", "10-5 names, trained"),
-                 ("EGI-128", "trained"): (OKABE_ITO[1], "-", "EGI names, trained"),
-                 ("10-5", "init"): ("0.55", "--", "Untrained table")}
+        style = {("10-5", "trained"): (PAPER["indigo"], "-", "10-5 names, trained"),
+                 ("EGI-128", "trained"): (PAPER["mauve"], "-", "EGI names, trained"),
+                 ("10-5", "init"): (PAPER["grey"], "--", "Untrained table")}
         x, y = curves[(main_f, "trained")]
-        ax.scatter(x, y, s=2.5, color=OKABE_ITO[0], alpha=0.12, lw=0, rasterized=True,
-                   zorder=1)
+        ax.scatter(x, y, s=2.5, color=PAPER["pale_blue"], alpha=0.35, lw=0,
+                   rasterized=True, zorder=1)
         for key, (col, ls, lab) in style.items():
             if key not in curves:
                 continue
@@ -2660,7 +2678,7 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
             ok = np.isfinite(ym)
             ax.errorbar(xm[ok], ym[ok], yerr=hm[ok], color=col, ls=ls, lw=1.3,
                         marker="o", ms=3, capsize=1.5, elinewidth=0.7, label=lab, zorder=3)
-        ax.axhline(0, color="0.6", lw=0.5, zorder=0)
+        ax.axhline(0, color=PAPER["rule"], lw=0.5, zorder=0)
         ax.set_xlim(0, 180)
         ax.set_xticks([0, 45, 90, 135, 180])
         ax.set_xlabel("Scalp distance between electrodes (°)")
@@ -2684,74 +2702,72 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
                   fontsize=PAPER_FONT - 0.5, borderaxespad=0.3)
         _letter(fig, 0.005, 0.99, "a")
         # (b)
-        # Each electrode joined to the one whose name embedding is most like its
-        # own, on the trained table and on the untrained one: the 1-NN version
-        # of (c), as a picture. A seed-centred topomap was tried and dropped --
-        # 130 noisy rows interpolated over the scalp give a mottled map whatever
-        # the colour scale, and the structure in (a) and (c) does not survive
-        # the interpolation.
+        # Six seeds in two rows of three. Each head shows every trained 10-5
+        # electrode as a dot coloured by the percentile rank of its embedding's
+        # similarity to the seed (dark = most alike), and joins the seed to its
+        # five most similar electrodes. No interpolation: 130 rows interpolated
+        # over the scalp gave a mottled field on any colour scale, whereas the
+        # dots and links show the statistic (the mean length of those five
+        # links, stats["knn_scalp_distance"]) as it is.
+        from scipy.stats import rankdata
         box1 = outer[1].get_position(fig)
-        gap = 0.015
-        side_w = (box1.x1 - box1.x0 - gap) / 2
+        n_col, n_row = 3, int(math.ceil(len(seeds) / 3))
+        gap_x, gap_y = 0.012, 0.055
+        side_w = (box1.x1 - box1.x0 - gap_x * (n_col - 1)) / n_col
         side_h = side_w * PAPER_WIDTH / fig.get_figheight()
-        side_h = min(side_h, 0.86 * (box1.y1 - box1.y0))
-        side_w = side_h * fig.get_figheight() / PAPER_WIDTH
-        x_start = 0.5 * (box1.x0 + box1.x1) - 0.5 * (2 * side_w + gap)
-        Dmain = _pairwise_arc_deg(d["unit"])
+        avail_h = (box1.y1 - box1.y0 - gap_y * (n_row - 1) - 0.1) / n_row   # 0.1: colourbar
+        if side_h > avail_h:
+            side_h = avail_h
+            side_w = side_h * fig.get_figheight() / PAPER_WIDTH
+        x_start = 0.5 * (box1.x0 + box1.x1) - 0.5 * (n_col * side_w + gap_x * (n_col - 1))
+        cmap = paper_cmap()
         white = matplotlib.colors.ListedColormap(["white"])
-        nn1_stats = {}
-        for j, (tag, Cm, col) in enumerate((("Trained", C, OKABE_ITO[0]),
-                                            ("Untrained", _cosine(E0_all[rows]), "0.45"))):
-            axb = fig.add_axes([x_start + j * (side_w + gap), box1.y1 - side_h,
-                                side_w, side_h], label=f"free-head-{j}")
-            # The head outline only: a constant field in white.
+        Dmain = _pairwise_arc_deg(d["unit"])
+        sc = None
+        link_deg = {}
+        for j, s in enumerate(seeds):
+            r_, c_ = divmod(j, n_col)
+            axb = fig.add_axes([x_start + c_ * (side_w + gap_x),
+                                box1.y1 - side_h - r_ * (side_h + gap_y), side_w, side_h],
+                               label=f"free-head-{j}")
             mne.viz.plot_topomap(np.zeros(len(rows)), info, axes=axb, show=False,
                                  cmap=white, vlim=(-1, 1), contours=0, sensors=False,
                                  outlines="head", sphere=None)
-            Cn = Cm.copy()
-            np.fill_diagonal(Cn, -np.inf)
-            nn = np.argmax(Cn, axis=1)
-            segs = [[pos2[i], pos2[nn[i]]] for i in range(len(rows))]
-            axb.add_collection(matplotlib.collections.LineCollection(
-                segs, colors=[col], linewidths=0.7, alpha=0.8, zorder=3))
-            axb.scatter(pos2[:, 0], pos2[:, 1], s=3, color="0.2", lw=0, zorder=4)
-            dist = Dmain[np.arange(len(rows)), nn]
-            nn1_stats[tag.lower()] = {"mean_deg": float(dist.mean()),
-                                      "median_deg": float(np.median(dist))}
-            axb.set_title(f"{tag}, median {np.median(dist):.0f}°", pad=2)
-            data[f"nn1_{tag.lower()}"] = nn
-        stats["nn1_scalp_distance_10-5"] = nn1_stats
-        _letter(fig, box1.x0 - 0.03, 0.99, "b")
-        # (c)
-        axc = fig.add_subplot(outer[2])
-        fam_order = [f for f in ("10-5", "EGI-128") if f in knn]
-        fam_col = {"10-5": OKABE_ITO[0], "EGI-128": OKABE_ITO[1]}
-        for yi, f in enumerate(fam_order):
-            v_ = knn[f]
-            axc.plot([v_["null_p2_5_deg"], v_["null_p97_5_deg"]], [yi, yi], color="0.7",
-                     lw=5, solid_capstyle="butt", zorder=1)
-            axc.scatter([v_["init_deg"]], [yi], s=26, facecolor="white",
-                        edgecolor="0.4", lw=0.9, zorder=3)
-            axc.scatter([v_["trained_deg"]], [yi], s=30, color=fam_col[f], zorder=4)
-            axc.plot([v_["scalp_floor_deg"]] * 2, [yi - 0.22, yi + 0.22], color="black",
-                     lw=1.0, zorder=2)
-        axc.set_yticks(range(len(fam_order)))
-        axc.set_yticklabels(["10-5" if f == "10-5" else "EGI" for f in fam_order])
-        axc.set_ylim(-0.6, len(fam_order) - 0.4)
-        axc.invert_yaxis()
-        axc.set_xlim(0, None)
-        axc.set_xlabel(f"Scalp distance to the {k_nn}\nmost similar embeddings (°)",
-                       linespacing=1.2)
+            for line in axb.lines:                       # the head outline, in ink
+                line.set_color(PAPER["rule"])
+                line.set_linewidth(0.7)
+            si = d["names"].index(s)
+            others = np.arange(len(rows)) != si
+            rank = np.zeros(len(rows))
+            rank[others] = 100.0 * (rankdata(C[si][others]) - 1) / max(others.sum() - 1, 1)
+            top = np.argsort(-np.where(others, C[si], -np.inf))[:k_nn]
+            for t in top:
+                axb.plot([pos2[si, 0], pos2[t, 0]], [pos2[si, 1], pos2[t, 1]],
+                         color=PAPER["mauve"], lw=0.9, alpha=0.9, zorder=3,
+                         solid_capstyle="round")
+            sc = axb.scatter(pos2[others, 0], pos2[others, 1], c=rank[others], cmap=cmap,
+                             vmin=0, vmax=100, s=9, lw=0.25, edgecolor="white", zorder=4)
+            axb.scatter(pos2[si, 0], pos2[si, 1], s=55, marker="*", color=PAPER["gold"],
+                        edgecolor=PAPER["ink"], linewidth=0.5, zorder=6)
+            axb.set_title(s, pad=1.5)
+            link_deg[s] = float(Dmain[si, top].mean())
+            data[f"rank_{s}"] = rank
+            data[f"top{k_nn}_{s}"] = np.asarray([d["names"][t] for t in top])
+        stats["seed_link_mean_deg"] = link_deg
+        cb_y = box1.y1 - n_row * side_h - (n_row - 1) * gap_y - 0.075
+        cax = fig.add_axes([box1.x0 + 0.18 * (box1.x1 - box1.x0), cb_y,
+                            0.64 * (box1.x1 - box1.x0), 0.03])
+        cb = fig.colorbar(sc, cax=cax, orientation="horizontal")
+        cb.set_ticks([0, 50, 100])
+        cb.set_label("Embedding similarity to the starred electrode (rank, %)",
+                     labelpad=1.5)
+        cb.outline.set_linewidth(0.5)
         from matplotlib.lines import Line2D
-        handles = [Line2D([], [], color="0.4", marker="o", ls="", mfc="0.4", ms=4.5),
-                   Line2D([], [], color="0.4", marker="o", ls="", mfc="white", ms=4.5),
-                   matplotlib.patches.Patch(facecolor="0.7", edgecolor="none"),
-                   Line2D([], [], color="black", lw=1.0)]
-        axc.legend(handles, ["Trained", "Untrained", "Shuffled 95%", "Scalp nearest"],
-                   loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2, frameon=False,
-                   fontsize=PAPER_FONT - 1, handlelength=1.4, columnspacing=1.0,
-                   handletextpad=0.5, borderaxespad=0.1)
-        _letter(fig, outer[2].get_position(fig).x0 - 0.05, 0.99, "c")
+        fig.legend([Line2D([], [], color=PAPER["mauve"], lw=0.9)],
+                   [f"{k_nn} most similar embeddings"], loc="lower center",
+                   bbox_to_anchor=(0.5 * (box1.x0 + box1.x1), cb_y - 0.075), frameon=False,
+                   fontsize=PAPER_FONT - 1, handlelength=1.6, borderaxespad=0.0)
+        _letter(fig, box1.x0 - 0.03, 0.99, "b")
         w.save(fig, "fig_paper_channel_topology", data,
                {"stats": stats, "seeds": seeds,
                 "n_trained_electrodes": {f: len(v_["names"]) for f, v_ in fams.items()},
@@ -2765,9 +2781,11 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
                 "procrustes": "2-D metric MDS of 1 - cosine, aligned to the "
                               "montage's 2-D topomap layout; r = sqrt(1 - disparity); "
                               "reported, not drawn",
-                "nn1": "panel (b): a line from every 10-5 electrode to the electrode "
-                       "whose name embedding has the highest cosine similarity to "
-                       "its own; titles give the median great-circle length",
+                "panel_b": "six seeds; every trained 10-5 electrode coloured by "
+                           "the percentile rank of its cosine similarity to the "
+                           "seed; lines join the seed to its 5 most similar "
+                           "embeddings (mean length per seed in "
+                           "stats.seed_link_mean_deg)",
                 "knn": "panel (c): mean over electrodes of the mean great-circle "
                        "distance to the k=5 electrodes with the most similar name "
                        "embedding; grey bar the 2.5-97.5th percentiles of the "
