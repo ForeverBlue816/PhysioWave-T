@@ -1,0 +1,63 @@
+corruption:
+  enabled: true
+  kinds:
+  - noise
+  - drift
+  - saturation
+  - bad_channel
+  - dropout
+  max_level: 1.0
+  prob: 0.5
+data:
+  modalities:
+  - eeg
+  - ecg
+  - emg
+  num_workers: 4
+  tasks:
+    mpdb:
+      dir: null
+      select_by: balanced_acc
+    seizeit2:
+      dir: /leonardo_scratch/large/userexternal/ychen003/bio/fusion/c1/seizeit2
+      select_by: auprc
+encoders:
+  ecg: /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe/best.pth
+  eeg: /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+  emg: /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/epoch38.pth
+eval:
+  corruption_severity: 0.7
+model:
+  depth: 2
+  dropout: 0.1
+  embed_dim: 256
+  encoder_dropout: 0.0
+  encoder_mode: frozen
+  fusion: ralf
+  gate_detach: true
+  gate_floor: 0.3
+  num_fusion_tokens: 8
+  num_heads: 8
+  residual_weight: 0.5
+  route_drop_max: 2
+  summary_heads: 4
+  summary_tokens: 4
+run_name: fusion_c1_ralf
+seed: 42
+train:
+  batch_size: 32
+  class_weight: sqrt
+  consistency_weight: 1.0
+  encoder_lr_scale: 1.0
+  epochs: 15
+  grad_clip: 1.0
+  layer_decay: 0.75
+  lr: 1e-4
+  min_lr_ratio: 0.01
+  modality_dropout: 0.3
+  patience: 6
+  precision: bf16
+  reliability_weight: 1.0
+  uni_weight: 0.2
+  warmup_ratio: 0.1
+  weight_decay: 0.05

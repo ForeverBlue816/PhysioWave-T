@@ -1,0 +1,95 @@
+Loading cineca-ai/4.3.0
+  Loading requirement: cuda/12.1 nccl/2.19.1-1--gcc--12.2.0-cuda-12.1
+    cudnn/8.9.7.29-12--gcc--12.2.0-cuda-12.1 gcc/12.2.0-binut2.41
+    openmpi/4.1.6--gcc--12.2.0 bzip2/1.0.8-gp5wcz5 libmd/1.0.4-wja3f5q
+    libbsd/0.11.7-cgxjopl expat/2.5.0-bptl3xw ncurses/6.4-asx3jea
+    readline/8.2-nyw6mp6 gdbm/1.23-fs6otck libiconv/1.17-d7yvx2s
+    xz/5.4.1-hubmwr5 zlib-ng/2.1.4-6htiapk libxml2/2.10.3-5eeeokp
+    pigz/2.7-bopr5vp zstd/1.5.5-gawytfl tar/1.34-amqus5s gettext/0.22.3-2g7elif
+    libffi/3.4.4-6r7brdq libxcrypt/4.4.35-ss2rzin sqlite/3.43.2
+    util-linux-uuid/2.38.1-jkdi7kv python/3.11.6--gcc--8.5.0 cmake/3.27.7
+    openjdk/11.0.20.1_1
+runs    ralf:frozen:e15:train.lr=1e-4,train.epochs=15,train.patience=6 ralf:frozen:e15rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3 ralf:frozen:e15gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3 ralf:frozen:ep12:train.epochs=12,train.patience=6 ralf:frozen:e15siena:train.lr=1e-4,train.epochs=15,train.patience=6,encoders.eeg=/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena/latest.pth
+tasks   seizeit2
+eeg     /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth
+ecg     /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_ecg_c1_moe/best.pth
+emg     /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_emg_c1_moe/epoch38.pth
+output  /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion
+[gpu 0] ralf:frozen:e15:train.lr=1e-4,train.epochs=15,train.patience=6: start 14:55 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_e15_szo.log
+[gpu 2] ralf:frozen:e15gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3: start 14:55 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_e15gd_szo.log
+[gpu 1] ralf:frozen:e15rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3: start 14:55 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_e15rw_szo.log
+[gpu 3] ralf:frozen:ep12:train.epochs=12,train.patience=6: start 14:55 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_ep12_szo.log
+[gpu 1] ralf:frozen:e15rw:train.lr=1e-4,train.epochs=15,train.patience=6,train.reliability_weight=0.3: done 01:47
+[gpu 2] ralf:frozen:e15gd:train.lr=1e-4,train.epochs=15,train.patience=6,model.gate_detach=true,model.gate_floor=0.3: done 04:00
+[gpu 3] ralf:frozen:ep12:train.epochs=12,train.patience=6: done 04:03
+[gpu 0] ralf:frozen:e15:train.lr=1e-4,train.epochs=15,train.patience=6: done 04:43
+[gpu 0] ralf:frozen:e15siena:train.lr=1e-4,train.epochs=15,train.patience=6,encoders.eeg=/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena/latest.pth: start 04:43 -> /leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/fusion/ralf_frozen_e15siena_szo.log
+[gpu 0] ralf:frozen:e15siena:train.lr=1e-4,train.epochs=15,train.patience=6,encoders.eeg=/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_siena/latest.pth: done 12:42
+
+================================================================================================================================================================
+mpdb: test balanced_acc under each condition (val-selected checkpoint)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  run                                   all      eeg      ecg      emg  eeg+ecg  eeg+emg  ecg+emgeeg~noiseeeg~badcheeg~drift  ecg~satecg~noise emg~dropemg~noise
+  concat/frozen [concat_frozen_mpd   0.3105   0.2376   0.1909   0.3246   0.2011   0.3333   0.3061   0.3083   0.3106   0.3119   0.3140   0.2841   0.2675   0.3112
+  concat/frozen [concat_frozen_mpd   0.3581   0.2721   0.2012   0.3527   0.2317   0.3591   0.3396   0.3326   0.3574   0.3396   0.3656   0.3205   0.2958   0.2733
+  concat/frozen [concat_frozen_mpd   0.3160   0.2299   0.1828   0.3574   0.2443   0.3579   0.2970   0.2780   0.3100   0.3035   0.3271   0.3224   0.2736   0.3172
+  concat/frozen [concat_frozen_mpd   0.2962   0.2249   0.2105   0.2993   0.2205   0.3034   0.2916   0.2748   0.3073   0.3106   0.3013   0.2777   0.2679   0.2817
+  ralf/finetune [ralf_finetune_mpd   0.2959   0.2837   0.2109   0.3008   0.2836   0.3268   0.2528   0.2760   0.2680   0.2539   0.3334   0.3281   0.2910   0.2966
+  ralf/finetune [ralf_finetune_mpd   0.3467   0.3138   0.2119   0.3154   0.2931   0.3579   0.2875   0.3008   0.3033   0.3131   0.3640   0.3471   0.3174   0.3193
+  ralf/finetune [ralf_finetune_mpd   0.3190   0.3045   0.2139   0.2859   0.2959   0.3251   0.2614   0.2914   0.2831   0.2913   0.3468   0.3256   0.3313   0.3311
+  ralf/finetune [ralf_finetune_mpd   0.3065   0.2784   0.1942   0.2835   0.2671   0.3196   0.2736   0.2820   0.2998   0.2900   0.3240   0.3221   0.3002   0.2873
+  ralf/frozen [ralf_frozen_mpdb]     0.2935   0.2835   0.2062   0.3001   0.2518   0.3157   0.2645   0.2839   0.2773   0.2745   0.3140   0.2967   0.2691   0.2827
+  ralf/frozen [ralf_frozen_mpdb2]    0.2767   0.2716   0.2248   0.2491   0.2492   0.2830   0.2352   0.2406   0.2468   0.2399   0.2654   0.2615   0.2762   0.2779
+  ralf/frozen [ralf_frozen_mpdb2_s   0.3310   0.2335   0.2092   0.2975   0.2352   0.3199   0.2988   0.2856   0.3111   0.3162   0.3055   0.2956   0.2914   0.2926
+  ralf/frozen [ralf_frozen_mpdb2_s   0.2926   0.2620   0.2341   0.2756   0.2537   0.2916   0.2670   0.2648   0.2852   0.2793   0.2953   0.2745   0.2937   0.3255
+  ralf/scratch [ralf_scratch_mpdb]   0.3681   0.3298   0.2149   0.3297   0.3097   0.3581   0.3166   0.3418   0.3227   0.3130   0.3929   0.3607   0.3685   0.3823
+  ralf/scratch [ralf_scratch_mpdb2   0.3397   0.2560   0.2187   0.3428   0.2612   0.3355   0.3374   0.3349   0.3494   0.3532   0.3373   0.3424   0.3477   0.3345
+  ralf/scratch [ralf_scratch_mpdb2   0.3569   0.2845   0.1933   0.3454   0.2750   0.3648   0.3337   0.3511   0.3484   0.3389   0.3610   0.3552   0.3641   0.3438
+  ralf/scratch [ralf_scratch_mpdb2   0.3452   0.2929   0.2091   0.3272   0.2781   0.3592   0.3062   0.3158   0.3259   0.3362   0.3586   0.3391   0.3443   0.3494
+  weighted_logit/frozen [weighted_   0.3576   0.2756   0.2293   0.3582   0.2883   0.3860   0.3346   0.3468   0.3479   0.3307   0.3600   0.3367   0.3072   0.3058
+  weighted_logit/frozen [weighted_   0.3269   0.2692   0.2052   0.3249   0.2745   0.3379   0.3167   0.3189   0.3236   0.3112   0.3442   0.3320   0.2929   0.2822
+  weighted_logit/frozen [weighted_   0.3244   0.2648   0.2258   0.3169   0.2752   0.3271   0.3202   0.3242   0.3278   0.3123   0.3356   0.3231   0.3199   0.3090
+  weighted_logit/frozen [weighted_   0.3366   0.2773   0.2148   0.3488   0.2590   0.3639   0.3168   0.3094   0.3193   0.3280   0.3422   0.3217   0.3159   0.3153
+  mean +- std over seeds          
+  concat/frozen x3                0.323+-0.0260.242+-0.0210.198+-0.0120.336+-0.0260.232+-0.0100.340+-0.0260.309+-0.0210.295+-0.0270.325+-0.0230.318+-0.0160.331+-0.0260.307+-0.0210.279+-0.0120.291+-0.019
+  ralf/finetune x3                0.324+-0.0170.299+-0.0150.207+-0.0090.295+-0.0150.285+-0.0130.334+-0.0170.274+-0.0110.291+-0.0080.295+-0.0090.298+-0.0110.345+-0.0160.332+-0.0110.316+-0.0130.313+-0.019
+  ralf/frozen x3                  0.300+-0.0230.256+-0.0160.223+-0.0100.274+-0.0200.246+-0.0080.298+-0.0160.267+-0.0260.264+-0.0180.281+-0.0260.278+-0.0310.289+-0.0170.277+-0.0140.287+-0.0080.299+-0.020
+  ralf/scratch x3                 0.347+-0.0070.278+-0.0160.207+-0.0100.338+-0.0080.271+-0.0070.353+-0.0130.326+-0.0140.334+-0.0140.341+-0.0110.343+-0.0070.352+-0.0110.346+-0.0070.352+-0.0090.343+-0.006
+  weighted_logit/frozen x3        0.329+-0.0050.270+-0.0050.215+-0.0080.330+-0.0140.270+-0.0070.343+-0.0150.318+-0.0020.318+-0.0060.324+-0.0030.317+-0.0080.341+-0.0040.326+-0.0050.310+-0.0120.302+-0.014
+================================================================================================================================================================
+seizeit2: test auprc under each condition (val-selected checkpoint)
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+  run                                   all      eeg      ecg      emg  eeg+ecg  eeg+emg  ecg+emgeeg~noiseeeg~badcheeg~drift  ecg~satecg~noise emg~dropemg~noise
+  concat/finetune [eeg_c1_finetune   0.3206      -        -        -        -        -        -     0.2431   0.2030   0.1518      -        -        -        -  
+  concat/finetune [eeg_c1native_fi   0.2632      -        -        -        -        -        -     0.1989   0.1147   0.1239      -        -        -        -  
+  concat/finetune [eeg_c1siena_fin   0.3782      -        -        -        -        -        -     0.2641   0.2774   0.1743      -        -        -        -  
+  concat/finetune [eeg_c1siena_fin   0.2985      -        -        -        -        -        -     0.2622   0.2410   0.1627      -        -        -        -  
+  concat/finetune [eeg_c1siena_fin   0.3269      -        -        -        -        -        -     0.2557   0.2074   0.1664      -        -        -        -  
+  concat/finetune [eeg_eegpt_finet   0.2577      -        -        -        -        -        -     0.2032   0.1445   0.1333      -        -        -        -  
+  concat/finetune [eeg_labram_fine   0.3446      -        -        -        -        -        -     0.1716   0.2031   0.1872      -        -        -        -  
+  concat/finetune [eeg_luna_huge_f   0.3575      -        -        -        -        -        -     0.2085   0.2076   0.2498      -        -        -        -  
+  concat/finetune [eeg_luna_large_   0.3651      -        -        -        -        -        -     0.2164   0.2362   0.2410      -        -        -        -  
+  concat/frozen [concat_frozen_sz3   0.3497   0.1855   0.2730   0.1526   0.3639   0.2229   0.2636   0.3312   0.3034   0.2689   0.3178   0.3291   0.3445   0.3453
+  concat/frozen [concat_frozen_szo   0.3467   0.2489   0.2534   0.1773   0.3305   0.2838   0.2578   0.3435   0.3101   0.2565   0.3920   0.3716   0.3390   0.3402
+  concat/frozen [eeg_c1_frozen_sze   0.3218      -        -        -        -        -        -     0.2204   0.2045   0.1501      -        -        -        -  
+  concat/frozen [eeg_c1native_froz   0.2840      -        -        -        -        -        -     0.2147   0.0950   0.1529      -        -        -        -  
+  concat/frozen [eeg_c1siena_froze   0.3124      -        -        -        -        -        -     0.2103   0.1875   0.1624      -        -        -        -  
+  concat/frozen [eeg_eegpt_frozen_   0.3015      -        -        -        -        -        -     0.2739   0.1424   0.1525      -        -        -        -  
+  concat/frozen [eeg_labram_frozen   0.2758      -        -        -        -        -        -     0.1305   0.1957   0.1463      -        -        -        -  
+  concat/frozen [eeg_luna_huge_fro   0.3469      -        -        -        -        -        -     0.2138   0.2285   0.1929      -        -        -        -  
+  concat/frozen [eeg_luna_large_fr   0.2707      -        -        -        -        -        -     0.1298   0.2185   0.1488      -        -        -        -  
+  ralf/finetune [ralf_finetune_sz3   0.3736   0.1908   0.3050   0.1726   0.3631   0.2647   0.3126   0.3626   0.3354   0.3171   0.3166   0.3213   0.3652   0.3615
+  ralf/finetune [ralf_finetune_szo   0.3541   0.2645   0.3200   0.1779   0.3529   0.2748   0.3168   0.3216   0.3267   0.3072   0.3586   0.3598   0.3540   0.3510
+  ralf/frozen [ralf_frozen_e15_szo   0.3943   0.2586   0.3366   0.1932   0.3987   0.2868   0.3370   0.3682   0.3671   0.3355   0.3816   0.4003   0.3998   0.3970
+  ralf/frozen [ralf_frozen_e15gd_s   0.4024   0.2402   0.3448   0.1862   0.3969   0.2880   0.3292   0.3747   0.3609   0.3366   0.3694   0.4017   0.4033   0.4038
+  ralf/frozen [ralf_frozen_e15rw_s   0.4135   0.2576   0.3637   0.2013   0.4136   0.2941   0.3515   0.3940   0.3667   0.3462   0.4153   0.4179   0.4046   0.4016
+  ralf/frozen [ralf_frozen_e15sien   0.3841   0.2560   0.3090   0.1966   0.3842   0.2780   0.3300   0.3646   0.3489   0.3232   0.3793   0.3915   0.3878   0.3839
+  ralf/frozen [ralf_frozen_ep12_sz   0.3910   0.2466   0.3353   0.1919   0.3877   0.2676   0.3422   0.3743   0.3492   0.3361   0.3551   0.3750   0.3862   0.3901
+  ralf/frozen [ralf_frozen_sz39]     0.3988   0.1807   0.2443   0.1748   0.3949   0.2311   0.2721   0.3766   0.3159   0.2837   0.3322   0.3784   0.4031   0.3999
+  ralf/frozen [ralf_frozen_szo]      0.3990   0.2520   0.3130   0.1920   0.3941   0.2649   0.3374   0.3684   0.3577   0.3324   0.3671   0.3952   0.4028   0.3976
+  ralf/scratch [ralf_scratch_sz39]   0.3909   0.1581   0.3326   0.2097   0.3680   0.2124   0.3482   0.3847   0.3516   0.3435   0.3068   0.3815   0.3839   0.3976
+  ralf/scratch [ralf_scratch_szo]    0.4007   0.2287   0.3458   0.2014   0.3902   0.2610   0.3579   0.3705   0.3784   0.3561   0.3905   0.3904   0.3957   0.3916
+  weighted_logit/frozen [weighted_   0.3210   0.1959   0.2449   0.1429   0.3085   0.2203   0.2625   0.3074   0.2816   0.2668   0.2934   0.3258   0.3213   0.3145
+  weighted_logit/frozen [weighted_   0.3723   0.2679   0.3353   0.1907   0.3713   0.2845   0.3475   0.3741   0.3506   0.3390   0.3681   0.3607   0.3684   0.3684
+============================================================
+  conditions: a modality name alone = only that modality kept; ~ = corrupted at the run's severity on top of the complete set.
