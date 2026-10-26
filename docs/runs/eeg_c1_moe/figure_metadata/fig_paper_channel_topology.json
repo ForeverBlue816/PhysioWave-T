@@ -5,7 +5,7 @@
   "global_step": 44544,
   "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8",
   "modality": "eeg",
-  "plotting_script_git_commit": "ce1f35b0f0a2755b5eab7256ba58ef222d59f153",
+  "plotting_script_git_commit": "e7b5a7dad607134ae8602f87d6c6329e74753e1f",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,7 +20,7 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 59,
   "figure": "fig_paper_channel_topology",
-  "generated_utc": "2026-10-26T15:35:02.699707+00:00",
+  "generated_utc": "2026-10-26T15:39:12.727470+00:00",
   "figure_text": [
     "a",
     "b"
