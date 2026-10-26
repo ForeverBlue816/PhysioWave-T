@@ -1,0 +1,81 @@
+{
+  "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth",
+  "checkpoint_sha256": "4226871943e1ad68b434222c94a3a661642af6852bbf7e43eb84a4f042b5c131",
+  "epoch": 58,
+  "global_step": 44544,
+  "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8",
+  "modality": "eeg",
+  "plotting_script_git_commit": "ac0fc1395686c0fb952dbcf221b9b2fc2a52f5d9",
+  "split": "val",
+  "mask_seed": 1234,
+  "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl",
+  "objective": {
+    "spec_weight": 0.5,
+    "raw_weight": 0.5,
+    "raw_beta": 0.5,
+    "fold_kl": 0.001,
+    "mask_before_frontend": true,
+    "normalize_spec_target": true
+  },
+  "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
+  "metrics_last_epoch": 59,
+  "figure": "fig_paper_channel_topology",
+  "generated_utc": "2026-10-26T15:09:21.716288+00:00",
+  "figure_text": [
+    "a",
+    "b",
+    "c"
+  ],
+  "paper_mode": true,
+  "stats": {
+    "10-5/trained": {
+      "n_electrodes": 130,
+      "n_pairs": 8385,
+      "spearman_rho": -0.19190941863137323,
+      "perm_p_one_sided": 0.0004997501249375312,
+      "null_rho_mean": 0.00024635492005943896,
+      "null_rho_sd": 0.016020417910004258
+    },
+    "10-5/init": {
+      "n_electrodes": 130,
+      "n_pairs": 8385,
+      "spearman_rho": 0.0076795787570061586,
+      "perm_p_one_sided": 0.7521239380309845,
+      "null_rho_mean": -2.5942920847642008e-05,
+      "null_rho_sd": 0.010992091058611698
+    },
+    "EGI-128/trained": {
+      "n_electrodes": 128,
+      "n_pairs": 8128,
+      "spearman_rho": -0.2496078017231768,
+      "perm_p_one_sided": 0.0004997501249375312,
+      "null_rho_mean": 0.0003983295371516988,
+      "null_rho_sd": 0.01677552422732949
+    },
+    "EGI-128/init": {
+      "n_electrodes": 128,
+      "n_pairs": 8128,
+      "spearman_rho": -0.0004665400343543882,
+      "perm_p_one_sided": 0.4572713643178411,
+      "null_rho_mean": 0.00010336806237902849,
+      "null_rho_sd": 0.011107673852643607
+    },
+    "procrustes_r": {
+      "trained": 0.17234322347586908,
+      "init": 0.10803010231699404
+    }
+  },
+  "seeds": [
+    "Fz",
+    "T7",
+    "Oz"
+  ],
+  "n_trained_electrodes": {
+    "10-5": 130,
+    "EGI-128": 128
+  },
+  "trained_names_source": "corpus montages",
+  "coordinates": "MNE standard_1005 (10-5 names) and GSN-HydroCel-128 (EGI names) template montages; great-circle distance on the sphere fitted to each family; the model was given no coordinate",
+  "permutation_null": "embedding rows shuffled among electrodes, 2000 draws, one-sided (rho < 0)",
+  "procrustes": "2-D metric MDS of 1 - cosine, aligned to the montage's 2-D topomap layout; r = sqrt(1 - disparity)"
+}
