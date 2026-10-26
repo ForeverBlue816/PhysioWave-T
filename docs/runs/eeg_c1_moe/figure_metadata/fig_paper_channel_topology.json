@@ -5,7 +5,7 @@
   "global_step": 44544,
   "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8",
   "modality": "eeg",
-  "plotting_script_git_commit": "ac0fc1395686c0fb952dbcf221b9b2fc2a52f5d9",
+  "plotting_script_git_commit": "ce1f35b0f0a2755b5eab7256ba58ef222d59f153",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,11 +20,10 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 59,
   "figure": "fig_paper_channel_topology",
-  "generated_utc": "2026-10-26T15:09:21.716288+00:00",
+  "generated_utc": "2026-10-26T15:35:02.699707+00:00",
   "figure_text": [
     "a",
-    "b",
-    "c"
+    "b"
   ],
   "paper_mode": true,
   "stats": {
@@ -77,5 +76,6 @@
   "trained_names_source": "corpus montages",
   "coordinates": "MNE standard_1005 (10-5 names) and GSN-HydroCel-128 (EGI names) template montages; great-circle distance on the sphere fitted to each family; the model was given no coordinate",
   "permutation_null": "embedding rows shuffled among electrodes, 2000 draws, one-sided (rho < 0)",
-  "procrustes": "2-D metric MDS of 1 - cosine, aligned to the montage's 2-D topomap layout; r = sqrt(1 - disparity)"
+  "procrustes": "2-D metric MDS of 1 - cosine, aligned to the montage's 2-D topomap layout; r = sqrt(1 - disparity); reported, not drawn",
+  "topomap_colour": "sequential (Reds), limits the 2nd-98th percentiles of the off-diagonal cosines, shared by the seeds; the seed is drawn at the upper limit"
 }
