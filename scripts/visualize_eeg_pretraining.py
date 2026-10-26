@@ -2143,8 +2143,28 @@ PAPER = {
 PAPER_SEQ = ["#EEF1F6", "#BBD0E8", "#8A84BF", "#3F4280"]
 
 
+#: One palette hue per route, for the journal composites. Rows of the
+#: reconstruction figures are never adjacent in colour, so the four only need
+#: to differ from the ink and from each other across a row label.
+PAPER_ROUTE_COLOR = {"E19_256": PAPER["indigo"], "E32_512": PAPER["mauve"],
+                     "E64_256": PAPER["blue"], "E128_512": PAPER["gold"]}
+
+
 def paper_cmap(name: str = "paper_seq"):
     return matplotlib.colors.LinearSegmentedColormap.from_list(name, PAPER_SEQ)
+
+
+def paper_cmap_div():
+    """Diverging: the warm accent through white to indigo, for signed signals."""
+    return matplotlib.colors.LinearSegmentedColormap.from_list(
+        "paper_div", [PAPER["gold"], "#FFFFFF", PAPER["indigo"]])
+
+
+def paper_cmap_err():
+    """Sequential white-to-mauve, for the error maps (never indigo, which the
+    signed panels beside them use for positive values)."""
+    return matplotlib.colors.LinearSegmentedColormap.from_list(
+        "paper_err", ["#FFFFFF", PAPER["mauve"], "#6E2F5A"])
 
 
 def _paper_rc():
@@ -2222,13 +2242,17 @@ def fig_paper_mask_reconstruction(w: FigureWriter, rows, grid, ranks, model,
             for c, (arr, _title, cmap, vmin, vmax) in enumerate(panels):
                 g, cc = divmod(c, 4)
                 ax = fig.add_subplot(grids[g][r, cc])
+                # The working figure's RdBu_r / magma, in the journal palette:
+                # gold-white-indigo for the signed panels, white-mauve for the
+                # error maps. Limits are unchanged.
+                cmap = paper_cmap_err() if cmap == "magma" else paper_cmap_div()
                 ax.imshow(arr, aspect="auto", cmap=cmap, interpolation="nearest",
                           vmin=vmin, vmax=vmax)
                 ax.set_yticks([])
                 for sp in ax.spines.values():
                     sp.set_visible(True)
                     sp.set_linewidth(0.5)
-                    sp.set_color("0.4")
+                    sp.set_color(PAPER["rule"])
                 if r == 0:
                     ax.set_title(col_titles[cc], pad=3)
                 if r == n - 1:
@@ -2247,9 +2271,9 @@ def fig_paper_mask_reconstruction(w: FigureWriter, rows, grid, ranks, model,
                             else mt["masked_spec_corr"])
                     import matplotlib.patheffects as pe
                     ax.text(0.96, 0.95, f"r = {corr:.2f}", transform=ax.transAxes,
-                            ha="right", va="top", color="white", fontsize=PAPER_FONT,
-                            path_effects=[pe.withStroke(linewidth=1.6,
-                                                        foreground="black")])
+                            ha="right", va="top", color=PAPER["ink"], fontsize=PAPER_FONT,
+                            path_effects=[pe.withStroke(linewidth=1.8,
+                                                        foreground="white")])
             valid_rows = _expand(ex["valid"], pt)
             raw_lim = _sym_limits(ex["target_raw"], valid_rows)
             spec_lim = _sym_limits(ex["target_spec"], valid_rows)
@@ -2334,9 +2358,10 @@ def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed:
                     for a in (ax, ax_e):
                         a.axvspan(pi * pt / route.sampling_rate,
                                   (pi + 1) * pt / route.sampling_rate,
-                                  color="0.9", lw=0, zorder=0)
-            ax.plot(t, target, color="0.2", lw=0.8, zorder=2, label="Target (z-scored EEG)")
-            ax.plot(t, np.where(m, pred, np.nan), color=ROUTE_COLOR[rid], lw=1.1,
+                                  color="#E9ECF3", lw=0, zorder=0)
+            ax.plot(t, target, color=PAPER["ink"], lw=0.8, zorder=2,
+                    label="Target (z-scored EEG)")
+            ax.plot(t, np.where(m, pred, np.nan), color=PAPER_ROUTE_COLOR[rid], lw=1.1,
                     zorder=3, label="Prediction, masked patches only")
             ax.set_xlim(float(t[0]), float(t[-1]))
             lo, hi = float(np.nanmin(target)), float(np.nanmax(target))
@@ -2351,7 +2376,7 @@ def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed:
                     transform=ax.transAxes, ha="left", va="top", bbox=box, zorder=5)
             ax.text(0.994, 0.96, f"r = {corr:.2f}   NMSE = {nmse:.2f}",
                     transform=ax.transAxes, ha="right", va="top", bbox=box, zorder=5)
-            ax_e.fill_between(t, 0, np.nan_to_num(err), where=m, color=OKABE_ITO[3],
+            ax_e.fill_between(t, 0, np.nan_to_num(err), where=m, color=PAPER["lavender"],
                               lw=0, zorder=2)
             ax_e.set_xlim(float(t[0]), float(t[-1]))
             top = float(np.nanmax(err)) if np.isfinite(np.nanmax(err)) else 1.0
@@ -2364,9 +2389,9 @@ def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed:
                 ax_e.tick_params(axis="x", labelbottom=False)
             if j == 0:
                 from matplotlib.lines import Line2D
-                handles = [Line2D([], [], color="0.2", lw=0.8),
-                           Line2D([], [], color="0.45", lw=1.1),
-                           matplotlib.patches.Patch(color="0.9")]
+                handles = [Line2D([], [], color=PAPER["ink"], lw=0.8),
+                           Line2D([], [], color=PAPER["grey"], lw=1.1),
+                           matplotlib.patches.Patch(color="#E9ECF3")]
                 fig.legend(handles, ["Target (z-scored EEG)",
                                      "Prediction, masked patches only (route colour)",
                                      "Masked patch"],
