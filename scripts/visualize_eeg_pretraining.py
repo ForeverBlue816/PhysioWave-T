@@ -2659,9 +2659,9 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
         # (a) is the global test over all pairs; (b) shows the local structure
         # the kNN statistic in the metadata measures. An MDS layout and a dot
         # plot of that statistic were drawn in earlier drafts and dropped.
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.9))
+        fig = plt.figure(figsize=(PAPER_WIDTH, 3.25))
         outer = fig.add_gridspec(1, 2, width_ratios=[1.0, 1.55], wspace=0.2,
-                                 left=0.075, right=0.99, top=0.9, bottom=0.15)
+                                 left=0.075, right=0.99, top=0.9, bottom=0.14)
         # (a)
         ax = fig.add_subplot(outer[0])
         edges = np.linspace(0, 180, 13)
@@ -2712,10 +2712,10 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
         from scipy.stats import rankdata
         box1 = outer[1].get_position(fig)
         n_col, n_row = 3, int(math.ceil(len(seeds) / 3))
-        gap_x, gap_y = 0.012, 0.055
+        gap_x, gap_y = 0.012, 0.05
         side_w = (box1.x1 - box1.x0 - gap_x * (n_col - 1)) / n_col
         side_h = side_w * PAPER_WIDTH / fig.get_figheight()
-        avail_h = (box1.y1 - box1.y0 - gap_y * (n_row - 1) - 0.1) / n_row   # 0.1: colourbar
+        avail_h = (box1.y1 - box1.y0 - gap_y * (n_row - 1) - 0.09) / n_row  # 0.09: colourbar
         if side_h > avail_h:
             side_h = avail_h
             side_w = side_h * fig.get_figheight() / PAPER_WIDTH
@@ -2743,10 +2743,10 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
             top = np.argsort(-np.where(others, C[si], -np.inf))[:k_nn]
             for t in top:
                 axb.plot([pos2[si, 0], pos2[t, 0]], [pos2[si, 1], pos2[t, 1]],
-                         color=PAPER["mauve"], lw=0.9, alpha=0.9, zorder=3,
+                         color=PAPER["mauve"], lw=1.1, alpha=0.9, zorder=3,
                          solid_capstyle="round")
             sc = axb.scatter(pos2[others, 0], pos2[others, 1], c=rank[others], cmap=cmap,
-                             vmin=0, vmax=100, s=9, lw=0.25, edgecolor="white", zorder=4)
+                             vmin=0, vmax=100, s=11, lw=0.25, edgecolor="white", zorder=4)
             axb.scatter(pos2[si, 0], pos2[si, 1], s=55, marker="*", color=PAPER["gold"],
                         edgecolor=PAPER["ink"], linewidth=0.5, zorder=6)
             axb.set_title(s, pad=1.5)
@@ -2762,11 +2762,16 @@ def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
         cb.set_label("Embedding similarity to the starred electrode (rank, %)",
                      labelpad=1.5)
         cb.outline.set_linewidth(0.5)
+        # The link legend at the top right of the panel, beside the letter and
+        # clear of the colourbar's tick labels, which it sat on when placed below.
         from matplotlib.lines import Line2D
-        fig.legend([Line2D([], [], color=PAPER["mauve"], lw=0.9)],
-                   [f"{k_nn} most similar embeddings"], loc="lower center",
-                   bbox_to_anchor=(0.5 * (box1.x0 + box1.x1), cb_y - 0.075), frameon=False,
-                   fontsize=PAPER_FONT - 1, handlelength=1.6, borderaxespad=0.0)
+        fig.legend([Line2D([], [], color=PAPER["mauve"], lw=1.1),
+                    Line2D([], [], color=PAPER["gold"], marker="*", ls="", ms=7,
+                           markeredgecolor=PAPER["ink"], markeredgewidth=0.5)],
+                   [f"Seed to its {k_nn} most similar embeddings", "Seed electrode"],
+                   loc="upper right", bbox_to_anchor=(box1.x1, 1.0), ncol=2, frameon=False,
+                   fontsize=PAPER_FONT - 1, handlelength=1.6, columnspacing=1.2,
+                   handletextpad=0.5, borderaxespad=0.0)
         _letter(fig, box1.x0 - 0.03, 0.99, "b")
         w.save(fig, "fig_paper_channel_topology", data,
                {"stats": stats, "seeds": seeds,
