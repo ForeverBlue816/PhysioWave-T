@@ -154,15 +154,23 @@ def band_power_fractions(X: np.ndarray, fs: float, edges=(0.5, 4.0, 8.0, 13.0, 3
 
 
 @torch.no_grad()
-def fold_alpha(model, X: np.ndarray, batch_size: int, keep_blocks_for=None):
+def fold_alpha(model, X: np.ndarray, batch_size: int, keep_blocks_for=None,
+               device="cpu"):
     """Per-window block-mean alpha ``[N, C, S]`` and, for the windows in
-    ``keep_blocks_for`` (a boolean mask), the full ``[n, C, N_blocks, S]``."""
-    front = model.wavelet_frontend
+    ``keep_blocks_for`` (a boolean mask), the full ``[n, C, N_blocks, S]``.
+
+    fp32 on whatever device is given. On CPU the frontend costs about 90 ms a
+    30 s window (the cross-scale FFNs run at the full 3000-sample length), so
+    a whole test split is most of an hour; on a GPU it is seconds.
+    """
+    front = model.wavelet_frontend.to(device)
     fold = front.fold
     fold.keep_alpha = True
     means, blocks = [], []
-    for i in range(0, len(X), batch_size):
-        x = torch.from_numpy(X[i:i + batch_size])
+    n_batches = (len(X) + batch_size - 1) // batch_size
+    report = max(1, n_batches // 10)
+    for b, i in enumerate(range(0, len(X), batch_size)):
+        x = torch.from_numpy(X[i:i + batch_size]).to(device)
         spec = front.decomp(x)
         fold(spec)
         a = fold.alpha_blocks                                   # [B, C, N, S]
@@ -170,7 +178,9 @@ def fold_alpha(model, X: np.ndarray, batch_size: int, keep_blocks_for=None):
         if keep_blocks_for is not None:
             sel = keep_blocks_for[i:i + batch_size]
             if sel.any():
-                blocks.append(a[torch.from_numpy(sel)].cpu().numpy())
+                blocks.append(a[torch.from_numpy(sel).to(a.device)].cpu().numpy())
+        if (b + 1) % report == 0 or b + 1 == n_batches:
+            print(f"  fold alpha: {min(i + batch_size, len(X))}/{len(X)} windows")
     fold.keep_alpha = False
     A = np.concatenate(means)
     B = np.concatenate(blocks) if blocks else None
@@ -341,10 +351,14 @@ def main(argv=None) -> int:
     p.add_argument("--split", default="test")
     p.add_argument("--out-dir", default=None, help="default: the run directory")
     p.add_argument("--format", default="svg,pdf")
-    p.add_argument("--batch-size", type=int, default=128)
+    p.add_argument("--batch-size", type=int, default=32,
+                   help="the training batch; the cross-scale FFNs attend over all 3000 "
+                        "samples, so memory grows with T^2 and 128 does not fit")
     p.add_argument("--night-subject", type=int, default=None,
                    help="subject id for panel (b); default: the one with most windows")
     p.add_argument("--threads", type=int, default=None)
+    p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
+                   help="auto: cuda when present, else cpu")
     p.add_argument("--no-paper", action="store_true", help="keep the corner stamp")
     args = p.parse_args(argv)
 
@@ -370,7 +384,11 @@ def main(argv=None) -> int:
     night_subject = (args.night_subject if args.night_subject is not None
                      else int(np.bincount(subj).argmax()))
     keep = subj == night_subject
-    A, blocks = fold_alpha(model, X, args.batch_size, keep_blocks_for=keep)
+    device = (("cuda" if torch.cuda.is_available() else "cpu")
+              if args.device == "auto" else args.device)
+    print(f"  device: {device}")
+    A, blocks = fold_alpha(model, X, args.batch_size, keep_blocks_for=keep,
+                           device=device)
     frac = band_power_fractions(X, fs)
     night = {"subject": night_subject, "y": y[keep], "alpha": blocks}
     for k in range(len(STAGES)):

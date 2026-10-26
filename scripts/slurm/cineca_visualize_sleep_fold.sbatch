@@ -9,9 +9,10 @@
 # then, on a login node:
 #   git add docs/runs/sleep_edf_fold && git commit -m "sleep_edf_fold: figure" && git push
 #
-# Only the wavelet frontend runs -- alpha is decided before the Transformer --
-# so the whole test split (about 20k windows) takes minutes on CPU. A job
-# rather than a login-node command because the split is read into memory.
+# Only the wavelet frontend runs -- alpha is decided before the Transformer.
+# On ONE GPU that is under a minute for the test split; on CPU it is not: the
+# cross-scale FFNs run at the full 3000-sample length, ~90 ms a window on eight
+# threads, which is most of an hour for ~35k windows.
 #
 #   RUN        the downstream run under $PW_CKPT_ROOT/eeg_downstream (sleep_edf_ft_lr1e-4)
 #   DATA_DIR   the Sleep-EDF split ($PW_DATA_EEG/sleep_edf)
@@ -20,10 +21,11 @@
 # ============================================================================
 #SBATCH -A iscrb_wearusfm
 #SBATCH -p boost_usr_prod
-#SBATCH --time=1:00:00
+#SBATCH --time=0:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:1
 #SBATCH --mem=40000
 #SBATCH --job-name=physiowave_sleep_fold
 #SBATCH --output=%x_%j.out
