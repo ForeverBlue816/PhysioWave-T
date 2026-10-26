@@ -2155,16 +2155,23 @@ def paper_cmap(name: str = "paper_seq"):
 
 
 def paper_cmap_div():
-    """Diverging: the warm accent through white to indigo, for signed signals."""
+    """Diverging: amber through white to deep indigo, for signed signals.
+
+    The ends are darker than the palette's gold and indigo: a z-scored window
+    sits mostly near zero, so the ends carry the contrast, and at the
+    palette's own lightness the heatmaps read as washed out.
+    """
     return matplotlib.colors.LinearSegmentedColormap.from_list(
-        "paper_div", [PAPER["gold"], "#FFFFFF", PAPER["indigo"]])
+        "paper_div", ["#9A6214", PAPER["gold"], "#FFFFFF", PAPER["blue"], "#23264F"])
 
 
 def paper_cmap_err():
-    """Sequential white-to-mauve, for the error maps (never indigo, which the
-    signed panels beside them use for positive values)."""
+    """Sequential white-to-mauve-to-plum, for the error maps (never indigo,
+    which the signed panels beside them use for positive values). Mauve is
+    reached a third of the way up, so small errors still show."""
     return matplotlib.colors.LinearSegmentedColormap.from_list(
-        "paper_err", ["#FFFFFF", PAPER["mauve"], "#6E2F5A"])
+        "paper_err", [(0.0, "#FFFFFF"), (0.35, PAPER["mauve"]), (0.7, "#7A3466"),
+                      (1.0, "#33132B")])
 
 
 def _paper_rc():
@@ -2359,7 +2366,9 @@ def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed:
                         a.axvspan(pi * pt / route.sampling_rate,
                                   (pi + 1) * pt / route.sampling_rate,
                                   color="#E9ECF3", lw=0, zorder=0)
-            ax.plot(t, target, color=PAPER["ink"], lw=0.8, zorder=2,
+            # Target in mid-grey, so the coloured prediction is the salient line
+            # (indigo on ink was two dark lines).
+            ax.plot(t, target, color=PAPER["rule"], lw=0.8, zorder=2,
                     label="Target (z-scored EEG)")
             ax.plot(t, np.where(m, pred, np.nan), color=PAPER_ROUTE_COLOR[rid], lw=1.1,
                     zorder=3, label="Prediction, masked patches only")
@@ -2389,8 +2398,8 @@ def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed:
                 ax_e.tick_params(axis="x", labelbottom=False)
             if j == 0:
                 from matplotlib.lines import Line2D
-                handles = [Line2D([], [], color=PAPER["ink"], lw=0.8),
-                           Line2D([], [], color=PAPER["grey"], lw=1.1),
+                handles = [Line2D([], [], color=PAPER["rule"], lw=0.8),
+                           Line2D([], [], color=PAPER["indigo"], lw=1.1),
                            matplotlib.patches.Patch(color="#E9ECF3")]
                 fig.legend(handles, ["Target (z-scored EEG)",
                                      "Prediction, masked patches only (route colour)",
