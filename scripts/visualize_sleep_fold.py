@@ -16,9 +16,13 @@ band (0-6.25 Hz at 100 Hz) in N3, where the EEG is slow-wave, and on the
 detail bands in wake and REM, the weights follow the signal's spectral
 content, which is what a best basis is supposed to do.
 
-Only the frontend runs: alpha is decided before the Transformer, so the whole
-test split goes through in minutes on a CPU. The stage labels are never shown
-to the fold -- it sees 30 s of two-channel EEG and nothing else.
+Only the frontend runs: alpha is decided before the Transformer, a minute on
+one GPU for the test split (most of an hour on CPU). The stage labels are never
+shown to the fold -- it sees 30 s of two-channel EEG and nothing else.
+
+On Sleep-EDF the frontend is trained from scratch during fine-tuning (the
+montage is on no pretraining route), so the weights drawn are the ones the
+fold learned for sleep staging, not pretrained ones.
 
 The alpha drawn is the fold's UNDROPPED softmax over scales (``alpha_blocks``,
 the field scripts/alpha_probe.py reads), in eval mode. Nominal band edges are
@@ -28,7 +32,7 @@ so the labels say what the band is centred on, not where it ends.
 Writes, under --out-dir (default: the run directory):
     figures/fig_paper_fold_by_stage.{pdf,svg}
     figure_data/fig_paper_fold_by_stage.npz      per-window alpha, labels, subjects,
-                                                 band-power fractions, the night's blocks
+                                                 band-power fractions
     figure_metadata/fig_paper_fold_by_stage.json the numbers in the figure
 """
 
@@ -187,158 +191,206 @@ def fold_alpha(model, X: np.ndarray, batch_size: int, keep_blocks_for=None,
     return A, B
 
 
-def subject_mean_ci(values: np.ndarray, subj: np.ndarray):
-    """Mean over subjects of each subject's mean, and a 95% t-interval."""
-    from scipy.stats import t as student_t
-    per = np.stack([values[subj == s].mean(0) for s in np.unique(subj)])
-    n = per.shape[0]
-    m = per.mean(0)
-    if n < 2:
-        return m, np.zeros_like(m), n
-    h = student_t.ppf(0.975, n - 1) * per.std(0, ddof=1) / math.sqrt(n)
-    return m, h, n
-
-
 # --------------------------------------------------------------------------- #
 # The figure
 # --------------------------------------------------------------------------- #
 
-def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands,
-                      night, delta_frac, model_note: str):
+def _per_subject_stage_mean(v, y, subj, subjects):
+    """``[n_subjects, n_stages]`` mean of ``v`` per subject and stage; NaN where
+    a subject has no window of that stage."""
+    out = np.full((len(subjects), len(STAGES)), np.nan)
+    for i, s in enumerate(subjects):
+        for k in range(len(STAGES)):
+            sel = (subj == s) & (y == k)
+            if sel.any():
+                out[i, k] = float(v[sel].mean())
+    return out
+
+
+def _t_ci(x):
+    """Mean and 95% t half-width over the finite entries of ``x``."""
+    from scipy.stats import t as student_t
+    x = x[np.isfinite(x)]
+    if x.size < 2:
+        return (float(x.mean()) if x.size else float("nan")), float("nan"), int(x.size)
+    return (float(x.mean()),
+            float(student_t.ppf(0.975, x.size - 1) * x.std(ddof=1) / math.sqrt(x.size)),
+            int(x.size))
+
+
+def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
+                      model_note: str):
+    """One row per derivation, three columns:
+
+    (a) alpha of every scale by stage, mean over test subjects of each
+        subject's mean, with a 95% t-interval across subjects;
+    (b) alpha of the approximation scale relative to the same subject's
+        wake -- thin lines are subjects, the thick one their mean -- which is
+        the paired comparison the claim is about, free of between-subject
+        offsets;
+    (c) every window's approximation alpha against the share of its 0.5-30 Hz
+        power in delta, coloured by stage, with Spearman rho. Drawn for both
+        derivations, so neither is chosen for the figure.
+    """
+    from scipy.stats import spearmanr, wilcoxon
     C, S = A.shape[1], A.shape[2]
     scale_colors = plt.get_cmap(SCALE_CMAP)(np.linspace(0.9, 0.1, S))
     approx = S - 1
-    stats = {"n_windows": int(len(y)), "n_subjects": int(len(np.unique(subj))),
-             "per_stage": {}, "bands": [{"scale": b[0], "lo_hz": b[1], "hi_hz": b[2]}
-                                        for b in bands]}
+    present = [k for k in range(len(STAGES)) if (y == k).any()]
+    subjects = np.unique(subj)
+    W = STAGES.index("W")
+    N3 = STAGES.index("N3")
+    ch_names = list(names) if names else [f"ch{c}" for c in range(C)]
+    stats = {"n_windows": int(len(y)), "n_subjects": int(len(subjects)),
+             "per_stage": {}, "paired_vs_wake": {}, "delta_vs_alpha_approx": {},
+             "delta_vs_alpha_approx_within_stage": {},
+             "bands": [{"scale": b[0], "lo_hz": b[1], "hi_hz": b[2]} for b in bands]}
+    data = {"alpha_window_mean": A, "label": y, "subject": subj, "band_fractions": frac,
+            "channel_names": np.asarray(ch_names),
+            "band_edges_hz": np.asarray([[b[1], b[2]] for b in bands])}
+
     with _paper_rc():
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.75))
-        outer = fig.add_gridspec(1, 3, width_ratios=[1.9, 1.55, 1.0], wspace=0.36,
-                                 left=0.06, right=0.985, top=0.85, bottom=0.3)
-        # (a) alpha per scale and stage, one small panel per channel
-        ga = outer[0].subgridspec(1, C, wspace=0.12)
-        present = [k for k in range(len(STAGES)) if (y == k).any()]
+        fig = plt.figure(figsize=(PAPER_WIDTH, 1.62 * C + 0.75))
+        H = fig.get_figheight()
+        gs = fig.add_gridspec(C, 3, width_ratios=[1.25, 1.0, 1.0], wspace=0.42,
+                              hspace=0.28, left=0.085, right=0.99,
+                              top=1 - 0.42 / H, bottom=0.42 / H)
         xs = np.arange(len(present))
+        stage_ticks = [STAGES[k] for k in present]
+        axes_a, axes_b = [], []
         for c in range(C):
-            ax = fig.add_subplot(ga[c])
+            ch = ch_names[c]
+            # (a)
+            ax = fig.add_subplot(gs[c, 0])
+            axes_a.append(ax)
             for s in range(S):
+                per = _per_subject_stage_mean(A[:, c, s], y, subj, subjects)
                 m, h = [], []
                 for k in present:
-                    sel = y == k
-                    mm, hh, n = subject_mean_ci(A[sel, c, s], subj[sel])
+                    mm, hh, n = _t_ci(per[:, k])
                     m.append(mm)
                     h.append(hh)
-                    stats["per_stage"].setdefault(STAGES[k], {}).setdefault(
-                        names[c] if names else f"ch{c}", {})[bands[s][0]] = {
-                        "mean_over_subjects": float(mm), "ci95_half": float(hh),
-                        "n_subjects": int(n)}
-                lab = (f"{bands[s][0]}  {bands[s][1]:g}–{bands[s][2]:g} Hz" if s < approx
-                       else f"{bands[s][0]}  <{bands[s][2]:g} Hz")
-                ax.errorbar(xs, m, yerr=h, color=scale_colors[s], marker="o", ms=3.2,
+                    stats["per_stage"].setdefault(STAGES[k], {}).setdefault(ch, {})[
+                        bands[s][0]] = {"mean_over_subjects": mm, "ci95_half": hh,
+                                        "n_subjects": n}
+                lab = (f"{bands[s][0]} {bands[s][1]:g}–{bands[s][2]:g} Hz" if s < approx
+                       else f"{bands[s][0]} <{bands[s][2]:g} Hz")
+                ax.errorbar(xs, m, yerr=h, color=scale_colors[s], marker="o", ms=3,
                             lw=1.3, capsize=1.5, elinewidth=0.7, label=lab)
             ax.axhline(1.0 / S, color="0.6", lw=0.5, ls=":")
             ax.set_xticks(xs)
-            ax.set_xticklabels([STAGES[k] for k in present])
-            ax.set_title(names[c] if names else f"channel {c}", pad=2)
-            if c == 0:
-                ax.set_ylabel("Fold weight α")
-            else:
-                ax.tick_params(axis="y", labelleft=False)
+            ax.set_xticklabels(stage_ticks if c == C - 1 else [])
             ax.set_xlim(-0.4, len(present) - 0.6)
+            ax.set_ylabel(f"{ch}\nFold weight α", linespacing=1.3)
+
+            # (b)
+            axb = fig.add_subplot(gs[c, 1])
+            axes_b.append(axb)
+            per = _per_subject_stage_mean(A[:, c, approx], y, subj, subjects)
+            rel = per - per[:, [W]]
+            for row in rel:
+                axb.plot(xs, row[present], color="0.7", lw=0.6, zorder=1)
+            m = [_t_ci(rel[:, k]) for k in present]
+            axb.errorbar(xs, [t[0] for t in m], yerr=[t[1] for t in m],
+                         color=scale_colors[approx], marker="o", ms=3.2, lw=1.6,
+                         capsize=1.5, elinewidth=0.8, zorder=3)
+            axb.axhline(0, color="0.4", lw=0.6, zorder=0)
+            axb.set_xticks(xs)
+            axb.set_xticklabels(stage_ticks if c == C - 1 else [])
+            axb.set_xlim(-0.4, len(present) - 0.6)
+            axb.set_ylabel(f"Δα of {bands[approx][0]} vs. W")
+            d = rel[:, N3]
+            ok = np.isfinite(d)
+            n_pos, n_ok = int((d[ok] > 0).sum()), int(ok.sum())
+            try:
+                p_w = float(wilcoxon(d[ok]).pvalue) if n_ok >= 6 else float("nan")
+            except ValueError:
+                p_w = float("nan")
+            ptxt = ("p < 0.001" if p_w < 1e-3 else f"p = {p_w:.3f}") if np.isfinite(p_w) else ""
+            axb.text(0.03, 0.96, f"N3 > W: {n_pos}/{n_ok}" + (f", {ptxt}" if ptxt else ""),
+                     transform=axb.transAxes, ha="left", va="top",
+                     fontsize=PAPER_FONT - 0.5)
+            mm, hh, _ = _t_ci(d)
+            stats["paired_vs_wake"][ch] = {
+                "scale": bands[approx][0], "n3_minus_w_mean": mm, "ci95_half": hh,
+                "n_subjects": n_ok, "n_positive": n_pos, "wilcoxon_p": p_w,
+                "per_stage_mean": {STAGES[k]: _t_ci(rel[:, k])[0] for k in present}}
+            data[f"{ch}_approx_by_subject_stage"] = per
+
+            # (c)
+            axc = fig.add_subplot(gs[c, 2])
+            xd, ya = frac[:, c, 0], A[:, c, approx]
+            # Every window, in a shuffled draw order so no stage is painted on
+            # top of the rest; nothing is subsampled.
+            order = np.random.default_rng(0).permutation(len(xd))
+            for k in present:
+                sel = y[order] == k
+                axc.scatter(xd[order][sel], ya[order][sel], s=1.2,
+                            color=STAGE_COLOR[STAGES[k]], alpha=0.25, lw=0,
+                            rasterized=True, label=STAGES[k])
+            rho = float(spearmanr(xd, ya).correlation)
+            stats["delta_vs_alpha_approx"][ch] = {"spearman_rho": rho, "n": int(len(xd))}
+            stats["delta_vs_alpha_approx_within_stage"][ch] = {
+                STAGES[k]: float(spearmanr(xd[y == k], ya[y == k]).correlation)
+                for k in present if (y == k).sum() > 2}
+            axc.text(0.03, 0.96, f"ρ = {rho:.2f}", transform=axc.transAxes, ha="left",
+                     va="top", fontsize=PAPER_FONT - 0.5,
+                     bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.8,
+                           "alpha": 0.85})
+            axc.set_xlim(0, 1)
+            axc.set_ylabel(f"α of {bands[approx][0]}")
             if c == C - 1:
-                handles, labels = ax.get_legend_handles_labels()
-        # Share y across the channel panels
-        axs_a = [a_ for a_ in fig.axes if a_.get_subplotspec() is not None
-                 and a_.get_subplotspec().get_gridspec() is ga]
-        lo = min(a_.get_ylim()[0] for a_ in axs_a)
-        hi = max(a_.get_ylim()[1] for a_ in axs_a)
-        for a_ in axs_a:
-            a_.set_ylim(lo, hi + 0.05 * (hi - lo))
-        box0 = outer[0].get_position(fig)
-        xc0 = 0.5 * (box0.x0 + box0.x1)
-        fig.text(xc0, 0.175, "Sleep stage", ha="center", va="bottom", gid="paper-keep")
-        # The scale legend under the panels, off the data, once for both channels.
-        fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(xc0, 0.0),
-                   ncol=2, frameon=False, fontsize=PAPER_FONT - 1, handlelength=1.4,
-                   columnspacing=1.2, labelspacing=0.25, borderaxespad=0.0)
-        _letter(fig, 0.004, 0.99, "a")
-
-        # (b) one night: hypnogram over alpha of the approximation band
-        gb = outer[1].subgridspec(2, 1, height_ratios=[1.0, 1.6], hspace=0.38)
-        ax_h = fig.add_subplot(gb[0])
-        ax_b = fig.add_subplot(gb[1], sharex=ax_h)
-        ny, nA = night["y"], night["alpha"]                       # [n], [n, C, N, S]
-        ep = np.arange(len(ny)) * 0.5 / 60.0                       # hours (30 s epochs)
-        depth = np.array([{0: 4, 1: 2, 2: 1, 3: 0, 4: 3}[k] for k in ny])   # W top, N3 bottom
-        ax_h.step(ep, depth, where="post", color="0.25", lw=0.7)
-        for k in present:
-            sel = ny == k
-            ax_h.scatter(ep[sel], depth[sel], s=2, color=STAGE_COLOR[STAGES[k]], lw=0,
-                         zorder=3)
-        ax_h.set_yticks([4, 3, 2, 1, 0])
-        ax_h.set_yticklabels(["W", "REM", "N1", "N2", "N3"], fontsize=PAPER_FONT - 1)
-        ax_h.tick_params(axis="x", labelbottom=False)
-        ax_h.spines["bottom"].set_visible(False)
-        ax_h.set_title(f"Subject {night['subject']}, {names[0] if names else 'channel 0'}",
-                       pad=2)
-        a_night = nA[:, 0].mean(1)                                 # [n, S], channel 0
-        for s in (approx, 0):
-            ax_b.plot(ep, a_night[:, s], color=scale_colors[s], lw=0.9,
-                      label=bands[s][0])
-        # The legend in the gap between the hypnogram and the traces, where
-        # there is no data for it to sit on.
-        ax_b.legend(frameon=False, fontsize=PAPER_FONT - 1, ncol=2, loc="lower center",
-                    bbox_to_anchor=(0.5, 1.0), handlelength=1.4, columnspacing=1.2,
-                    borderaxespad=0.05)
-        ax_b.axhline(1.0 / S, color="0.6", lw=0.5, ls=":")
-        ax_b.set_xlim(float(ep[0]), float(ep[-1]))
-        ax_b.set_xlabel("Time in night (h)")
-        ax_b.set_ylabel("α")
-        _letter(fig, outer[1].get_position(fig).x0 - 0.045, 0.99, "b")
-
-        # (c) alpha of the approximation band against the window's delta share
-        ax_c = fig.add_subplot(outer[2])
-        from scipy.stats import spearmanr
-        xd, ya = delta_frac[:, 0, 0], A[:, 0, approx]        # channel 0, delta band
-        order = np.random.default_rng(0).permutation(len(xd))  # draw order, not a subset
-        for k in present:
-            sel = y[order] == k
-            ax_c.scatter(xd[order][sel], ya[order][sel], s=1.6, color=STAGE_COLOR[STAGES[k]],
-                         alpha=0.35, lw=0, rasterized=True, label=STAGES[k])
-        rho = float(spearmanr(xd, ya).correlation)
-        stats["delta_vs_alpha_approx"] = {"channel": names[0] if names else "ch0",
-                                          "spearman_rho": rho, "n": int(len(xd))}
-        ax_c.set_xlabel(f"Delta share of 0.5–30 Hz power\nSpearman ρ = {rho:.2f}",
-                        linespacing=1.3)
-        ax_c.set_ylabel(f"α of {bands[approx][0]}")
-        ax_c.set_xlim(0, 1)
-        # Stage legend above the panel, off the point cloud.
-        leg = ax_c.legend(frameon=False, fontsize=PAPER_FONT - 1, loc="lower center",
-                          bbox_to_anchor=(0.5, 1.0), ncol=len(present), markerscale=4,
-                          handlelength=0.8, handletextpad=0.3, columnspacing=0.8,
-                          borderaxespad=0.1)
+                axc.set_xlabel("Delta share of 0.5–30 Hz power")
+            else:
+                axc.tick_params(axis="x", labelbottom=False)
+            if c == 0:
+                hc, lc = axc.get_legend_handles_labels()
+        # Shared y within columns (a) and (b), so the two derivations read on
+        # one scale.
+        for col in (axes_a, axes_b):
+            lo = min(a_.get_ylim()[0] for a_ in col)
+            hi = max(a_.get_ylim()[1] for a_ in col)
+            for a_ in col:
+                a_.set_ylim(lo, hi)
+        axes_a[-1].set_xlabel("Sleep stage")
+        axes_b[-1].set_xlabel("Sleep stage")
+        # Legends above their columns, off the data.
+        ha, la = axes_a[0].get_legend_handles_labels()
+        box_a = gs[0, 0].get_position(fig)
+        fig.legend(ha, la, loc="lower center", ncol=2, frameon=False,
+                   bbox_to_anchor=(0.5 * (box_a.x0 + box_a.x1), box_a.y1 + 0.005),
+                   fontsize=PAPER_FONT - 1, handlelength=1.4, columnspacing=1.0,
+                   labelspacing=0.2, borderaxespad=0.0)
+        box_c = gs[0, 2].get_position(fig)
+        leg = fig.legend(hc, lc, loc="lower center", ncol=len(present), frameon=False,
+                         bbox_to_anchor=(0.5 * (box_c.x0 + box_c.x1), box_c.y1 + 0.005),
+                         fontsize=PAPER_FONT - 1, markerscale=4, handlelength=0.6,
+                         handletextpad=0.25, columnspacing=0.6, borderaxespad=0.0)
         for h_ in leg.legend_handles:
             h_.set_alpha(1.0)
-        _letter(fig, outer[2].get_position(fig).x0 - 0.045, 0.99, "c")
+        for col, ch_ in enumerate("abc"):
+            x0 = gs[0, col].get_position(fig).x0
+            _letter(fig, max(0.002, x0 - (0.08 if col == 0 else 0.055)), 0.995, ch_)
 
-        w.save(fig, "fig_paper_fold_by_stage",
-               {"alpha_window_mean": A, "label": y, "subject": subj,
-                "band_fractions": delta_frac, "night_alpha_blocks": nA,
-                "night_label": ny, "night_subject": np.asarray(night["subject"]),
-                "channel_names": np.asarray(names or []),
-                "band_edges_hz": np.asarray([[b[1], b[2]] for b in bands])},
+        w.save(fig, "fig_paper_fold_by_stage", data,
                {"stats": stats, "model": model_note, "stages": STAGES,
                 "uncertainty": "mean over test subjects of each subject's mean "
                                "window alpha; 95% t-interval across subjects",
+                "paired": "panel (b): per subject, the approximation scale's mean "
+                          "alpha in each stage minus that subject's own W mean; "
+                          "Wilcoxon signed-rank on N3 - W across subjects",
                 "alpha": "fold.alpha_blocks: the undropped softmax over scales, "
                          "per channel and 0.5 s block, averaged over the 60 blocks "
-                         "of a 30 s window; eval mode",
+                         "of a 30 s window; eval mode. A mixing weight, not a "
+                         "share of energy: a scale with little power can carry a "
+                         "large weight",
                 "bands": "nominal dyadic bands at the data's sampling rate; the "
                          "learned filters are not brick-wall",
-                "night": "the test subject with the most windows; panel (b) is "
-                         "channel 0 and the approximation / finest detail scales",
                 "delta_share": "power in 0.5-4 Hz over power in 0.5-30 Hz, per "
-                               "window, from a plain periodogram of the z-scored EEG"})
+                               "window, from a plain periodogram of the z-scored EEG",
+                "frontend": "trained from scratch on Sleep-EDF during fine-tuning "
+                            "(the montage is on no pretraining route), so these "
+                            "weights were learned for sleep staging"})
     return stats
 
 
@@ -354,8 +406,6 @@ def main(argv=None) -> int:
     p.add_argument("--batch-size", type=int, default=32,
                    help="the training batch; the cross-scale FFNs attend over all 3000 "
                         "samples, so memory grows with T^2 and 128 does not fit")
-    p.add_argument("--night-subject", type=int, default=None,
-                   help="subject id for panel (b); default: the one with most windows")
     p.add_argument("--threads", type=int, default=None)
     p.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"],
                    help="auto: cuda when present, else cpu")
@@ -381,16 +431,11 @@ def main(argv=None) -> int:
           f"{model.wavelet_frontend.fold.patch_len} samples; bands "
           + ", ".join(f"{b[0]} {b[1]:g}-{b[2]:g} Hz" for b in bands))
 
-    night_subject = (args.night_subject if args.night_subject is not None
-                     else int(np.bincount(subj).argmax()))
-    keep = subj == night_subject
     device = (("cuda" if torch.cuda.is_available() else "cpu")
               if args.device == "auto" else args.device)
     print(f"  device: {device}")
-    A, blocks = fold_alpha(model, X, args.batch_size, keep_blocks_for=keep,
-                           device=device)
+    A, _ = fold_alpha(model, X, args.batch_size, device=device)
     frac = band_power_fractions(X, fs)
-    night = {"subject": night_subject, "y": y[keep], "alpha": blocks}
     for k in range(len(STAGES)):
         if (y == k).any():
             print(f"  {STAGES[k]:>3}: alpha mean over windows "
@@ -405,9 +450,12 @@ def main(argv=None) -> int:
         stamp=args.no_paper, paper=not args.no_paper)
     note = (f"{cfg.get('model', {}).get('name')} downstream, "
             f"{os.path.basename(args.run_dir)}, epoch {ck.get('epoch')}")
-    stats = fig_fold_by_stage(writer, A, y, subj, names, fs, bands, night, frac, note)
-    print(f"  delta share vs alpha_{bands[-1][0]}: Spearman rho "
-          f"{stats['delta_vs_alpha_approx']['spearman_rho']:.3f}")
+    stats = fig_fold_by_stage(writer, A, y, subj, names, fs, bands, frac, note)
+    for ch, v in stats["paired_vs_wake"].items():
+        print(f"  {ch}: alpha_{v['scale']} N3 - W = {v['n3_minus_w_mean']:+.4f} "
+              f"(+-{v['ci95_half']:.4f}), positive in {v['n_positive']}/{v['n_subjects']} "
+              f"subjects, Wilcoxon p {v['wilcoxon_p']:.2g}; delta-share rho "
+              f"{stats['delta_vs_alpha_approx'][ch]['spearman_rho']:+.3f}")
     return 0
 
 
