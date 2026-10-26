@@ -253,7 +253,7 @@ def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
         fig = plt.figure(figsize=(PAPER_WIDTH, 1.62 * C + 0.75))
         H = fig.get_figheight()
         gs = fig.add_gridspec(C, 3, width_ratios=[1.25, 1.0, 1.0], wspace=0.42,
-                              hspace=0.28, left=0.085, right=0.99,
+                              hspace=0.4, left=0.105, right=0.985,
                               top=1 - 0.42 / H, bottom=0.42 / H)
         xs = np.arange(len(present))
         stage_ticks = [STAGES[k] for k in present]
@@ -307,9 +307,10 @@ def fig_fold_by_stage(w: FigureWriter, A, y, subj, names, fs, bands, frac,
             except ValueError:
                 p_w = float("nan")
             ptxt = ("p < 0.001" if p_w < 1e-3 else f"p = {p_w:.3f}") if np.isfinite(p_w) else ""
-            axb.text(0.03, 0.96, f"N3 > W: {n_pos}/{n_ok}" + (f", {ptxt}" if ptxt else ""),
-                     transform=axb.transAxes, ha="left", va="top",
-                     fontsize=PAPER_FONT - 0.5)
+            # As the panel's title, above the axes: inside them it sat on the
+            # subjects' lines.
+            axb.set_title(f"N3 > W in {n_pos}/{n_ok} subjects" + (f", {ptxt}" if ptxt else ""),
+                          fontsize=PAPER_FONT - 0.5, fontweight="bold", pad=3)
             mm, hh, _ = _t_ci(d)
             stats["paired_vs_wake"][ch] = {
                 "scale": bands[approx][0], "n3_minus_w_mean": mm, "ci95_half": hh,
