@@ -59,6 +59,9 @@ RUN_DIR="${RUN_DIR:-${PW_CKPT_ROOT}/pretrain_${MODALITY}_c1_moe}"
 NAME="${NAME:-${MODALITY}_c1_moe}"
 CHECKPOINT="${CHECKPOINT:-best.pth}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-16}"
+# Unbuffered, so `tail -f` on the .out shows progress as it happens; redirected
+# to a file, Python otherwise holds its few lines until the job exits.
+export PYTHONUNBUFFERED=1
 
 echo "visualising ${RUN_DIR} (${CHECKPOINT}) -> docs/runs/${NAME}"
 [[ -f "${RUN_DIR}/${CHECKPOINT}" ]] || { echo "ERROR: no ${RUN_DIR}/${CHECKPOINT}" >&2; exit 1; }

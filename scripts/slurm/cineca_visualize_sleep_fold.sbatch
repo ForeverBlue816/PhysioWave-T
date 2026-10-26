@@ -41,6 +41,9 @@ RUN_DIR="${RUN_DIR:-${PW_CKPT_ROOT}/eeg_downstream/${RUN}}"
 DATA_DIR="${DATA_DIR:-${PW_DATA_EEG}/sleep_edf}"
 NAME="${NAME:-sleep_edf_fold}"
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-8}"
+# Unbuffered, so `tail -f` on the .out shows progress as it happens; redirected
+# to a file, Python otherwise holds its few lines until the job exits.
+export PYTHONUNBUFFERED=1
 
 [[ -f "${RUN_DIR}/best.pth" ]] || { echo "ERROR: no ${RUN_DIR}/best.pth" >&2; exit 1; }
 [[ -f "${DATA_DIR}/test.h5" ]] || { echo "ERROR: no ${DATA_DIR}/test.h5" >&2; exit 1; }
