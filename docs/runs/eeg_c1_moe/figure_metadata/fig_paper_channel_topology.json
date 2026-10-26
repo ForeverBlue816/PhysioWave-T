@@ -5,7 +5,7 @@
   "global_step": 44544,
   "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8",
   "modality": "eeg",
-  "plotting_script_git_commit": "e7b5a7dad607134ae8602f87d6c6329e74753e1f",
+  "plotting_script_git_commit": "1b9c09ffcd29a28d4557494a35a4c4cc7ed119b5",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,10 +20,11 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 59,
   "figure": "fig_paper_channel_topology",
-  "generated_utc": "2026-10-26T15:39:12.727470+00:00",
+  "generated_utc": "2026-10-26T15:43:57.439328+00:00",
   "figure_text": [
     "a",
-    "b"
+    "b",
+    "c"
   ],
   "paper_mode": true,
   "stats": {
@@ -62,6 +63,28 @@
     "procrustes_r": {
       "trained": 0.17234322347586908,
       "init": 0.10803010231699404
+    },
+    "knn_scalp_distance": {
+      "10-5": {
+        "k": 5,
+        "trained_deg": 55.68587817085226,
+        "init_deg": 85.73422133639541,
+        "scalp_floor_deg": 16.29606710357683,
+        "null_mean_deg": 84.35021747823528,
+        "null_p2_5_deg": 80.72031619901348,
+        "null_p97_5_deg": 87.8778550503273,
+        "perm_p_one_sided": 0.0004997501249375312
+      },
+      "EGI-128": {
+        "k": 5,
+        "trained_deg": 43.76702918182705,
+        "init_deg": 88.65535235320196,
+        "scalp_floor_deg": 17.449901727252243,
+        "null_mean_deg": 88.06720198662734,
+        "null_p2_5_deg": 84.30792044757524,
+        "null_p97_5_deg": 91.75930508299582,
+        "perm_p_one_sided": 0.0004997501249375312
+      }
     }
   },
   "seeds": [
@@ -77,5 +100,6 @@
   "coordinates": "MNE standard_1005 (10-5 names) and GSN-HydroCel-128 (EGI names) template montages; great-circle distance on the sphere fitted to each family; the model was given no coordinate",
   "permutation_null": "embedding rows shuffled among electrodes, 2000 draws, one-sided (rho < 0)",
   "procrustes": "2-D metric MDS of 1 - cosine, aligned to the montage's 2-D topomap layout; r = sqrt(1 - disparity); reported, not drawn",
-  "topomap_colour": "sequential (Reds), limits the 2nd-98th percentiles of the off-diagonal cosines, shared by the seeds; the seed is drawn at the upper limit"
+  "topomap_colour": "sequential (Reds): percentile rank of each electrode's cosine similarity to the seed among the seed's row; the seed is drawn at 100",
+  "knn": "panel (c): mean over electrodes of the mean great-circle distance to the k=5 electrodes with the most similar name embedding; grey bar the 2.5-97.5th percentiles of the row-shuffled null, open circle the untrained table, black tick each electrode's 5 true scalp neighbours"
 }

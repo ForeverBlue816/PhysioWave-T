@@ -4,9 +4,9 @@
   "epoch": 6,
   "data": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/sleep_edf/test.h5",
   "split": "test",
-  "plotting_script_git_commit": "e7b5a7dad607134ae8602f87d6c6329e74753e1f",
+  "plotting_script_git_commit": "1b9c09ffcd29a28d4557494a35a4c4cc7ed119b5",
   "figure": "fig_paper_fold_by_stage",
-  "generated_utc": "2026-10-26T15:40:04.049924+00:00",
+  "generated_utc": "2026-10-26T15:45:20.090311+00:00",
   "figure_text": [
     "a",
     "b",
