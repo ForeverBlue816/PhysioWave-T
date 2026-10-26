@@ -28,3 +28,22 @@ per-epoch metrics, the resolved config and the progress tables into
 `docs/runs/<name>/`, with a README that shows the best epochs and every figure
 inline. Checkpoints, the per-step metrics and the arrays behind each figure
 stay in the run directory.
+
+## Journal figures (TPAMI extension)
+
+Four composites drawn at their printed width (7.16 in, text 8 pt and up, no
+figure-level title, no corner stamp -- the caption material is in each
+`figure_metadata/<name>.json`):
+
+| figure | what | drawn by |
+|---|---|---|
+| `fig_paper_mask_reconstruction` | both heads, four routes, eight panels each; masked correlation in the error panels | `cineca_visualize_run.sbatch` |
+| `fig_paper_raw_waveform` | the raw head on one channel per route, prediction on masked patches only | `cineca_visualize_run.sbatch` |
+| `fig_paper_channel_topology` | name-embedding cosine similarity against scalp distance, seed topomaps, MDS vs. true layout (needs `mne`) | `cineca_visualize_run.sbatch` |
+| `fig_paper_fold_by_stage` | dynamic ScaleFold alpha per scale and sleep stage, one night, alpha vs. delta share | `cineca_visualize_sleep_fold.sbatch` |
+
+    ONLY="fig_paper_mask_reconstruction fig_paper_raw_waveform fig_paper_channel_topology" \
+        RECON_WINDOWS=8 sbatch --export=ALL,MODALITY=eeg scripts/slurm/cineca_visualize_run.sbatch
+    sbatch scripts/slurm/cineca_visualize_sleep_fold.sbatch
+
+The first lands in `docs/runs/eeg_c1_moe/`, the second in `docs/runs/sleep_edf_fold/`.

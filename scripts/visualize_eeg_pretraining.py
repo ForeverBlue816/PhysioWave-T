@@ -212,6 +212,36 @@ class FigureWriter:
         fig.text(0.005, 0.005, "  ".join(bits), fontsize=5.5, color="0.45",
                  ha="left", va="bottom")
 
+    def _alignment_audit(self, fig, name: str):
+        """Measure the panels' final rectangles, when the auditor is present.
+
+        ``PW_FIG_ALIGN_AUDIT`` names a directory holding the figure-QA
+        ``audit_panel_alignment.py``; the report lands beside the figure's
+        metadata as ``<name>.alignment.json`` and a misalignment is printed,
+        not raised, so a working figure is never lost to a 2 pt gutter. Axes
+        labelled ``free`` (hand-placed insets such as topomaps) and colourbars
+        are left out of the comparison groups. Unset, nothing happens.
+        """
+        d = os.environ.get("PW_FIG_ALIGN_AUDIT")
+        if not d or len(fig.axes) < 2:
+            return
+        try:
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            from audit_panel_alignment import (PanelAlignmentError,
+                                               require_matplotlib_panel_alignment)
+        except ImportError as exc:
+            print(f"  alignment audit skipped: {exc}")
+            return
+        free = [a for a in fig.axes if str(a.get_label()).startswith("free")]
+        out = os.path.join(self.meta_dir, f"{name}.alignment.json")
+        try:
+            require_matplotlib_panel_alignment(fig, json_out=out, exclude_axes=free,
+                                               tolerance_pt=1.5, strict=False)
+            print(f"  alignment: PASS ({out})")
+        except PanelAlignmentError as exc:
+            print(f"  alignment: {str(exc).splitlines()[0]} ({out})")
+
     def save(self, fig, name: str, data: Optional[Dict] = None,
              meta: Optional[Dict] = None):
         figure_text = []
@@ -222,10 +252,14 @@ class FigureWriter:
         if self.paper:
             if sup is not None:
                 sup.set_visible(False)
+            # Figure-level notes go; panel letters and group titles (gid
+            # "paper-keep") are part of the figure and stay.
             for t in fig.texts:
-                t.set_visible(False)
+                if t.get_gid() != "paper-keep":
+                    t.set_visible(False)
         if self.stamp:
             self._stamp(fig)
+        self._alignment_audit(fig, name)
         paths = [os.path.join(self.fig_dir, f"{name}.{f}") for f in self.formats]
         for path, f in zip(paths, self.formats):
             fig.savefig(path, format=f)
@@ -2074,6 +2108,610 @@ def fig_paper_reconstruction(w: FigureWriter, rows, grid, ranks, model, datasets
             "mask_ratio": float(model.mask_ratio)})
 
 
+# --------------------------------------------------------------------------- #
+# Journal composites, drawn at their final printed size.
+#
+# The working figures above are drawn on large canvases (21 in wide for the
+# eight-panel grid) and then scaled to a column, which is how 8 pt text arrives
+# at 3 pt. These are drawn at the width they will be printed -- a double column
+# is 7.16 in (IEEE) -- so the point sizes below are the point sizes on the
+# page. They carry no figure-level title, no per-row metric lines, no window
+# indices and no survey ranks: those sit in figure_metadata/<name>.json, where
+# the caption is written from. The honesty rules of reconstruction_panels
+# (shared colour limits, normalised spec target, masked-only error) are
+# unchanged, because the panels come from the same function.
+# --------------------------------------------------------------------------- #
+
+#: IEEE double column, in inches.
+PAPER_WIDTH = 7.16
+PAPER_FONT = 8.0          # body: tick labels, row labels, legends
+PAPER_TITLE = 8.5         # column and panel titles
+PAPER_LETTER = 10.0       # panel letters
+
+
+def _paper_rc():
+    """rcParams for the journal composites; use as a context manager."""
+    return plt.rc_context({
+        "font.size": PAPER_FONT, "axes.titlesize": PAPER_TITLE,
+        "axes.labelsize": PAPER_FONT, "legend.fontsize": PAPER_FONT,
+        "xtick.labelsize": PAPER_FONT, "ytick.labelsize": PAPER_FONT,
+        "axes.linewidth": 0.6, "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6, "xtick.major.size": 2.5,
+        "ytick.major.size": 2.5, "xtick.major.pad": 2, "ytick.major.pad": 2,
+    })
+
+
+def _letter(fig, x, y, ch):
+    """A panel letter at figure coordinates, bold, on the figure itself."""
+    fig.text(x, y, ch, fontsize=PAPER_LETTER, fontweight="bold",
+             ha="left", va="top", gid="paper-keep")
+
+
+def _paper_picks(rows, grid, ranks, mask_ratio):
+    """Per route, the median-NMSE surveyed window and its mixed channel.
+
+    The same selection rule as fig_paper_reconstruction, so the three journal
+    composites describe the same four windows: neither the best example of
+    the survey nor the worst.
+    """
+    picks = []
+    for i, (rid, dsid) in enumerate(rows):
+        k = _median_window(rows, grid, ranks, i)
+        if k is None:
+            continue
+        ex = grid[k][i]
+        ch = _mixed_channel(ex, ROUTES[rid], mask_ratio)
+        if ch is not None:
+            picks.append((i, rid, dsid, k, ex, ch))
+    return picks
+
+
+def _route_row_label(rid: str, dsid: str) -> str:
+    r = ROUTES[rid]
+    return f"{DATASET_LABEL.get(dsid, dsid)}\n{r.n_channels} ch, {r.sampling_rate:g} Hz"
+
+
+def fig_paper_mask_reconstruction(w: FigureWriter, rows, grid, ranks, model,
+                                  mask_seed: int):
+    """fig_mask_reconstruction at journal size: four routes, eight panels each.
+
+    Two groups of four that read the same way -- target, what the frontend was
+    handed, the composite, and the error on the masked patches alone -- for the
+    raw head (a) and the folded-wavelet head (b). The only number on the
+    figure is the masked correlation of each head, in its error panel; the
+    losses, NMSE, window indices and survey ranks go to the metadata.
+    """
+    picks = _paper_picks(rows, grid, ranks, model.mask_ratio)
+    if not picks:
+        return
+    n = len(picks)
+    col_titles = ["Target", "Masked input", "Reconstruction", "|Error|"]
+    with _paper_rc():
+        row_h = 0.98
+        fig = plt.figure(figsize=(PAPER_WIDTH, row_h * n + 0.72))
+        outer = fig.add_gridspec(1, 2, wspace=0.08, left=0.085, right=0.995,
+                                 top=1 - 0.42 / (row_h * n + 0.72),
+                                 bottom=0.34 / (row_h * n + 0.72))
+        grids = [outer[g].subgridspec(n, 4, wspace=0.06, hspace=0.12)
+                 for g in range(2)]
+        data, meta_rows = {}, []
+        for r, (i, rid, dsid, k, ex, ch) in enumerate(picks):
+            route = ROUTES[rid]
+            pt, n_patches = route.patch_t, route.patches_per_channel
+            panels = reconstruction_panels(ex, route)
+            T = ex["target_raw"].shape[1]
+            mt = ex["metrics"]
+            for c, (arr, _title, cmap, vmin, vmax) in enumerate(panels):
+                g, cc = divmod(c, 4)
+                ax = fig.add_subplot(grids[g][r, cc])
+                ax.imshow(arr, aspect="auto", cmap=cmap, interpolation="nearest",
+                          vmin=vmin, vmax=vmax)
+                ax.set_yticks([])
+                for sp in ax.spines.values():
+                    sp.set_visible(True)
+                    sp.set_linewidth(0.5)
+                    sp.set_color("0.4")
+                if r == 0:
+                    ax.set_title(col_titles[cc], pad=3)
+                if r == n - 1:
+                    secs = route.window_seconds
+                    ax.set_xticks([0, T / 2, T - 1])
+                    ax.set_xticklabels(["0", "", f"{secs:g}"])
+                    labs = ax.get_xticklabels()
+                    labs[0].set_ha("left")
+                    labs[-1].set_ha("right")
+                else:
+                    ax.set_xticks([])
+                if c == 0:
+                    ax.set_ylabel(_route_row_label(rid, dsid), labelpad=4)
+                if cc == 3:
+                    corr = (mt["masked_raw_corr"] if g == 0
+                            else mt["masked_spec_corr"])
+                    import matplotlib.patheffects as pe
+                    ax.text(0.96, 0.95, f"r = {corr:.2f}", transform=ax.transAxes,
+                            ha="right", va="top", color="white", fontsize=PAPER_FONT,
+                            path_effects=[pe.withStroke(linewidth=1.6,
+                                                        foreground="black")])
+            valid_rows = _expand(ex["valid"], pt)
+            raw_lim = _sym_limits(ex["target_raw"], valid_rows)
+            spec_lim = _sym_limits(ex["target_spec"], valid_rows)
+            ratio = ex["mask"].sum() / max(1, ex["valid"].sum())
+            rk = ranks.get((rid, k), {})
+            for key in ("target_raw", "pred_raw", "target_spec", "pred_spec",
+                        "mask", "valid"):
+                data[f"{rid}_{key}"] = ex[key]
+            meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                              "subject_id": ex["subject_id"],
+                              "recording_id": ex["recording_id"],
+                              "window_index": ex["window_index"],
+                              "survey_index": k, "mask_seed": mask_seed,
+                              "actual_mask_ratio": float(ratio),
+                              "raw_color_limit": raw_lim,
+                              "spec_color_limit": spec_lim,
+                              "spec_target_is_normalised": ex["normalize_spec_target"],
+                              "raw_nmse_rank": rk.get("raw"),
+                              "spec_nmse_rank": rk.get("spec"),
+                              "n_windows_surveyed": rk.get("n"), **mt})
+        # Group titles and letters, on the figure so they share one baseline.
+        for g, (ch_, title) in enumerate((("a", "Raw-EEG head"),
+                                          ("b", "Folded-wavelet head"))):
+            box = outer[g].get_position(fig)
+            _letter(fig, box.x0 - 0.012, 0.995, ch_)
+            fig.text(0.5 * (box.x0 + box.x1), 0.995, title, ha="center", va="top",
+                     fontsize=PAPER_TITLE + 0.5, fontweight="bold", gid="paper-keep")
+        fig.text(0.5 * (outer[0].get_position(fig).x0 + outer[1].get_position(fig).x1),
+                 0.012, "Time (s)", ha="center", va="bottom", gid="paper-keep")
+        w.save(fig, "fig_paper_mask_reconstruction", data,
+               {"examples": meta_rows, "n_windows_surveyed": len(grid),
+                "panels": [_sig(t) for t in RECONSTRUCTION_PANEL_TITLES],
+                "selection_rule": "per route, the surveyed window with the median "
+                                  "masked raw NMSE rank (fig_paper_reconstruction's)",
+                "note": "spec panels use target_spec, the per-patch normalised "
+                        "target the loss is computed against; target and "
+                        "composite share colour limits taken from the target "
+                        "(+-99.5th percentile over valid rows); the error panels "
+                        "are masked valid patches only; the number in each error "
+                        "panel is that head's masked correlation on the window"})
+
+
+def fig_paper_raw_waveform(w: FigureWriter, rows, grid, ranks, model, mask_seed: int):
+    """14_raw_waveform_reconstruction at journal size.
+
+    One channel per route, the window and channel of the other two journal
+    composites. The prediction is drawn on masked patches only; the composite
+    line of the working figure is left out, since it repeats the target and
+    the prediction where each is drawn. Under each trace, the absolute error
+    on the masked stretches.
+    """
+    picks = _paper_picks(rows, grid, ranks, model.mask_ratio)
+    if not picks:
+        return
+    n = len(picks)
+    with _paper_rc():
+        fig = plt.figure(figsize=(PAPER_WIDTH, 1.28 * n + 0.45))
+        gs = fig.add_gridspec(n, 1, left=0.075, right=0.995,
+                              top=1 - 0.3 / (1.28 * n + 0.45),
+                              bottom=0.36 / (1.28 * n + 0.45), hspace=0.22)
+        data, meta_rows = {}, []
+        for j, (i, rid, dsid, k, ex, ch) in enumerate(picks):
+            route = ROUTES[rid]
+            pt, n_p = route.patch_t, route.patches_per_channel
+            target, pred = ex["target_raw"][ch], ex["pred_raw"][ch]
+            m = _expand(ex["mask"][ch:ch + 1], pt)[0]
+            t = np.arange(target.size) / route.sampling_rate
+            tm, pm = target[m].astype(np.float64), pred[m].astype(np.float64)
+            resid = float(np.mean((pm - tm) ** 2)) if tm.size else float("nan")
+            nmse = resid / max(float(np.mean(tm ** 2)), 1e-12) if tm.size else float("nan")
+            pc, tc = pm - pm.mean(), tm - tm.mean()
+            den = float(np.linalg.norm(pc) * np.linalg.norm(tc))
+            corr = (float(np.dot(pc, tc) / den)
+                    if den > 0 and np.isfinite(den) else float("nan"))
+            err = np.abs(pred.astype(np.float64) - target.astype(np.float64))
+            err[~m] = np.nan
+
+            sub = gs[j].subgridspec(2, 1, height_ratios=[3.2, 1.0], hspace=0.08)
+            ax, ax_e = fig.add_subplot(sub[0]), fig.add_subplot(sub[1])
+            for pi in range(n_p):
+                if ex["mask"][ch, pi]:
+                    for a in (ax, ax_e):
+                        a.axvspan(pi * pt / route.sampling_rate,
+                                  (pi + 1) * pt / route.sampling_rate,
+                                  color="0.9", lw=0, zorder=0)
+            ax.plot(t, target, color="0.2", lw=0.8, zorder=2, label="Target (z-scored EEG)")
+            ax.plot(t, np.where(m, pred, np.nan), color=ROUTE_COLOR[rid], lw=1.1,
+                    zorder=3, label="Prediction, masked patches only")
+            ax.set_xlim(float(t[0]), float(t[-1]))
+            lo, hi = float(np.nanmin(target)), float(np.nanmax(target))
+            ax.set_ylim(lo - 0.08 * (hi - lo), hi + 0.45 * (hi - lo))
+            ax.tick_params(axis="x", bottom=False, labelbottom=False)
+            ax.spines["bottom"].set_visible(False)
+            ax.set_ylabel("z-score", labelpad=2)
+            box = {"facecolor": "white", "edgecolor": "none", "pad": 1.0, "alpha": 0.9}
+            ax.text(0.006, 0.96,
+                    f"{DATASET_LABEL.get(dsid, dsid)} ({route.n_channels} ch, "
+                    f"{route.sampling_rate:g} Hz), {_slot_name(dsid, route, ch)}",
+                    transform=ax.transAxes, ha="left", va="top", bbox=box, zorder=5)
+            ax.text(0.994, 0.96, f"r = {corr:.2f}   NMSE = {nmse:.2f}",
+                    transform=ax.transAxes, ha="right", va="top", bbox=box, zorder=5)
+            ax_e.fill_between(t, 0, np.nan_to_num(err), where=m, color=OKABE_ITO[3],
+                              lw=0, zorder=2)
+            ax_e.set_xlim(float(t[0]), float(t[-1]))
+            top = float(np.nanmax(err)) if np.isfinite(np.nanmax(err)) else 1.0
+            ax_e.set_ylim(0, top * 1.15)
+            ax_e.set_yticks([0, round(top, 1)])
+            ax_e.set_ylabel("|err|", labelpad=2)
+            if j == n - 1:
+                ax_e.set_xlabel("Time (s)")
+            else:
+                ax_e.tick_params(axis="x", labelbottom=False)
+            if j == 0:
+                from matplotlib.lines import Line2D
+                handles = [Line2D([], [], color="0.2", lw=0.8),
+                           Line2D([], [], color="0.45", lw=1.1),
+                           matplotlib.patches.Patch(color="0.9")]
+                fig.legend(handles, ["Target (z-scored EEG)",
+                                     "Prediction, masked patches only (route colour)",
+                                     "Masked patch"],
+                           loc="upper left", ncol=3, frameon=False,
+                           bbox_to_anchor=(0.06, 1.0), handlelength=1.6,
+                           columnspacing=1.6, borderaxespad=0.2)
+            rk = ranks.get((rid, k), {})
+            data[f"{rid}_time"], data[f"{rid}_target"] = t, target
+            data[f"{rid}_pred"], data[f"{rid}_mask"] = pred, ex["mask"][ch]
+            data[f"{rid}_masked_error"] = err
+            meta_rows.append({"route_id": rid, "dataset_id": dsid,
+                              "channel": _slot_name(dsid, route, ch), "channel_slot": ch,
+                              "subject_id": ex["subject_id"],
+                              "recording_id": ex["recording_id"],
+                              "window_index": ex["window_index"], "survey_index": k,
+                              "mask_seed": mask_seed, "raw_corr": corr, "raw_nmse": nmse,
+                              "masked_patches": int(ex["mask"][ch].sum()),
+                              "patches_per_channel": n_p,
+                              "window_raw_nmse_rank": rk.get("raw"),
+                              "n_windows_surveyed": rk.get("n")})
+        w.save(fig, "fig_paper_raw_waveform", data,
+               {"rows": meta_rows, "n_windows_surveyed": len(grid),
+                "selection_rule": "per route, the surveyed window with the median "
+                                  "masked raw NMSE rank; the channel with masked and "
+                                  "visible patches whose masked share is closest to "
+                                  "the mask ratio",
+                "note": "z-scored preprocessed EEG, not raw EDF values and not the "
+                        "folded wavelet representation; the prediction is shown on "
+                        "masked patches only; r and NMSE are over the masked "
+                        "samples of the channel drawn"})
+
+
+# --------------------------------------------------------------------------- #
+# Does the channel-NAME embedding know where the electrodes are?
+#
+# C1 is a lookup table indexed by the name's id. No coordinate ever enters the
+# model, and the shared table is read by four routes whose slot orders differ,
+# so the 2-D position embedding cannot tell the table where a name sits
+# either. If the learned rows are nevertheless more alike for electrodes that
+# are closer on the scalp, the model recovered the geometry from the signals
+# alone -- neighbouring electrodes see the same sources through volume
+# conduction, and a reconstruction objective that masks patches of one
+# channel is served by knowing which other channels carry the same thing.
+#
+# The template coordinates come from MNE's standard_1005 montage (10-5 names,
+# the TUEG/FACED/TDBRAIN/PhysioNet-MI/M3CV/HGD electrodes) and from its
+# GSN-HydroCel-128 montage (HBN's E-numbers). The two are kept as separate
+# families: the EGI net is a different set of positions and the model was
+# given no bridge between the two naming systems, so a cross-family pair is
+# not a test of anything. Distances are great-circle arcs on the sphere fitted
+# to each family's positions, in degrees; an untrained table (the run's own
+# initialisation, rebuilt from its seed) is the control.
+# --------------------------------------------------------------------------- #
+
+def _fit_sphere(P: np.ndarray):
+    """Least-squares sphere through the points: ``(centre, radius)``."""
+    A = np.c_[2 * P, np.ones(len(P))]
+    b = (P ** 2).sum(1)
+    sol, *_ = np.linalg.lstsq(A, b, rcond=None)
+    c = sol[:3]
+    r = math.sqrt(max(float(sol[3] + c @ c), 1e-12))
+    return c, r
+
+
+def _electrode_families(names):
+    """``{family: {name: unit xyz}}`` for the names a template montage places.
+
+    Case-insensitive against standard_1005 (the vocabulary spells halfway
+    positions ``FFC5h``, the montage the same; TUEG's ``FP1`` has already been
+    normalised to ``Fp1`` upstream) and exact against the EGI net.
+    """
+    import mne
+    std = mne.channels.make_standard_montage("standard_1005").get_positions()["ch_pos"]
+    egi = mne.channels.make_standard_montage("GSN-HydroCel-128").get_positions()["ch_pos"]
+    std_up = {k.upper(): k for k in std}
+    fam = {"10-5": {}, "EGI-128": {}}
+    for n in names:
+        if n.upper() in std_up:
+            fam["10-5"][n] = np.asarray(std[std_up[n.upper()]], float)
+        elif n in egi:
+            fam["EGI-128"][n] = np.asarray(egi[n], float)
+    out = {}
+    for f, d in fam.items():
+        if len(d) < 4:
+            continue
+        P = np.stack(list(d.values()))
+        c, r = _fit_sphere(np.stack(list(
+            (std if f == "10-5" else egi).values())))
+        U = (P - c) / np.linalg.norm(P - c, axis=1, keepdims=True)
+        out[f] = {"names": list(d), "unit": U, "xyz": P, "centre": c, "radius": r}
+    return out
+
+
+def _pairwise_arc_deg(U: np.ndarray) -> np.ndarray:
+    G = np.clip(U @ U.T, -1.0, 1.0)
+    return np.degrees(np.arccos(G))
+
+
+def _cosine(E: np.ndarray) -> np.ndarray:
+    En = E / np.maximum(np.linalg.norm(E, axis=1, keepdims=True), 1e-12)
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        C = En @ En.T
+    if not np.all(np.isfinite(C)):
+        raise SystemExit("channel embedding cosine matrix is not finite")
+    return np.clip(C, -1.0, 1.0)
+
+
+def _trained_channel_names(model, datasets):
+    """The electrode names whose rows pretraining actually updated.
+
+    From the corpora's montages when they are open (the exact set: a padded
+    slot's row is never touched), otherwise the union of the route slot lists,
+    which is the same set whenever every slot is filled by some corpus
+    (tests/test_eeg_c1_pretrain.py::test_12i).
+    """
+    ids = set()
+    for ds in datasets.values():
+        mo = ds.montage()
+        cid = mo["channel_ids"][mo["valid_channel_mask"]].tolist()
+        ids.update(int(i) for i in cid if i > 1)
+    if not ids:
+        from physiowave.eeg_c1.routes import SLOTS_128_HGD
+        names = set(SLOTS_128_HGD)
+        for r in ROUTES.values():
+            names.update(r.slots)
+        from channel_embedding import CHANNEL_TO_ID
+        ids = {CHANNEL_TO_ID[n] for n in names if n in CHANNEL_TO_ID}
+    vocab = model.channel_encoder.vocab_size
+    ids = sorted(i for i in ids if i < vocab)
+    return ids, [CHANNEL_VOCAB[i] for i in ids]
+
+
+def _binned(x, y, edges):
+    """Mean of ``y`` and its 95% CI per bin of ``x``; NaN where a bin is empty."""
+    mids, means, half = [], [], []
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        sel = (x >= lo) & (x < hi)
+        mids.append(0.5 * (lo + hi))
+        if sel.sum() < 2:
+            means.append(np.nan)
+            half.append(np.nan)
+            continue
+        v = y[sel]
+        means.append(float(v.mean()))
+        half.append(float(1.96 * v.std(ddof=1) / math.sqrt(v.size)))
+    return np.asarray(mids), np.asarray(means), np.asarray(half)
+
+
+def _classical_mds(D: np.ndarray, k: int = 2) -> np.ndarray:
+    """Torgerson's metric MDS of a distance matrix: ``[n, k]``.
+
+    Closed form (double-centred squared distances, top eigenvectors), so the
+    layout is deterministic and needs nothing beyond numpy.
+    """
+    n = D.shape[0]
+    J = np.eye(n) - np.full((n, n), 1.0 / n)
+    B = -0.5 * J @ (D ** 2) @ J
+    vals, vecs = np.linalg.eigh(B)
+    order = np.argsort(vals)[::-1][:k]
+    return vecs[:, order] * np.sqrt(np.clip(vals[order], 0, None))
+
+
+def fig_paper_channel_topology(w: FigureWriter, model, init_model, datasets,
+                               n_perm: int = 2000, seed: int = 0):
+    """(a) cosine similarity of two electrodes' name embeddings against their
+    great-circle distance on the scalp, every pair of trained electrodes, with
+    the untrained table as control; (b) the similarity to three seed
+    electrodes projected onto the scalp; (c) a 2-D MDS of the embedding
+    distances against the electrodes' true positions (Procrustes)."""
+    if SIGNAL != "EEG" or model.channel_encoder is None:
+        return
+    try:
+        import mne  # noqa: F401
+        from scipy.stats import spearmanr
+        from scipy.spatial import procrustes
+    except ImportError as exc:
+        print(f"  skipping fig_paper_channel_topology: {exc}")
+        return
+    ids, names = _trained_channel_names(model, datasets)
+    fams = _electrode_families(names)
+    if "10-5" not in fams:
+        print("  skipping fig_paper_channel_topology: no 10-5 electrode has "
+              "a template coordinate")
+        return
+    E_all = model.channel_encoder.id_embed.weight.detach().float().cpu().numpy()
+    E0_all = init_model.channel_encoder.id_embed.weight.detach().float().cpu().numpy()
+    id_of = {CHANNEL_VOCAB[i]: i for i in ids}
+    rng = np.random.default_rng(seed)
+
+    stats, data = {}, {}
+    curves = {}
+    for f, d in fams.items():
+        rows = [id_of[n] for n in d["names"]]
+        E, E0 = E_all[rows], E0_all[rows]
+        D = _pairwise_arc_deg(d["unit"])
+        iu = np.triu_indices(len(rows), 1)
+        x = D[iu]
+        for tag, Emb in (("trained", E), ("init", E0)):
+            C = _cosine(Emb)
+            y = C[iu]
+            rho = float(spearmanr(x, y).correlation)
+            # Null: rows shuffled among electrodes, distances kept.
+            null = np.empty(n_perm)
+            for p in range(n_perm):
+                perm = rng.permutation(len(rows))
+                null[p] = spearmanr(x, C[np.ix_(perm, perm)][iu]).correlation
+            pval = float((np.sum(null <= rho) + 1) / (n_perm + 1))   # one-sided, rho < 0
+            stats[f"{f}/{tag}"] = {"n_electrodes": len(rows), "n_pairs": int(x.size),
+                                   "spearman_rho": rho, "perm_p_one_sided": pval,
+                                   "null_rho_mean": float(null.mean()),
+                                   "null_rho_sd": float(null.std(ddof=1))}
+            curves[(f, tag)] = (x, y)
+            data[f"{f}_{tag}_cosine"] = C
+        data[f"{f}_arc_deg"] = D
+        data[f"{f}_names"] = np.asarray(d["names"])
+        data[f"{f}_xyz"] = d["xyz"]
+
+    main_f = "10-5"
+    d = fams[main_f]
+    rows = [id_of[n] for n in d["names"]]
+    C = _cosine(E_all[rows])
+    # (b) seeds: frontal midline, left temporal, occipital midline -- chosen
+    # a priori, and replaced by the nearest trained electrode if absent.
+    want = ["Fz", "T7", "Oz"]
+    seeds = []
+    for s in want:
+        if s in d["names"]:
+            seeds.append(s)
+        else:
+            import mne
+            std = mne.channels.make_standard_montage("standard_1005").get_positions()["ch_pos"]
+            if s in std:
+                v = (np.asarray(std[s]) - d["centre"])
+                v /= np.linalg.norm(v)
+                seeds.append(d["names"][int(np.argmax(d["unit"] @ v))])
+    # (c) MDS of the cosine distance, aligned to the true 2-D layout.
+    import mne
+    info = mne.create_info(d["names"], 100.0, "eeg")
+    info.set_montage(mne.channels.make_standard_montage("standard_1005"),
+                     match_case=False)
+    from mne.channels.layout import _find_topomap_coords
+    pos2 = _find_topomap_coords(info, picks=None, sphere=None)
+    Z = _classical_mds(1.0 - C)
+    _, Zp, disparity = procrustes(pos2, Z)
+    proc_r = math.sqrt(max(0.0, 1.0 - disparity))
+    # The same for the untrained table: the number the trained one is read against.
+    Z0 = _classical_mds(1.0 - _cosine(E0_all[rows]))
+    proc_r0 = math.sqrt(max(0.0, 1.0 - procrustes(pos2, Z0)[2]))
+    stats["procrustes_r"] = {"trained": proc_r, "init": proc_r0}
+    data.update({"mds": Z, "mds_aligned": Zp, "layout_2d": pos2, "seeds": np.asarray(seeds)})
+
+    with _paper_rc():
+        fig = plt.figure(figsize=(PAPER_WIDTH, 2.4))
+        outer = fig.add_gridspec(1, 3, width_ratios=[1.2, 1.95, 0.95], wspace=0.3,
+                                 left=0.07, right=0.975, top=0.9, bottom=0.2)
+        # (a)
+        ax = fig.add_subplot(outer[0])
+        edges = np.linspace(0, 180, 13)
+        style = {("10-5", "trained"): (OKABE_ITO[0], "-", "10-5 names, trained"),
+                 ("EGI-128", "trained"): (OKABE_ITO[1], "-", "EGI names, trained"),
+                 ("10-5", "init"): ("0.55", "--", "Untrained table")}
+        x, y = curves[(main_f, "trained")]
+        ax.scatter(x, y, s=2.5, color=OKABE_ITO[0], alpha=0.12, lw=0, rasterized=True,
+                   zorder=1)
+        for key, (col, ls, lab) in style.items():
+            if key not in curves:
+                continue
+            xm, ym, hm = _binned(*curves[key], edges)
+            ok = np.isfinite(ym)
+            ax.errorbar(xm[ok], ym[ok], yerr=hm[ok], color=col, ls=ls, lw=1.3,
+                        marker="o", ms=3, capsize=1.5, elinewidth=0.7, label=lab, zorder=3)
+        ax.axhline(0, color="0.6", lw=0.5, zorder=0)
+        ax.set_xlim(0, 180)
+        ax.set_xticks([0, 45, 90, 135, 180])
+        ax.set_xlabel("Scalp distance between electrodes (°)")
+        ax.set_ylabel("Cosine similarity of name embeddings")
+        s_main = stats[f"{main_f}/trained"]
+        s0 = stats[f"{main_f}/init"]
+        ptxt = ("< 0.001" if s_main["perm_p_one_sided"] < 1e-3
+                else f"= {s_main['perm_p_one_sided']:.3f}")
+        ax.text(0.98, 0.97, f"ρ = {s_main['spearman_rho']:.2f}, p {ptxt}\n"
+                f"untrained ρ = {s0['spearman_rho']:.2f}",
+                transform=ax.transAxes, ha="right", va="top", fontsize=PAPER_FONT - 0.5,
+                linespacing=1.25, zorder=6,
+                bbox={"facecolor": "white", "edgecolor": "none", "pad": 1.0, "alpha": 0.85})
+        ax.legend(loc="lower left", frameon=False, handlelength=1.8,
+                  fontsize=PAPER_FONT - 0.5, borderaxespad=0.3)
+        _letter(fig, 0.005, 0.99, "a")
+        # (b)
+        # Square axes laid out by hand inside the middle column, flush with
+        # its top, so the heads fill the column instead of floating in it.
+        box1 = outer[1].get_position(fig)
+        n_s = max(1, len(seeds))
+        gap = 0.012
+        side_w = (box1.x1 - box1.x0 - gap * (n_s - 1)) / n_s          # figure fraction
+        side_h = side_w * PAPER_WIDTH / fig.get_figheight()           # same in inches
+        side_h = min(side_h, 0.78 * (box1.y1 - box1.y0))
+        side_w = side_h * fig.get_figheight() / PAPER_WIDTH
+        x_start = 0.5 * (box1.x0 + box1.x1) - 0.5 * (n_s * side_w + gap * (n_s - 1))
+        off = ~np.eye(len(rows), dtype=bool)
+        v = float(np.percentile(np.abs(C[off]), 98))
+        v = v if v > 0 else 1.0
+        im = None
+        for j, s in enumerate(seeds):
+            axb = fig.add_axes([x_start + j * (side_w + gap), box1.y1 - side_h,
+                                side_w, side_h], label=f"free-topomap-{j}")
+            si = d["names"].index(s)
+            sim = C[si].copy()
+            sim[si] = np.nan
+            shown = np.where(np.isnan(sim), v, sim)      # the seed itself: saturated
+            im, _ = mne.viz.plot_topomap(shown, info, axes=axb, show=False,
+                                         cmap="RdBu_r", vlim=(-v, v), contours=0,
+                                         sensors=False, outlines="head", sphere=None)
+            axb.scatter(pos2[:, 0], pos2[:, 1], s=1.5, color="0.25", lw=0, zorder=4)
+            axb.scatter(pos2[si, 0], pos2[si, 1], s=36, marker="*", color="black",
+                        zorder=5)
+            axb.set_title(s, pad=2)
+        cax = fig.add_axes([box1.x0 + 0.15 * (box1.x1 - box1.x0),
+                            box1.y1 - side_h - 0.09,
+                            0.7 * (box1.x1 - box1.x0), 0.035])
+        cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+        cb.set_ticks([-v, 0, v])
+        cb.set_ticklabels([f"{-v:.1f}", "0", f"{v:.1f}"])
+        cb.set_label("Cosine similarity to the starred electrode", labelpad=1)
+        cb.outline.set_linewidth(0.5)
+        _letter(fig, box1.x0 - 0.035, 0.99, "b")
+        # (c)
+        axc = fig.add_subplot(outer[2])
+        ap = pos2[:, 1]                               # anterior (+) to posterior (-)
+        sc = axc.scatter(Zp[:, 0], Zp[:, 1], c=ap, cmap="viridis", s=14, lw=0.3,
+                         edgecolor="black")
+        # Equal aspect by widening the data limits, not by shrinking the axes:
+        # the panel then keeps the row's height, and the colourbar its length.
+        axc.set_aspect("equal", adjustable="datalim")
+        axc.set_xticks([])
+        axc.set_yticks([])
+        for sp in axc.spines.values():
+            sp.set_visible(True)
+            sp.set_linewidth(0.5)
+        axc.set_xlabel(f"MDS of embedding distance\nProcrustes r = {proc_r:.2f} "
+                       f"(untrained {proc_r0:.2f})", linespacing=1.3)
+        axc.apply_aspect()
+        boxc = axc.get_position()
+        cax2 = fig.add_axes([boxc.x1 + 0.008, boxc.y0, 0.012, boxc.y1 - boxc.y0])
+        cb2 = fig.colorbar(sc, cax=cax2)
+        cb2.set_ticks([float(ap.min()), float(ap.max())])
+        cb2.set_ticklabels(["post.", "ant."])
+        cb2.outline.set_linewidth(0.5)
+        _letter(fig, outer[2].get_position(fig).x0 - 0.035, 0.99, "c")
+        w.save(fig, "fig_paper_channel_topology", data,
+               {"stats": stats, "seeds": seeds,
+                "n_trained_electrodes": {f: len(v_["names"]) for f, v_ in fams.items()},
+                "trained_names_source": "corpus montages" if datasets else "route slot union",
+                "coordinates": "MNE standard_1005 (10-5 names) and GSN-HydroCel-128 "
+                               "(EGI names) template montages; great-circle distance "
+                               "on the sphere fitted to each family; the model was "
+                               "given no coordinate",
+                "permutation_null": "embedding rows shuffled among electrodes, "
+                                    f"{n_perm} draws, one-sided (rho < 0)",
+                "procrustes": "2-D metric MDS of 1 - cosine, aligned to the "
+                              "montage's 2-D topomap layout; r = sqrt(1 - disparity)"})
+
+
 #: Threads for the figures that run the model. A login node has many cores and
 #: a small per-user thread quota, and torch defaults to one thread per core: the
 #: figure that first touches the model then dies with "libgomp: Thread creation
@@ -2326,13 +2964,20 @@ def main(argv=None) -> int:
         # not pay for it.
         if want("fig_mask_reconstruction") or \
                 want("fig_raw_waveform_reconstruction") or \
-                want("fig_paper_reconstruction"):
+                want("fig_paper_reconstruction") or \
+                want("fig_paper_mask_reconstruction") or \
+                want("fig_paper_raw_waveform"):
             rows, grid, ranks = survey_reconstruction_windows(
                 model, datasets, mask_seed, device, objective,
                 n_windows=args.recon_windows)
             if want("fig_paper_reconstruction"):
                 fig_paper_reconstruction(writer, rows, grid, ranks, model, datasets,
                                          mask_seed, device)
+            if want("fig_paper_mask_reconstruction"):
+                fig_paper_mask_reconstruction(writer, rows, grid, ranks, model,
+                                              mask_seed)
+            if want("fig_paper_raw_waveform"):
+                fig_paper_raw_waveform(writer, rows, grid, ranks, model, mask_seed)
             if want("fig_mask_reconstruction"):
                 fig_mask_reconstruction(writer, rows, grid, ranks, mask_seed,
                                         objective=objective)
@@ -2353,6 +2998,8 @@ def main(argv=None) -> int:
         fig_wavelet_frequency_response(writer, model, init_model)
     if want("fig_channel_embedding"):
         fig_channel_embedding(writer, model, datasets)
+    if want("fig_paper_channel_topology"):
+        fig_paper_channel_topology(writer, model, init_model, datasets)
 
     for ds in datasets.values():
         ds.close()

@@ -21,7 +21,10 @@
 #               fig_paper_reconstruction draws the median of them, so 8 for it
 #   ONLY        figure names to draw, space separated (default: all), e.g.
 #               ONLY="fig_paper_pretraining fig_paper_reconstruction" -- pass it in
-#               the environment (ONLY="..." sbatch ...), not through --export
+#               the environment (ONLY="..." sbatch ...), not through --export.
+#               The journal composites drawn at printed size are
+#               fig_paper_mask_reconstruction, fig_paper_raw_waveform and
+#               fig_paper_channel_topology (the last needs mne)
 #   FORMAT      svg,pdf (vector, text editable); png also accepted
 #   PAPER       1 (default): manuscript figures -- no figure-level title or
 #               notes and no corner stamp; that text is kept in
