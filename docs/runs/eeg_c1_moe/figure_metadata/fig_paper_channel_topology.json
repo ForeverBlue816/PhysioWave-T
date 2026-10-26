@@ -5,7 +5,7 @@
   "global_step": 44544,
   "channel_vocab_sha256": "596f2711269e47b22a9335ba991f44b2edd02a5728ff4461487e26c3a9a302e8",
   "modality": "eeg",
-  "plotting_script_git_commit": "1b9c09ffcd29a28d4557494a35a4c4cc7ed119b5",
+  "plotting_script_git_commit": "a2e6a869da9c90a50f9c34b4d7864259d8f41ad8",
   "split": "val",
   "mask_seed": 1234,
   "manifest": "/leonardo_scratch/large/userexternal/ychen003/bio/eeg/eeg_c1_corpus/merged/manifest_val.jsonl",
@@ -20,11 +20,10 @@
   "objective_equation": "0.5*L_spec + 0.5*L_raw + 0.001*L_foldKL",
   "metrics_last_epoch": 59,
   "figure": "fig_paper_channel_topology",
-  "generated_utc": "2026-10-26T15:43:57.439328+00:00",
+  "generated_utc": "2026-10-26T16:16:06.431810+00:00",
   "figure_text": [
     "a",
-    "b",
-    "c"
+    "b"
   ],
   "paper_mode": true,
   "stats": {
@@ -85,12 +84,23 @@
         "null_p97_5_deg": 91.75930508299582,
         "perm_p_one_sided": 0.0004997501249375312
       }
+    },
+    "seed_link_mean_deg": {
+      "Fz": 39.39027072990238,
+      "Cz": 48.51715966137592,
+      "Pz": 54.93390952881968,
+      "Oz": 19.721351273173838,
+      "T7": 57.49691918160827,
+      "T8": 30.878784565849458
     }
   },
   "seeds": [
     "Fz",
+    "Cz",
+    "Pz",
+    "Oz",
     "T7",
-    "Oz"
+    "T8"
   ],
   "n_trained_electrodes": {
     "10-5": 130,
@@ -100,6 +110,6 @@
   "coordinates": "MNE standard_1005 (10-5 names) and GSN-HydroCel-128 (EGI names) template montages; great-circle distance on the sphere fitted to each family; the model was given no coordinate",
   "permutation_null": "embedding rows shuffled among electrodes, 2000 draws, one-sided (rho < 0)",
   "procrustes": "2-D metric MDS of 1 - cosine, aligned to the montage's 2-D topomap layout; r = sqrt(1 - disparity); reported, not drawn",
-  "topomap_colour": "sequential (Reds): percentile rank of each electrode's cosine similarity to the seed among the seed's row; the seed is drawn at 100",
+  "panel_b": "six seeds; every trained 10-5 electrode coloured by the percentile rank of its cosine similarity to the seed; lines join the seed to its 5 most similar embeddings (mean length per seed in stats.seed_link_mean_deg)",
   "knn": "panel (c): mean over electrodes of the mean great-circle distance to the k=5 electrodes with the most similar name embedding; grey bar the 2.5-97.5th percentiles of the row-shuffled null, open circle the untrained table, black tick each electrode's 5 true scalp neighbours"
 }
