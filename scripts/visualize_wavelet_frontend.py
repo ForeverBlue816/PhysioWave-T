@@ -464,20 +464,27 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
                 A["levels"][1]["cutoff_lo_hz_of_mean_response"], A["route"].n_channels, m)
                for m in mods for A in R[m]["routes"].values()]
         fs_all = [p_[0] for p_ in pts]
-        # Routes that share a rate share an x. Their labels go to the right of
-        # the markers in a stack ordered by cut-off -- the lowest below its
-        # marker, the next above, the third higher still -- so they neither
-        # cover each other nor the markers.
-        by_fs: Dict[float, List] = {}
-        for p_ in pts:
-            by_fs.setdefault(p_[0], []).append(p_)
-        for fs, group in by_fs.items():
-            group.sort(key=lambda t: t[1])
-            for rank, (_, fc, C, m) in enumerate(group):
+        # Routes at (nearly) the same rate -- 250 and 256 Hz, 500 and 512 --
+        # share an x. Their labels form one column to the right of the group,
+        # ordered top-down like the markers, 9 pt apart from the highest
+        # marker, so they cover neither each other nor the markers.
+        groups: List[List] = []
+        for p_ in sorted(pts, key=lambda t: t[0]):
+            if groups and abs(math.log(p_[0] / groups[-1][0][0])) < 0.05:
+                groups[-1].append(p_)
+            else:
+                groups.append([p_])
+        for group in groups:
+            group.sort(key=lambda t: -t[1])
+            x_g = math.sqrt(group[0][0] * group[-1][0])
+            top_fc = group[0][1]
+            for rank, (fs, fc, C, m) in enumerate(group):
                 axc.plot([fs], [fc], marker="o", ms=5, color=MOD_COLOR[m], ls="", zorder=4)
-                dy, va = [(-9, "top"), (3, "bottom"), (14, "bottom")][min(rank, 2)]
-                axc.annotate(f"C={C}", (fs, fc), xytext=(6, dy), textcoords="offset points",
-                             ha="left", va=va, fontsize=PAPER_FONT - 1.5, color=MOD_COLOR[m])
+                axc.annotate(f"C={C}", (x_g, top_fc), xytext=(8, -9 * rank),
+                             textcoords="offset points", ha="left", va="center",
+                             fontsize=PAPER_FONT - 1.5, color=MOD_COLOR[m], zorder=6,
+                             bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.5,
+                                   "alpha": 0.85})
         # The initialisation's cut-off as measured (the uniform mix of the
         # five wavelets, which is not the half-band fs/4 of any one of them):
         # one hollow marker per route, joined in order of rate.
