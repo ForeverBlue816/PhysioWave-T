@@ -1,5 +1,5 @@
 {
-  "plotting_script_git_commit": "a94230d234671286217103d0d431ce290ef8c6f1",
+  "plotting_script_git_commit": "b1849ca92f5a420ab4d26d01b98351df0095c532",
   "checkpoints": {
     "eeg": {
       "path": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth",
@@ -17,13 +17,17 @@
       "epoch": 39
     }
   },
+  "redrawn_from": "Weights, cut-offs and tensor checks: docs/runs/fig_wavelet/figure_metadata/fig_wavelet.json of commit cb31cef (cluster run, pretrain_*_c1_moe checkpoints). Panel-a curves: the plotted paths of figures/fig_wavelet.svg at cb31cef, inverted through the axes transforms (matplotlib's simplified vertices, so identical to that rendering within 0.1 pt); the 10-90th percentile fills are not drawn. Rerunning scripts/slurm/cineca_visualize_wavelet.sbatch regenerates everything from the checkpoints.",
   "figure": "fig_wavelet",
-  "generated_utc": "2026-10-27T05:31:38.206464+00:00",
+  "generated_utc": "2026-10-27T06:59:36.034725+00:00",
   "figure_text": [
     "Frequency (Hz)",
     "a",
+    "Effective analysis filters, level 1",
     "b",
-    "c"
+    "Selector weights, levels 1\u20133 top to bottom",
+    "c",
+    "Low-pass cut-off, initial \u2192 learned"
   ],
   "paper_mode": true,
   "modalities": {
