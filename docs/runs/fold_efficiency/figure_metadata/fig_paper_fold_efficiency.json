@@ -2,13 +2,16 @@
   "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth",
   "device": "NVIDIA A100-SXM-64GB",
   "redrawn_from": "/Users/foreverblue/Desktop/PhysioWave-T/docs/runs/fold_efficiency/fold_efficiency.json",
-  "plotting_script_git_commit": "738393f532cd6c901623e31e9b4fd5db5371e259",
+  "plotting_script_git_commit": "3f8fa0262d493206b0a0e0f158655e17261b0b88",
   "figure": "fig_paper_fold_efficiency",
-  "generated_utc": "2026-10-27T03:45:57.013698+00:00",
+  "generated_utc": "2026-10-27T03:48:42.037653+00:00",
   "figure_text": [
     "a",
+    "Forward time",
     "b",
-    "c"
+    "Peak memory",
+    "c",
+    "Saving against length"
   ],
   "paper_mode": true,
   "rows": [

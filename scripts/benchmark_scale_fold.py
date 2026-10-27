@@ -58,7 +58,8 @@ import torch                                                  # noqa: E402
 from channel_embedding import channel_ids_for                 # noqa: E402
 from physiowave.eeg_c1.routes import ROUTES                   # noqa: E402
 from scripts.visualize_eeg_pretraining import (               # noqa: E402
-    PAPER, PAPER_FONT, PAPER_WIDTH, FigureWriter, _cap_threads, _letter,
+    PAPER, PAPER_FONT, PAPER_LETTER, PAPER_TITLE, PAPER_WIDTH, FigureWriter,
+    _cap_threads,
     _paper_rc, apply_style, git_commit, load_trained_model, sha256_file)
 from wavelet_modules import ScaleFold                         # noqa: E402
 
@@ -263,15 +264,14 @@ def fig_fold_efficiency(w: FigureWriter, rows: List[Dict], device_name: str):
                          for r in rows], float)
 
     with _paper_rc():
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.45))
-        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.15], wspace=0.42,
-                              left=0.075, right=0.985, top=0.86, bottom=0.17)
+        fig = plt.figure(figsize=(PAPER_WIDTH, 2.3))
+        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.15], wspace=0.36,
+                              left=0.06, right=0.985, top=0.88, bottom=0.18)
         ax_a, ax_b, ax_c = (fig.add_subplot(gs[i]) for i in range(3))
 
         def bars(ax, vf, vu, ylabel, log, ticks=None):
             ax.bar(x - wd / 2, vf, wd, color=col_f, label="With ScaleFold", lw=0)
-            ax.bar(x + wd / 2, vu, wd, color=col_u, label="Without (4 bands patched)",
-                   lw=0)
+            ax.bar(x + wd / 2, vu, wd, color=col_u, label="Without ScaleFold", lw=0)
             top = float(np.nanmax(vu))
             for i, (a, b) in enumerate(zip(vf, vu)):
                 if np.isfinite(a) and np.isfinite(b) and a > 0:
@@ -292,14 +292,13 @@ def fig_fold_efficiency(w: FigureWriter, rows: List[Dict], device_name: str):
 
         lat_f = np.array([r["latency_ms_per_window_folded"] for r in rows])
         lat_u = np.array([r.get("latency_ms_per_window_unfolded", np.nan) for r in rows])
-        bars(ax_a, lat_f, lat_u, "Forward time per window (ms)", log=True,
-             ticks=[0.3, 1, 3, 10, 30])
+        bars(ax_a, lat_f, lat_u, "ms per window", log=True, ticks=[0.3, 1, 3, 10, 30])
         mem_f = np.array([r["peak_mem_mb_folded"] for r in rows]) / 1024
         mem_u = np.array([r.get("peak_mem_mb_unfolded", np.nan) for r in rows]) / 1024
-        bars(ax_b, mem_f, mem_u, "Peak memory per batch (GB)", log=False)
-        # One legend for (a) and (b), in (b)'s empty upper left: the memory bars
-        # of the short routes are a few percent of the axis.
-        ax_b.legend(loc="upper left", frameon=False, fontsize=PAPER_FONT - 1,
+        bars(ax_b, mem_f, mem_u, "GB per batch", log=False)
+        # One legend, in (a), whose short routes leave its upper left empty; (b)
+        # shares the colours.
+        ax_a.legend(loc="upper left", frameon=False, fontsize=PAPER_FONT - 1,
                     handlelength=1.0, handletextpad=0.4, borderaxespad=0.1,
                     labelspacing=0.3)
 
@@ -328,11 +327,19 @@ def fig_fold_efficiency(w: FigureWriter, rows: List[Dict], device_name: str):
         ax_c.set_xlim(tok[0] / 1.35, tok[-1] * 2.3)
         ax_c.set_ylim(0, max(np.nanmax(ratio(k)) for k, *_ in series) * 1.15)
         ax_c.set_xlabel("Tokens per window (with ScaleFold)")
-        ax_c.set_ylabel("Saving (without / with)")
+        ax_c.set_ylabel("Without / with")
         ax_a.set_xlabel("Route")
         ax_b.set_xlabel("Route")
-        for i, ch in enumerate("abc"):
-            _letter(fig, gs[i].get_position(fig).x0 - 0.06, 0.99, ch)
+        # Letter and title on one baseline just above each axes, so no band of
+        # empty figure sits between the label and its panel.
+        titles = ("Forward time", "Peak memory", "Saving against length")
+        for ax, ch, title in zip((ax_a, ax_b, ax_c), "abc", titles):
+            box = ax.get_position()
+            y = box.y1 + 0.035
+            fig.text(box.x0 - 0.045, y, ch, fontsize=PAPER_LETTER, fontweight="bold",
+                     ha="left", va="baseline", gid="paper-keep")
+            fig.text(box.x0, y, title, fontsize=PAPER_TITLE, fontweight="bold",
+                     ha="left", va="baseline", gid="paper-keep")
 
         data = {k: np.array([r.get(k, np.nan) for r in rows], float)
                 for k in rows[0] if isinstance(rows[0][k], (int, float))}
