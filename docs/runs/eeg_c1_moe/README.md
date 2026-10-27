@@ -57,6 +57,10 @@ Per route and per dataset: `progress_by_route.txt`, `progress_by_dataset.txt`. W
 
 ![fig_paper_channel_topology.svg](figures/fig_paper_channel_topology.svg)
 
+## fig_paper_fold_efficiency ([PDF](figures/fig_paper_fold_efficiency.pdf))
+
+![fig_paper_fold_efficiency.svg](figures/fig_paper_fold_efficiency.svg)
+
 ## fig_paper_mask_reconstruction ([PDF](figures/fig_paper_mask_reconstruction.pdf))
 
 ![fig_paper_mask_reconstruction.svg](figures/fig_paper_mask_reconstruction.svg)
