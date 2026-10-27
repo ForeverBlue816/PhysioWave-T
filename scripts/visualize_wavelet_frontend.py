@@ -17,14 +17,20 @@ script runs --windows pre-training windows of every corpus through the
 selector, averages the weights, mixes the bank with the averages and draws:
 
   a  per route, the magnitude response of the learned low-pass and high-pass
-     (mean over electrodes, 10-90th percentile band) against the
-     initialisation mixed with uniform weights, in Hz, with the modality's
-     physiological bands shaded and the -3 dB cut-off of the learned low-pass
-     marked;
-  b  per corpus, the mean selector weights as a stacked bar, with the uniform
-     initialisation as a reference bar carrying the wavelet names;
-  c  the learned low-pass cut-off of every route against its sampling rate,
-     with the initialisation's fs/4 as the dashed reference.
+     (mean over electrodes; the 10-90th percentiles are in figure_data)
+     against the initialisation mixed with uniform weights, in Hz, with the
+     modality's physiological bands shaded and the -3 dB cut-offs marked;
+  b  per route, the mean selector weights at levels 1-3 as stacked bars, with
+     the uniform initialisation as a reference bar carrying the wavelet names
+     (the corpora of a route share one set of weights; the report lists them
+     per corpus);
+  c  per route, the low-pass -3 dB cut-off at initialisation and after
+     training, over the modality's physiological band.
+
+Redraw without the checkpoints, from a previous run's saved arrays:
+
+    python scripts/visualize_wavelet_frontend.py --from-saved docs/runs/fig_wavelet \
+        --out-dir figures
 
 The selector is applied at every decomposition level to the current
 approximation (one selector per route, three calls per window). The figure
@@ -74,14 +80,16 @@ LABEL = {"eeg": "EEG", "ecg": "ECG", "emg": "sEMG"}
 #: colour, the learned high-pass in its darker shade.
 MOD_COLOR = {"eeg": PAPER["indigo"], "ecg": PAPER["mauve"], "emg": PAPER["gold"]}
 MOD_DARK = {"eeg": "#23264F", "ecg": "#7A3466", "emg": "#9A6214"}
-#: Five sequential steps for the five basis slots, light to dark.
-BASIS_COLORS = ["#E3E8F2", "#BBD0E8", "#8FA6D0", "#6A64AC", "#3F4280"]
+#: Five steps for the five basis slots of a bank, light to dark. The lightest
+#: stays visibly blue on white: a bar that is nearly all of one basis (TUEG's
+#: sym4) must still read as a bar. White hairlines separate the segments.
+BASIS_COLORS = ["#C9D6EC", "#98AED6", "#7480BE", "#574F98", "#2E2F5F"]
 #: Physiological bands, (label, lo, hi, emphasis) in Hz.
 BANDS = {
     "eeg": [("δ", 0.5, 4, 0), ("θ", 4, 8, 0), ("α", 8, 13, 0), ("β", 13, 30, 0),
             ("γ", 30, 80, 0)],
     "ecg": [("P/T", 0.5, 10, 0), ("QRS", 10, 40, 0)],
-    "emg": [("20–450 Hz", 20, 450, 0), ("", 50, 150, 1)],
+    "emg": [("20–450 Hz", 20, 450, 0)],
 }
 #: Corpus display names (the EEG ones are visualize_eeg_pretraining's).
 CORPUS_LABEL = {**viz.DATASET_LABEL,
@@ -324,63 +332,93 @@ def _route_title(route) -> str:
     return f"C={route.n_channels}, {route.sampling_rate:g} Hz"
 
 
+def _modality_tag(ax, m: str, y0: float, y1: float, x: float = 1.03):
+    ax.text(x, 0.5 * (y0 + y1), LABEL[m], color=MOD_COLOR[m], fontweight="bold",
+            ha="left", va="center", fontsize=PAPER_FONT, rotation=90,
+            transform=ax.get_yaxis_transform())
+
+
+def _titled_letter(fig, x: float, y: float, ch: str, title: str):
+    """Panel letter with its title beside it, on one baseline."""
+    fig.text(x, y, ch, fontsize=PAPER_LETTER, fontweight="bold", ha="left",
+             va="baseline", gid="paper-keep")
+    fig.text(x + 0.022, y, title, fontsize=PAPER_TITLE, fontweight="bold", ha="left",
+             va="baseline", gid="paper-keep")
+
+
 def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
-    """``R[modality] = {"routes": {rid: analysis}, "corpora": [...], "route_order": [...]}``."""
+    """``R[modality] = {"routes": {rid: analysis}, "corpora": [...], "route_order": [...]}``.
+
+    a  level-1 effective low-pass and high-pass per route (electrode mean)
+       against the uniform initialisation, physiological bands shaded; the
+       legend sits in the empty cells of the shortest row.
+    b  route-mean selector weights at levels 1-3, one block per route. The
+       corpora of a route get the same weights (the selector's input is ~0
+       on normalised windows; see the report), so a row per corpus would
+       repeat the route's bar.
+    c  the low-pass -3 dB cut-off per route, initialisation to learned, over
+       the modality's physiological band.
+    """
+    from matplotlib.legend_handler import HandlerTuple
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
     mods = [m for m in MODALITIES if m in R]
     n_cols = max(len(R[m]["route_order"]) for m in mods)
+    inv2 = 1 / math.sqrt(2)
     with _paper_rc():
-        fig = plt.figure(figsize=(PAPER_WIDTH, 5.5))
-        outer = fig.add_gridspec(1, 2, width_ratios=[1.5, 1.0], wspace=0.28,
-                                 left=0.06, right=0.985, top=0.9, bottom=0.085)
-        ga = outer[0].subgridspec(len(mods), n_cols, wspace=0.12, hspace=0.55)
-        gr = outer[1].subgridspec(2, 1, height_ratios=[1.9, 1.0], hspace=0.45)
+        fig = plt.figure(figsize=(PAPER_WIDTH, 5.6))
+        outer = fig.add_gridspec(1, 2, width_ratios=[1.42, 1.0], wspace=0.36,
+                                 left=0.062, right=0.968, top=0.915, bottom=0.075)
+        ga = outer[0].subgridspec(len(mods), n_cols, wspace=0.12, hspace=0.62)
+        gr = outer[1].subgridspec(2, 1, height_ratios=[1.6, 1.0], hspace=0.30)
 
-        # -- (a) ------------------------------------------------------------- #
-        first_ax = None
+        # -- (a) frequency responses ---------------------------------------- #
         for r_, m in enumerate(mods):
-            routes = R[m]["routes"]
-            for c_, rid in enumerate(R[m]["route_order"]):
-                A = routes[rid]
+            order = R[m]["route_order"]
+            for c_, rid in enumerate(order):
+                A = R[m]["routes"][rid]
                 route = A["route"]
                 ax = fig.add_subplot(ga[r_, c_])
-                first_ax = first_ax or ax
                 fs = float(route.sampling_rate)
-                f = A["f_hz"]
+                f = np.asarray(A["f_hz"])
                 L = A["levels"][1]
                 sel = (f >= 0.5) & (f <= fs / 2)
-                for lab, lo, hi, emph in BANDS[m]:
-                    ax.axvspan(lo, min(hi, fs / 2), color=PAPER["pale_blue"],
-                               alpha=0.35 if emph else 0.18, lw=0, zorder=0)
+                for i, (lab, lo, hi, _emph) in enumerate(BANDS[m]):
+                    hi_c = min(hi, fs / 2)
+                    ax.axvspan(lo, hi_c, color=PAPER["pale_blue"],
+                               alpha=0.50 if i % 2 == 0 else 0.25, lw=0, zorder=0)
                     if c_ == 0 and lab:
-                        ax.text(math.sqrt(lo * min(hi, fs / 2)), 1.14, lab, ha="center",
-                                va="bottom", fontsize=PAPER_FONT - 1.5, color=PAPER["rule"],
-                                clip_on=False)
+                        ax.text(math.sqrt(lo * hi_c), 1.15, lab, ha="center", va="bottom",
+                                fontsize=PAPER_FONT - 1, color=PAPER["rule"], clip_on=False)
                 if m == "ecg":
                     for mains in (50, 60):
                         ax.axvline(mains, color=PAPER["rule"], lw=0.6, ls=":", zorder=1)
-                ax.fill_between(f[sel], L["H_lo_p10"][sel], L["H_lo_p90"][sel],
-                                color=MOD_COLOR[m], alpha=0.2, lw=0, zorder=2)
-                ax.fill_between(f[sel], L["H_hi_p10"][sel], L["H_hi_p90"][sel],
-                                color=MOD_DARK[m], alpha=0.2, lw=0, zorder=2)
-                ax.plot(f[sel], A["init"]["H_lo"][sel], color=PAPER["grey"], lw=0.9,
-                        ls="--", zorder=3)
-                ax.plot(f[sel], A["init"]["H_hi"][sel], color=PAPER["grey"], lw=0.9,
-                        ls="--", zorder=3)
-                ax.plot(f[sel], L["H_lo_mean"][sel], color=MOD_COLOR[m], lw=1.3, zorder=4)
-                ax.plot(f[sel], L["H_hi_mean"][sel], color=MOD_DARK[m], lw=1.3, zorder=4)
+                ax.plot(f[sel], np.asarray(A["init"]["H_lo"])[sel], color=PAPER["grey"],
+                        lw=0.9, ls="--", zorder=3)
+                ax.plot(f[sel], np.asarray(A["init"]["H_hi"])[sel], color=PAPER["grey"],
+                        lw=0.9, ls="--", zorder=3)
+                ax.plot(f[sel], np.asarray(L["H_hi_mean"])[sel], color=MOD_DARK[m], lw=1.0,
+                        zorder=4)
+                ax.plot(f[sel], np.asarray(L["H_lo_mean"])[sel], color=MOD_COLOR[m], lw=1.5,
+                        zorder=5)
+                fc0 = A["init"]["cutoff_lo_hz"]
                 fc = L["cutoff_lo_hz_of_mean_response"]
+                if np.isfinite(fc0):
+                    ax.plot([fc0], [inv2], marker="o", ms=3.6, mfc="white",
+                            mec=PAPER["rule"], mew=0.8, ls="", zorder=6)
                 if np.isfinite(fc):
-                    ax.plot([fc], [1 / math.sqrt(2)], marker="o", ms=4, color=MOD_COLOR[m],
-                            mec="white", mew=0.6, zorder=6)
+                    ax.plot([fc], [inv2], marker="o", ms=4.2, color=MOD_COLOR[m],
+                            mec="white", mew=0.6, ls="", zorder=7)
                 ax.set_xscale("log")
                 ax.set_xlim(0.5, fs / 2)
                 ax.set_ylim(0, 1.12)
-                ax.set_title(_route_title(route), pad=10, fontsize=PAPER_FONT)
+                ax.set_title(_route_title(route), pad=11,
+                             fontsize=PAPER_FONT)
+                ax.set_yticks([0, 0.5, 1])
                 if c_ == 0:
-                    ax.set_ylabel(f"{LABEL[m]}\n|H(f)|", linespacing=1.3)
-                    ax.set_yticks([0, 0.5, 1])
+                    ax.set_ylabel(f"{LABEL[m]}  |H(f)|")
                 else:
-                    ax.set_yticks([0, 0.5, 1])
                     ax.tick_params(axis="y", labelleft=False)
                 ticks = [t for t in (1, 10, 100, 1000) if 0.5 < t < fs / 2]
                 ax.set_xticks(ticks)
@@ -388,143 +426,136 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
                 ax.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
                 for sp in ("top", "right"):
                     ax.spines[sp].set_visible(False)
-        from matplotlib.lines import Line2D
-        handles = [Line2D([], [], color=PAPER["ink"], lw=1.3),
-                   Line2D([], [], color="0.55", lw=1.3),
+
+        # The legend fills the empty cells of the row with the fewest routes.
+        spare = max(range(len(mods)), key=lambda i: n_cols - len(R[mods[i]]["route_order"]))
+        n_used = len(R[mods[spare]]["route_order"])
+        tup = lambda cols, **kw: tuple(Line2D([], [], color=c, **kw) for c in cols)
+        handles = [tup([MOD_COLOR[m] for m in mods], lw=1.5),
+                   tup([MOD_DARK[m] for m in mods], lw=1.0),
                    Line2D([], [], color=PAPER["grey"], lw=0.9, ls="--"),
-                   Line2D([], [], color=PAPER["ink"], marker="o", ls="", ms=4, mec="white")]
+                   tup([MOD_COLOR[m] for m in mods], marker="o", ms=4.2, ls="",
+                       mec="white", mew=0.6),
+                   Line2D([], [], marker="o", ms=3.6, mfc="white", mec=PAPER["rule"],
+                          mew=0.8, ls=""),
+                   Patch(color=PAPER["pale_blue"], alpha=0.5, lw=0),
+                   Line2D([], [], color=PAPER["rule"], lw=0.6, ls=":")]
+        labels = ["Learned low-pass", "Learned high-pass", "Initialisation (uniform mix)",
+                  "Learned −3 dB cut-off", "Initial −3 dB cut-off", "Physiological bands",
+                  "Mains, 50 and 60 Hz"]
+        if n_used < n_cols:
+            axl = fig.add_subplot(ga[spare, n_used:])
+            axl.set_axis_off()
+            axl.legend(handles, labels, loc="center left", frameon=False,
+                       handler_map={tuple: HandlerTuple(ndivide=None, pad=0.0)},
+                       handlelength=2.4, handletextpad=0.6, labelspacing=0.45,
+                       borderaxespad=0.0, bbox_to_anchor=(0.06, 0.5))
         box_a = outer[0].get_position(fig)
-        fig.legend(handles, ["Learned low-pass", "Learned high-pass (darker shade)",
-                             "Initialisation (uniform mix)", "−3 dB cut-off"],
-                   loc="lower left", bbox_to_anchor=(box_a.x0 + 0.03, 0.935),
-                   ncol=2, frameon=False, fontsize=PAPER_FONT - 1, handlelength=1.5,
-                   columnspacing=1.6, handletextpad=0.5, borderaxespad=0.0,
-                   labelspacing=0.3)
         fig.text(0.5 * (box_a.x0 + box_a.x1), 0.012, "Frequency (Hz)", ha="center",
                  va="bottom", gid="paper-keep")
-        fig.text(box_a.x0 - 0.04, 0.99, "a", fontsize=PAPER_LETTER, fontweight="bold",
-                 ha="left", va="top", gid="paper-keep")
+        _titled_letter(fig, 0.008, 0.968, "a", "Effective analysis filters, level 1")
 
-        # -- (b) stacked selector weights per corpus ----------------------- #
+        # -- (b) selector weights, levels 1-3 per route ---------------------- #
         axb = fig.add_subplot(gr[0])
-        y = 0
+        bar_h, pitch, gap_route, gap_mod = 0.27, 0.34, 0.55, 0.35
+        y = 0.0
         yt, yl, ycol = [], [], []
-        group_pos = {}
-        for m in mods:
+        for gi, m in enumerate(mods):
             names = R[m]["wavelet_names"]
-            y0 = y
-            # reference bar: uniform 1/M with the wavelet names in the segments
             M = len(names)
+            y0 = y
             left = 0.0
-            # The reference bar is the bank's names on the uniform mix, drawn
-            # lighter than the corpora; at this row height an outline would
-            # run through the names, so none is drawn.
             for i, nm in enumerate(names):
-                axb.barh(y, 1.0 / M, left=left, height=0.72, color=BASIS_COLORS[i], lw=0,
-                         alpha=0.45, zorder=2)
+                axb.barh(y, 1.0 / M, left=left, height=0.62, color=BASIS_COLORS[i], lw=0.4,
+                         edgecolor="white", zorder=2)
                 axb.text(left + 0.5 / M, y, nm, ha="center", va="center",
-                         fontsize=PAPER_FONT - 1.5, zorder=5, color=PAPER["ink"])
+                         fontsize=PAPER_FONT - 1.5, zorder=5,
+                         color=PAPER["ink"] if i < 2 else "white")
                 left += 1.0 / M
             yt.append(y); yl.append("uniform init"); ycol.append(PAPER["rule"])
-            y += 1
-            for cdict in R[m]["corpora"]:
-                wv = np.asarray(cdict["weights_level1"])
-                left = 0.0
-                for i in range(M):
-                    axb.barh(y, wv[i], left=left, height=0.72, color=BASIS_COLORS[i], lw=0,
-                             zorder=2)
-                    left += wv[i]
-                yt.append(y); yl.append(CORPUS_LABEL.get(cdict["id"], cdict["id"]))
-                ycol.append(PAPER["ink"])
-                y += 1
-            group_pos[m] = (y0, y - 1)
-            y += 0.6
+            y += 0.31 + gap_route
+            for k, rid in enumerate(R[m]["route_order"]):
+                A = R[m]["routes"][rid]
+                ys = [y + j * pitch for j in range(3)]
+                for j, lvl in enumerate((1, 2, 3)):
+                    Lv = A["levels"].get(lvl)
+                    if Lv is None:
+                        continue
+                    wv = np.asarray(Lv["weights"], dtype=float)
+                    left = 0.0
+                    for i in range(M):
+                        axb.barh(ys[j], wv[i], left=left, height=bar_h, color=BASIS_COLORS[i],
+                                 lw=0.3, edgecolor="white", zorder=2)
+                        left += wv[i]
+                yt.append(ys[1]); yl.append(_route_title(A["route"])); ycol.append(PAPER["ink"])
+                y = ys[-1] + bar_h / 2 + gap_route
+            _modality_tag(axb, m, y0, y - gap_route, x=1.03)
+            y += gap_mod
         axb.set_yticks(yt)
         axb.set_yticklabels(yl)
         for lab, col in zip(axb.get_yticklabels(), ycol):
             lab.set_color(col)
-            lab.set_fontsize(PAPER_FONT - 1.5)       # 23 rows: 6.5 pt clears the pitch
-        axb.invert_yaxis()
+            lab.set_fontsize(PAPER_FONT - 1)
+        axb.set_ylim(y - gap_mod - gap_route + 0.2, -0.5)
         axb.set_xlim(0, 1)
         axb.set_xticks([0, 0.5, 1])
-        axb.set_xlabel("Mean selector weight")
+        axb.set_xticklabels(["0", "0.5", "1"])
+        axb.set_xlabel("Mean selector weight", labelpad=2)
         axb.tick_params(axis="y", length=0)
-        for m, (a, b) in group_pos.items():
-            axb.text(1.02, 0.5 * (a + b), LABEL[m], color=MOD_COLOR[m], fontweight="bold",
-                     ha="left", va="center", fontsize=PAPER_FONT, rotation=90)
-        for sp in ("top", "right"):
+        for sp in ("top", "right", "left"):
             axb.spines[sp].set_visible(False)
         box_b = gr[0].get_position(fig)
-        fig.text(box_b.x0 - 0.085, 0.99, "b", fontsize=PAPER_LETTER, fontweight="bold",
-                 ha="left", va="top", gid="paper-keep")
+        _titled_letter(fig, box_b.x0 - 0.135, 0.968, "b", "Selector weights, levels 1–3 top to bottom")
 
-        # -- (c) cut-off against sampling rate ----------------------------- #
+        # -- (c) low-pass cut-off: initialisation -> learned ----------------- #
         axc = fig.add_subplot(gr[1])
-        pts = [(float(A["route"].sampling_rate),
-                A["levels"][1]["cutoff_lo_hz_of_mean_response"], A["route"].n_channels, m)
-               for m in mods for A in R[m]["routes"].values()]
-        fs_all = [p_[0] for p_ in pts]
-        # Routes at (nearly) the same rate -- 250 and 256 Hz, 500 and 512 --
-        # share an x. Their labels form one column to the right of the group,
-        # ordered top-down like the markers, 9 pt apart from the highest
-        # marker, so they cover neither each other nor the markers.
-        groups: List[List] = []
-        for p_ in sorted(pts, key=lambda t: t[0]):
-            if groups and abs(math.log(p_[0] / groups[-1][0][0])) < 0.05:
-                groups[-1].append(p_)
-            else:
-                groups.append([p_])
-        for group in groups:
-            group.sort(key=lambda t: -t[1])
-            x_g = math.sqrt(group[0][0] * group[-1][0])
-            top_fc = group[0][1]
-            for rank, (fs, fc, C, m) in enumerate(group):
-                axc.plot([fs], [fc], marker="o", ms=5, color=MOD_COLOR[m], ls="", zorder=4)
-                axc.annotate(f"C={C}", (x_g, top_fc), xytext=(8, -9 * rank),
-                             textcoords="offset points", ha="left", va="center",
-                             fontsize=PAPER_FONT - 1.5, color=MOD_COLOR[m], zorder=6,
-                             bbox={"facecolor": "white", "edgecolor": "none", "pad": 0.5,
-                                   "alpha": 0.85})
-        # The initialisation's cut-off as measured (the uniform mix of the
-        # five wavelets, which is not the half-band fs/4 of any one of them):
-        # one hollow marker per route, joined in order of rate.
-        init_pts = sorted({(float(A["route"].sampling_rate), A["init"]["cutoff_lo_hz"])
-                           for m in mods for A in R[m]["routes"].values()})
-        fs_line = np.array([p_[0] for p_ in init_pts])
-        fc_line = np.array([p_[1] for p_ in init_pts])
-        axc.plot(fs_line, fc_line, color=PAPER["grey"], ls="--", lw=0.9, zorder=2)
-        axc.plot(fs_line, fc_line, marker="o", ms=5, mfc="white", mec=PAPER["grey"],
-                 ls="", zorder=3)
-        axc.annotate("initialisation", (fs_line[-1], fc_line[-1]), xytext=(-7, 7),
-                     textcoords="offset points", ha="right", va="bottom",
-                     color=PAPER["rule"], fontsize=PAPER_FONT - 1)
+        yc = 0.0
+        yt, yl = [], []
+        all_x = []
+        for m in mods:
+            y0 = yc
+            for rid in R[m]["route_order"]:
+                A = R[m]["routes"][rid]
+                fc0 = A["init"]["cutoff_lo_hz"]
+                fc1 = A["levels"][1]["cutoff_lo_hz_of_mean_response"]
+                if np.isfinite(fc0) and np.isfinite(fc1) and abs(math.log(fc1 / fc0)) > 0.12:
+                    axc.annotate("", xy=(fc1, yc), xytext=(fc0, yc), zorder=3,
+                                 arrowprops={"arrowstyle": "-|>", "color": MOD_COLOR[m],
+                                             "lw": 0.9, "shrinkA": 3.0, "shrinkB": 3.4,
+                                             "mutation_scale": 6})
+                axc.plot([fc0], [yc], marker="o", ms=4.2, mfc="white", mec=PAPER["rule"],
+                         mew=0.8, ls="", zorder=4)
+                axc.plot([fc1], [yc], marker="o", ms=4.8, color=MOD_COLOR[m], mec="white",
+                         mew=0.6, ls="", zorder=5)
+                all_x += [fc0, fc1]
+                yt.append(yc); yl.append(_route_title(A["route"]))
+                yc += 1.0
+            # the modality's physiological span behind its rows
+            lo_b = min(b[1] for b in BANDS[m]); hi_b = max(b[2] for b in BANDS[m])
+            axc.fill_betweenx([y0 - 0.45, yc - 0.55], lo_b, hi_b, color=PAPER["pale_blue"],
+                              alpha=0.40, lw=0, zorder=0)
+            _modality_tag(axc, m, y0, yc - 1.0, x=1.03)
+            yc += 0.5
+        axc.set_yticks(yt)
+        axc.set_yticklabels(yl)
+        for lab in axc.get_yticklabels():
+            lab.set_fontsize(PAPER_FONT - 1)
+        axc.set_ylim(yc - 0.5 - 0.4, -0.6)
+        axc.tick_params(axis="y", length=0)
         axc.set_xscale("log")
-        axc.set_yscale("log")
-        axc.set_xlabel("Sampling rate (Hz)")
-        axc.set_ylabel("Low-pass −3 dB cut-off (Hz)")
-        xt = [250, 500, 1000, 2000]
+        xs = [v for v in all_x if np.isfinite(v) and v > 0]
+        axc.set_xlim(min(xs) / 1.5, max(xs) * 1.6)
+        xt = [t for t in (10, 20, 50, 100, 200, 500) if min(xs) / 1.5 <= t <= max(xs) * 1.6]
         axc.set_xticks(xt)
         axc.set_xticklabels([str(t) for t in xt])
         axc.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
-        ys = [A["levels"][1]["cutoff_lo_hz_of_mean_response"]
-              for m in mods for A in R[m]["routes"].values()] + list(fc_line)
-        ys = [v for v in ys if np.isfinite(v) and v > 0]
-        lo_y, hi_y = min(ys) / 1.6, max(ys) * 1.8
-        axc.set_ylim(lo_y, hi_y)
-        yt_c = [t for t in (10, 20, 50, 100, 200, 500) if lo_y <= t <= hi_y]
-        axc.set_yticks(yt_c)
-        axc.set_yticklabels([str(t) for t in yt_c])
-        axc.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
-        axc.set_xlim(fs_line[0] / 1.4, fs_line[-1] * 1.6)
-        for m in mods:
-            axc.plot([], [], marker="o", ms=5, color=MOD_COLOR[m], ls="", label=LABEL[m])
-        axc.legend(frameon=False, fontsize=PAPER_FONT - 1, loc="upper left",
-                   handletextpad=0.3, borderaxespad=0.2, labelspacing=0.3)
-        for sp in ("top", "right"):
+        axc.set_xlabel("Low-pass −3 dB cut-off (Hz)", labelpad=2)
+        axc.grid(axis="x", color=PAPER["light"], lw=0.6, zorder=-1)
+        for sp in ("top", "right", "left"):
             axc.spines[sp].set_visible(False)
         box_c = gr[1].get_position(fig)
-        fig.text(box_c.x0 - 0.085, box_c.y1 + 0.05, "c", fontsize=PAPER_LETTER,
-                 fontweight="bold", ha="left", va="top", gid="paper-keep")
+        _titled_letter(fig, box_b.x0 - 0.135, box_c.y1 + 0.028, "c",
+                       "Low-pass cut-off, initial → learned")
 
         data, meta = {}, {"modalities": {}}
         for m in mods:
@@ -535,7 +566,8 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
                 for lvl, L in A["levels"].items():
                     for k in ("H_lo_mean", "H_lo_p10", "H_lo_p90", "H_hi_mean", "H_hi_p10",
                               "H_hi_p90"):
-                        data[f"{rid}_L{lvl}_{k}"] = L[k]
+                        if k in L:
+                            data[f"{rid}_L{lvl}_{k}"] = L[k]
             meta["modalities"][m] = {
                 "wavelet_names": R[m]["wavelet_names"], "load": R[m]["load"],
                 "corpora": R[m]["corpora"],
@@ -551,6 +583,50 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
                            for rid, A in R[m]["routes"].items()}}
         w.save(fig, out_name, data, meta)
         return meta
+
+
+def _route_stub(rid: str):
+    """Channels and rate from a route id such as ``E19_256``."""
+    import re
+    from types import SimpleNamespace
+    mt = re.fullmatch(r"[A-Z](\d+)_(\d+)", rid)
+    if not mt:
+        raise ValueError(f"cannot parse route id {rid!r}")
+    return SimpleNamespace(route_id=rid, n_channels=int(mt.group(1)),
+                           sampling_rate=int(mt.group(2)))
+
+
+def load_saved(src: str, name: str = "fig_wavelet"):
+    """``R`` as ``main`` builds it, from ``<src>/figure_data/<name>.npz`` and
+    ``<src>/figure_metadata/<name>.json`` of an earlier run."""
+    with open(os.path.join(src, "figure_metadata", f"{name}.json")) as fh:
+        meta = json.load(fh)
+    data = np.load(os.path.join(src, "figure_data", f"{name}.npz"))
+    R = {}
+    for m, Mm in meta["modalities"].items():
+        routes = {}
+        for rid, Rm in Mm["routes"].items():
+            A = {"route": _route_stub(rid), "f_hz": data[f"{rid}_f_hz"],
+                 "init": {"H_lo": data[f"{rid}_init_H_lo"], "H_hi": data[f"{rid}_init_H_hi"],
+                          "cutoff_lo_hz": Rm["init_cutoff_lo_hz"],
+                          "cutoff_hi_hz": Rm["init_cutoff_hi_hz"]},
+                 "tap_rms_change_rel": Rm["tap_rms_change_rel"],
+                 "per_basis_cutoff_lo_hz_init": Rm["per_basis_cutoff_lo_hz_init"],
+                 "per_basis_cutoff_lo_hz_learned": Rm["per_basis_cutoff_lo_hz_learned"],
+                 "levels": {}}
+            for lvl, Lv in Rm["levels"].items():
+                Lv = dict(Lv)
+                for k in ("H_lo_mean", "H_lo_p10", "H_lo_p90", "H_hi_mean", "H_hi_p10",
+                          "H_hi_p90"):
+                    key = f"{rid}_L{lvl}_{k}"
+                    if key in data:
+                        Lv[k] = data[key]
+                A["levels"][int(lvl)] = Lv
+            routes[rid] = A
+        R[m] = {"routes": routes, "route_order": list(Mm["routes"]),
+                "corpora": Mm["corpora"], "wavelet_names": Mm["wavelet_names"],
+                "load": Mm["load"]}
+    return R, meta
 
 
 # --------------------------------------------------------------------------- #
@@ -722,7 +798,22 @@ def main(argv=None) -> int:
     p.add_argument("--format", default="pdf,png,svg")
     p.add_argument("--threads", type=int, default=None)
     p.add_argument("--no-paper", action="store_true")
+    p.add_argument("--from-saved", metavar="DIR",
+                   help="redraw from DIR/figure_data/fig_wavelet.npz and "
+                        "DIR/figure_metadata/fig_wavelet.json; no checkpoints are loaded "
+                        "and the report is not rewritten")
     args = p.parse_args(argv)
+    if args.from_saved:
+        apply_style()
+        R, old = load_saved(args.from_saved)
+        base_meta = {"plotting_script_git_commit": git_commit(),
+                     "checkpoints": old.get("checkpoints", {}),
+                     "redrawn_from": args.from_saved}
+        writer = FigureWriter(args.out_dir,
+                              [s.strip() for s in args.format.split(",") if s.strip()],
+                              base_meta, stamp=args.no_paper, paper=not args.no_paper)
+        draw(writer, R)
+        return 0
     if not (args.eeg or args.ecg or args.emg):
         p.error("give at least one of --eeg, --ecg, --emg")
     if args.threads:

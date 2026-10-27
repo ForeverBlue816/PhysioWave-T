@@ -57,8 +57,11 @@ python scripts/visualize_wavelet_frontend.py \
     --out-dir "${OUT}" --report docs/runs/fig_wavelet.md \
     --format pdf,png,svg --threads "${OMP_NUM_THREADS}" || exit 1
 
-mkdir -p figures docs/runs/fig_wavelet/figure_metadata
+mkdir -p figures docs/runs/fig_wavelet/figure_metadata docs/runs/fig_wavelet/figure_data
 cp "${OUT}"/figures/fig_wavelet.pdf "${OUT}"/figures/fig_wavelet.png \
    "${OUT}"/figures/fig_wavelet.svg figures/
 cp "${OUT}"/figure_metadata/fig_wavelet.json docs/runs/fig_wavelet/figure_metadata/
+# The plotted arrays, so the figure can be redrawn anywhere without the
+# checkpoints:  python scripts/visualize_wavelet_frontend.py --from-saved docs/runs/fig_wavelet
+cp "${OUT}"/figure_data/fig_wavelet.npz docs/runs/fig_wavelet/figure_data/
 echo "collected: figures/fig_wavelet.{pdf,png,svg}, docs/runs/fig_wavelet.md, docs/runs/fig_wavelet/"
