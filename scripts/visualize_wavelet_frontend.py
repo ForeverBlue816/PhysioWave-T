@@ -169,7 +169,14 @@ def selector_weights(model, route, ds, n_windows: int, n_deep: int, device,
     front = model.wavelet_frontends[route.route_id].to(device)
     sel = front.decomp.selector
     idx = spread_indices(len(ds), n_windows)
+    T = route.window_samples
+    # The decomposition's cross-scale FFN attends over all T samples, so its
+    # memory grows with B*T^2: a 10 s ECG window at 500 Hz took 48 GB at
+    # B=128. The deep pass goes through in sub-batches sized to a budget.
+    deep_bs = max(1, min(chunk, int(2.0e8 // (T * T))))
     sums = {1: None, 2: None, 3: None}
+    sq1 = None                                   # for the across-window spread
+    gap_abs = 0.0                                # mean |per-channel window mean|
     counts = {1: 0, 2: 0, 3: 0}
     captured: List[torch.Tensor] = []
     hook = sel.selector.register_forward_hook(lambda m, i, o: captured.append(o.detach()))
@@ -178,23 +185,32 @@ def selector_weights(model, route, ds, n_windows: int, n_deep: int, device,
             x = ds.read_batch(idx[start:start + chunk]).to(device)
             w1 = sel.selector(x).float()                         # [B, M]
             sums[1] = w1.sum(0) if sums[1] is None else sums[1] + w1.sum(0)
+            sq1 = (w1 ** 2).sum(0) if sq1 is None else sq1 + (w1 ** 2).sum(0)
+            gap_abs += float(x.mean(dim=-1).abs().sum())
             counts[1] += w1.shape[0]
-            if counts[2] < n_deep:
+            need = n_deep - counts[2]
+            for s0 in range(0, min(x.shape[0], max(need, 0)), deep_bs):
                 captured.clear()
-                xb = x[: max(1, min(x.shape[0], n_deep - counts[2]))]
-                front.decomp(xb)
-                # One call per level, in order.
+                front.decomp(x[s0:s0 + deep_bs])
+                # One selector call per level, in order.
                 for lvl, w in zip((1, 2, 3), captured[:3]):
                     if lvl == 1:
                         continue
                     w = w.float()
                     sums[lvl] = w.sum(0) if sums[lvl] is None else sums[lvl] + w.sum(0)
                     counts[lvl] += w.shape[0]
+            del x
     finally:
         hook.remove()
+        if device.type == "cuda":
+            torch.cuda.empty_cache()
     means = {lvl: (sums[lvl] / counts[lvl]).cpu().numpy() if counts[lvl] else None
              for lvl in sums}
-    return means, counts
+    n1 = max(counts[1], 1)
+    var1 = (sq1 / n1 - (sums[1] / n1) ** 2).clamp_min(0).cpu().numpy()
+    stats = {"std_level1_across_windows": np.sqrt(var1).tolist(),
+             "mean_abs_window_mean": gap_abs / (n1 * route.n_channels)}
+    return means, counts, stats
 
 
 def bank_kernels(model, route):
@@ -266,6 +282,15 @@ def analyse_route(model, route, mcfg, w_mean: Dict[int, Optional[np.ndarray]]):
     # How far the taps moved from their initialisation, per basis, relative.
     lo_dev = np.sqrt(((lo - lo0[:, None, :]) ** 2).mean(axis=(1, 2)))
     out["tap_rms_change_rel"] = (lo_dev / np.sqrt((lo0 ** 2).mean(axis=1))).tolist()
+    # Each basis on its own: the half-band cut-off of its low-pass before and
+    # after training (channel mean). Separates "the mix changed" from "the
+    # filters changed" -- a uniform mix of five different wavelets is not
+    # itself a half-band filter, since their phases do not line up.
+    out["per_basis_cutoff_lo_hz_init"] = [cutoff_lowpass(f, magnitude(k, fs)[1])
+                                          for k in lo0]
+    _, Hb = magnitude(lo, fs)                                   # [M, C, F]
+    out["per_basis_cutoff_lo_hz_learned"] = [
+        float(np.nanmean([cutoff_lowpass(f, h) for h in Hb[i]])) for i in range(M)]
     for lvl, w in w_mean.items():
         if w is None:
             continue
@@ -435,30 +460,35 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
 
         # -- (c) cut-off against sampling rate ----------------------------- #
         axc = fig.add_subplot(gr[1])
-        fs_all = []
-        seen: Dict[float, int] = {}
-        for m in mods:
-            for rid in R[m]["route_order"]:
-                A = R[m]["routes"][rid]
-                fs = float(A["route"].sampling_rate)
-                fs_all.append(fs)
-                fc = A["levels"][1]["cutoff_lo_hz_of_mean_response"]
+        pts = [(float(A["route"].sampling_rate),
+                A["levels"][1]["cutoff_lo_hz_of_mean_response"], A["route"].n_channels, m)
+               for m in mods for A in R[m]["routes"].values()]
+        fs_all = [p_[0] for p_ in pts]
+        # Routes that share a rate share an x. Their labels go to the right of
+        # the markers in a stack ordered by cut-off -- the lowest below its
+        # marker, the next above, the third higher still -- so they neither
+        # cover each other nor the markers.
+        by_fs: Dict[float, List] = {}
+        for p_ in pts:
+            by_fs.setdefault(p_[0], []).append(p_)
+        for fs, group in by_fs.items():
+            group.sort(key=lambda t: t[1])
+            for rank, (_, fc, C, m) in enumerate(group):
                 axc.plot([fs], [fc], marker="o", ms=5, color=MOD_COLOR[m], ls="", zorder=4)
-                # Routes that share a rate share an x: their labels alternate
-                # right and left so they do not print over each other.
-                k = seen.get(fs, 0)
-                seen[fs] = k + 1
-                side = 1 if k % 2 == 0 else -1
-                axc.annotate(f"C={A['route'].n_channels}", (fs, fc),
-                             xytext=(side * 5, 3 - 9 * (k // 2)), textcoords="offset points",
-                             ha="left" if side > 0 else "right", va="bottom",
-                             fontsize=PAPER_FONT - 1.5, color=MOD_COLOR[m])
-        fs_line = np.array(sorted(set(fs_all)))
-        axc.plot(fs_line, fs_line / 4, color=PAPER["grey"], ls="--", lw=0.9, zorder=2)
-        axc.plot(fs_line, fs_line / 4, marker="o", ms=5, mfc="white", mec=PAPER["grey"],
+                dy, va = [(-9, "top"), (3, "bottom"), (14, "bottom")][min(rank, 2)]
+                axc.annotate(f"C={C}", (fs, fc), xytext=(6, dy), textcoords="offset points",
+                             ha="left", va=va, fontsize=PAPER_FONT - 1.5, color=MOD_COLOR[m])
+        # The initialisation's cut-off as measured (the uniform mix of the
+        # five wavelets, which is not the half-band fs/4 of any one of them):
+        # one hollow marker per route, joined in order of rate.
+        init_pts = sorted({(float(A["route"].sampling_rate), A["init"]["cutoff_lo_hz"])
+                           for m in mods for A in R[m]["routes"].values()})
+        fs_line = np.array([p_[0] for p_ in init_pts])
+        fc_line = np.array([p_[1] for p_ in init_pts])
+        axc.plot(fs_line, fc_line, color=PAPER["grey"], ls="--", lw=0.9, zorder=2)
+        axc.plot(fs_line, fc_line, marker="o", ms=5, mfc="white", mec=PAPER["grey"],
                  ls="", zorder=3)
-        # At the line's upper end, where no route sits.
-        axc.annotate("init: fs / 4", (fs_line[-1], fs_line[-1] / 4), xytext=(-7, 7),
+        axc.annotate("initialisation", (fs_line[-1], fc_line[-1]), xytext=(-7, 7),
                      textcoords="offset points", ha="right", va="bottom",
                      color=PAPER["rule"], fontsize=PAPER_FONT - 1)
         axc.set_xscale("log")
@@ -470,7 +500,7 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
         axc.set_xticklabels([str(t) for t in xt])
         axc.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
         ys = [A["levels"][1]["cutoff_lo_hz_of_mean_response"]
-              for m in mods for A in R[m]["routes"].values()] + list(fs_line / 4)
+              for m in mods for A in R[m]["routes"].values()] + list(fc_line)
         ys = [v for v in ys if np.isfinite(v) and v > 0]
         lo_y, hi_y = min(ys) / 1.6, max(ys) * 1.8
         axc.set_ylim(lo_y, hi_y)
@@ -505,6 +535,9 @@ def draw(w: FigureWriter, R: Dict, out_name: str = "fig_wavelet"):
                 "routes": {rid: {"init_cutoff_lo_hz": A["init"]["cutoff_lo_hz"],
                                  "init_cutoff_hi_hz": A["init"]["cutoff_hi_hz"],
                                  "tap_rms_change_rel": A["tap_rms_change_rel"],
+                                 "per_basis_cutoff_lo_hz_init": A["per_basis_cutoff_lo_hz_init"],
+                                 "per_basis_cutoff_lo_hz_learned":
+                                     A["per_basis_cutoff_lo_hz_learned"],
                                  "levels": {str(l): {k: v for k, v in L.items()
                                                      if not isinstance(v, np.ndarray)}
                                             for l, L in A["levels"].items()}}
@@ -569,11 +602,43 @@ def write_report(path: str, R: Dict, n_windows: int, n_deep: int, split: str):
                     L.append(f"| {rid} | {lvl} | "
                              + " | ".join(f"{v:.3f}" for v in A["levels"][lvl]["weights"]) + " |")
         L.append("")
+    L.append("## Is the selector input-dependent?\n")
+    L.append("The selector's input is the per-channel mean of the window (global "
+             "average pooling over time). Windows are normalised per channel, so that "
+             "mean is near zero and the softmax can only vary as far as the residual "
+             "means do. Below, the across-window standard deviation of the level-1 "
+             "weights and the mean |window mean| the selector actually saw.\n")
+    L.append("| modality | corpus | std of weights across windows (per basis) | mean |window mean| |")
+    L.append("|---|---|---|---|")
+    for m in mods:
+        for c in R[m]["corpora"]:
+            sd = c.get("std_level1_across_windows")
+            if sd is None:
+                continue
+            L.append(f"| {LABEL[m]} | {CORPUS_LABEL.get(c['id'], c['id'])} | "
+                     + ", ".join(f"{v:.4f}" for v in sd)
+                     + f" | {c.get('mean_abs_window_mean', float('nan')):.4f} |")
+            if max(sd) < 1e-3:
+                flags.append(f"{LABEL[m]} / {CORPUS_LABEL.get(c['id'], c['id'])}: the level-1 "
+                             f"selector weights do not vary across windows (std < 1e-3): on "
+                             f"normalised windows the selector's input is ~0 and its output "
+                             f"is a learned per-route constant, not an input-adaptive choice.")
+            wv = np.asarray(c["weights_level1"])
+            if wv.max() > 0.8:
+                flags.append(f"{LABEL[m]} / {CORPUS_LABEL.get(c['id'], c['id'])}: the selector "
+                             f"has collapsed onto one basis "
+                             f"({R[m]['wavelet_names'][int(wv.argmax())]}, {wv.max():.3f}).")
+    L.append("")
     L.append("## −3 dB cut-offs (Hz)\n")
     L.append("Low-pass: the learned effective filter (bank mixed with the level's mean "
              "weights), cut-off of the channel-mean response, with the 10-90th percentile "
-             "across channels; initialisation is the bank mixed uniformly (fs/4 for an "
-             "orthogonal half-band pair). High-pass: the rising −3 dB point.\n")
+             "across channels; initialisation is the bank mixed uniformly. NOTE: each "
+             "orthogonal wavelet's own low-pass is half-band (−3 dB at fs/4), but the "
+             "uniform mix of five different wavelets is not -- their phases do not line "
+             "up and the sum cancels at mid frequencies -- so the initialisation's "
+             "cut-off sits well below fs/4. The per-basis table that follows separates "
+             "a change of mixture from a change of the filters themselves. High-pass: "
+             "the rising −3 dB point.\n")
     L.append("| route | fs | init LP | learned LP L1 (p10–p90) | L2 | L3 | init HP | learned HP L1 | "
              "tap RMS change / init RMS (per basis) |")
     L.append("|---|---|---|---|---|---|---|---|---|")
@@ -595,6 +660,19 @@ def write_report(path: str, R: Dict, n_windows: int, n_deep: int, split: str):
                 flags.append(f"{rid}: learned low-pass cut-off within 5% of initialisation "
                              f"and taps moved < 5% RMS -- the filters barely moved.")
     L.append("")
+    L.append("Per basis, the low-pass cut-off of each wavelet's own filter (channel "
+             "mean), initial → learned:\n")
+    for m in mods:
+        names = R[m]["wavelet_names"]
+        L.append(f"**{LABEL[m]}**\n")
+        L.append("| route | " + " | ".join(names) + " |")
+        L.append("|---|" + "---|" * len(names))
+        for rid, A in R[m]["routes"].items():
+            L.append(f"| {rid} | " + " | ".join(
+                f"{i0:.1f} → {l1:.1f}" for i0, l1 in zip(A["per_basis_cutoff_lo_hz_init"],
+                                                          A["per_basis_cutoff_lo_hz_learned"]))
+                     + " |")
+        L.append("")
     # Do the cut-offs still scale with the sampling rate within a modality?
     for m in mods:
         pts = [(float(A["route"].sampling_rate), A["levels"][1]["cutoff_lo_hz_of_mean_response"])
@@ -667,12 +745,12 @@ def main(argv=None) -> int:
             if len(ds) == 0:
                 continue
             route = routes[ds.route_id]
-            means, counts = selector_weights(model, route, ds, args.windows,
-                                             args.deep_windows, device)
+            means, counts, wstats = selector_weights(model, route, ds, args.windows,
+                                                     args.deep_windows, device)
             print(f"  {dsid:14s} {route.route_id:9s} n={counts[1]:5d} level-1 weights "
                   + " ".join(f"{v:.3f}" for v in means[1]))
             corpora.append({"id": dsid, "route": route.route_id, "n_level1": counts[1],
-                            "n_deep": counts[2],
+                            "n_deep": counts[2], **wstats,
                             "weights_level1": means[1].tolist(),
                             "weights_level2": None if means[2] is None else means[2].tolist(),
                             "weights_level3": None if means[3] is None else means[3].tolist()})
