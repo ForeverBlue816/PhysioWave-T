@@ -1,16 +1,14 @@
 {
   "checkpoint": "/leonardo_scratch/fast/IscrB_WearUsFM/yanlchen/runs/pretrain_eeg_c1_moe/best.pth",
-  "checkpoint_sha256": "4226871943e1ad68b434222c94a3a661642af6852bbf7e43eb84a4f042b5c131",
-  "epoch": 58,
   "device": "NVIDIA A100-SXM-64GB",
-  "plotting_script_git_commit": "ddad1a06da87b33a78898c5d1600bc873faa5b82",
+  "redrawn_from": "/Users/foreverblue/Desktop/PhysioWave-T/docs/runs/fold_efficiency/fold_efficiency.json",
+  "plotting_script_git_commit": "738393f532cd6c901623e31e9b4fd5db5371e259",
   "figure": "fig_paper_fold_efficiency",
-  "generated_utc": "2026-10-27T03:41:10.852465+00:00",
+  "generated_utc": "2026-10-27T03:45:57.013698+00:00",
   "figure_text": [
     "a",
     "b",
-    "c",
-    "d"
+    "c"
   ],
   "paper_mode": true,
   "rows": [
@@ -151,9 +149,15 @@
       "t_ms_transformer_folded": 138.41739110648632
     }
   ],
+  "fold_share_of_forward_time_pct": {
+    "E19_256": 1.7715432880668227,
+    "E32_512": 2.608296347083334,
+    "E64_256": 1.5338058815678026,
+    "E128_512": 2.060905551710628
+  },
   "unfolded_path": "decomposition output [(J+1)\u00b7C rows] patched directly, 2-D position code for (J+1)\u00b7C rows, no channel code; same weights",
-  "latency": "median of forward passes at the training batch size, bf16 autocast, CUDA-synchronised",
+  "latency": "median of forward passes at the training batch size, bf16 autocast, CUDA-synchronised, per window",
+  "memory": "peak allocated, forward only, at the training batch",
   "flops": "torch.utils.flop_counter on one window, fp32",
-  "breakdown": "panel (d): each stage timed alone at the training batch; the label above each bar is the dynamic fold's share, t_ms_fold_mean in the rows is a plain mean fold for comparison",
   "not_measured": "reconstruction quality of the unfolded path"
 }

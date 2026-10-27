@@ -236,109 +236,127 @@ def benchmark_route(model, route, batch_size: int, device, warmup: int, iters: i
 # The figure
 # --------------------------------------------------------------------------- #
 
-def _short(rid: str) -> str:
-    r = ROUTES[rid]
-    return f"{rid.split('_')[0]}\n{r.n_channels} ch, {r.sampling_rate:g} Hz"
+def _ch_label(rid: str) -> str:
+    return f"{ROUTES[rid].n_channels} ch"
+
+
+def _plain_log_ticks(ax, ticks):
+    """Log axis with plain-number labels (no 10^x mathtext, whose exponents
+    render below the 5 pt floor)."""
+    from matplotlib.ticker import FixedLocator, FixedFormatter, NullLocator
+    ax.yaxis.set_major_locator(FixedLocator(ticks))
+    ax.yaxis.set_major_formatter(FixedFormatter([f"{t:g}" for t in ticks]))
+    ax.yaxis.set_minor_locator(NullLocator())
 
 
 def fig_fold_efficiency(w: FigureWriter, rows: List[Dict], device_name: str):
+    """(a) forward latency and (b) peak memory, with and without the fold, per
+    route at its training batch; (c) the saving factor of each cost against the
+    sequence length, with the 4x token ratio for reference."""
     rids = [r["route"] for r in rows]
     x = np.arange(len(rids))
-    wd = 0.36
+    wd = 0.38
     col_f, col_u = PAPER["indigo"], PAPER["mauve"]
-    with _paper_rc():
-        fig = plt.figure(figsize=(PAPER_WIDTH, 2.55))
-        gs = fig.add_gridspec(1, 4, wspace=0.55, left=0.065, right=0.995, top=0.86,
-                              bottom=0.24)
-        axes = [fig.add_subplot(gs[i]) for i in range(4)]
 
-        def pair(ax, key, ylabel, log=True, fmt="{:.0f}×"):
-            vf = np.array([r.get(f"{key}_folded", np.nan) for r in rows], float)
-            vu = np.array([r.get(f"{key}_unfolded", np.nan) for r in rows], float)
-            ax.bar(x - wd / 2, vf, wd, color=col_f, label="With ScaleFold")
-            ax.bar(x + wd / 2, vu, wd, color=col_u, label="Unfolded bands")
-            if log:
-                ax.set_yscale("log")
-            top = np.nanmax(np.r_[vf, vu])
+    def ratio(key):
+        return np.array([r.get(f"{key}_unfolded", np.nan) / r.get(f"{key}_folded", np.nan)
+                         for r in rows], float)
+
+    with _paper_rc():
+        fig = plt.figure(figsize=(PAPER_WIDTH, 2.45))
+        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.15], wspace=0.42,
+                              left=0.075, right=0.985, top=0.86, bottom=0.17)
+        ax_a, ax_b, ax_c = (fig.add_subplot(gs[i]) for i in range(3))
+
+        def bars(ax, vf, vu, ylabel, log, ticks=None):
+            ax.bar(x - wd / 2, vf, wd, color=col_f, label="With ScaleFold", lw=0)
+            ax.bar(x + wd / 2, vu, wd, color=col_u, label="Without (4 bands patched)",
+                   lw=0)
+            top = float(np.nanmax(vu))
             for i, (a, b) in enumerate(zip(vf, vu)):
                 if np.isfinite(a) and np.isfinite(b) and a > 0:
-                    ax.text(x[i], b * (1.12 if log else 1.0) + (0 if log else 0.02 * top),
-                            fmt.format(b / a), ha="center", va="bottom",
-                            fontsize=PAPER_FONT - 1)
-                elif np.isfinite(a) and not np.isfinite(b):
-                    ax.text(x[i] + wd / 2, a * 1.12, "OOM", ha="center", va="bottom",
-                            fontsize=PAPER_FONT - 1, color=col_u, rotation=90)
-            ax.set_ylabel(ylabel)
+                    y = b * 1.18 if log else b + 0.03 * top
+                    ax.text(x[i] + wd / 2, y, f"{b / a:.1f}×", ha="center", va="bottom",
+                            fontsize=PAPER_FONT - 1, color=PAPER["ink"])
             if log:
-                ax.set_ylim(top=top * (4.0 if log else 1.25))
+                ax.set_yscale("log")
+                _plain_log_ticks(ax, ticks)
+                ax.set_ylim(ticks[0] * 0.8, top * 3.2)
+            else:
+                ax.set_ylim(0, top * 1.18)
+            ax.set_ylabel(ylabel)
             ax.set_xticks(x)
-            ax.set_xticklabels([_short(r) for r in rids], fontsize=PAPER_FONT - 1.5,
-                               linespacing=1.15)
+            ax.set_xticklabels([_ch_label(r) for r in rids])
             ax.tick_params(axis="x", length=0)
-            for sp in ("top", "right"):
-                ax.spines[sp].set_visible(False)
+            ax.set_xlim(-0.6, len(rids) - 0.4)
 
-        pair(axes[0], "tokens", "Tokens per window")
-        pair(axes[1], "gflops_per_window", "Encoder GFLOPs per window", fmt="{:.1f}×")
-        pair(axes[2], "latency_ms_per_window", "Forward latency (ms / window)",
-             fmt="{:.1f}×")
-        # (d) breakdown of the folded encoder's forward time, as shares
-        ax = axes[3]
-        parts = [("t_ms_decomp", "Wavelet decomposition", PAPER["pale_blue"]),
-                 ("t_ms_fold_dynamic", "ScaleFold", PAPER["gold"]),
-                 ("t_ms_patch", "Patcher", PAPER["lavender"]),
-                 ("t_ms_transformer_folded", "Transformer", col_f)]
-        tot = np.array([sum(r[k] for k, _, _ in parts) for r in rows])
-        bottom = np.zeros(len(rows))
-        for k, lab, col in parts:
-            v = np.array([r[k] for r in rows]) / tot * 100
-            ax.bar(x, v, 0.6, bottom=bottom, color=col, label=lab, lw=0)
-            bottom += v
-        fold_share = [100 * r["t_ms_fold_dynamic"] / t for r, t in zip(rows, tot)]
-        for i, s in enumerate(fold_share):
-            ax.text(x[i], 101, f"fold {s:.1f}%", ha="center", va="bottom",
-                    fontsize=PAPER_FONT - 1.5, color=PAPER["ink"])
-        ax.set_ylim(0, 118)
-        ax.set_yticks([0, 25, 50, 75, 100])
-        ax.set_ylabel("Share of forward time (%)")
-        ax.set_xticks(x)
-        ax.set_xticklabels([_short(r) for r in rids], fontsize=PAPER_FONT - 1.5,
-                           linespacing=1.15)
-        ax.tick_params(axis="x", length=0)
-        for sp in ("top", "right"):
-            ax.spines[sp].set_visible(False)
-        h, l = axes[0].get_legend_handles_labels()
-        fig.legend(h, l, loc="upper left", bbox_to_anchor=(0.065, 1.0), ncol=2,
-                   frameon=False, fontsize=PAPER_FONT - 1, handlelength=1.2,
-                   columnspacing=1.2, borderaxespad=0.0)
-        h, l = ax.get_legend_handles_labels()
-        fig.legend(h[::-1], l[::-1], loc="upper right", bbox_to_anchor=(0.995, 1.0),
-                   ncol=4, frameon=False, fontsize=PAPER_FONT - 1, handlelength=1.0,
-                   columnspacing=0.9, handletextpad=0.4, borderaxespad=0.0)
-        for i, ch in enumerate("abcd"):
-            _letter(fig, gs[i].get_position(fig).x0 - 0.045, 0.99, ch)
+        lat_f = np.array([r["latency_ms_per_window_folded"] for r in rows])
+        lat_u = np.array([r.get("latency_ms_per_window_unfolded", np.nan) for r in rows])
+        bars(ax_a, lat_f, lat_u, "Forward time per window (ms)", log=True,
+             ticks=[0.3, 1, 3, 10, 30])
+        mem_f = np.array([r["peak_mem_mb_folded"] for r in rows]) / 1024
+        mem_u = np.array([r.get("peak_mem_mb_unfolded", np.nan) for r in rows]) / 1024
+        bars(ax_b, mem_f, mem_u, "Peak memory per batch (GB)", log=False)
+        # One legend for (a) and (b), in (b)'s empty upper left: the memory bars
+        # of the short routes are a few percent of the axis.
+        ax_b.legend(loc="upper left", frameon=False, fontsize=PAPER_FONT - 1,
+                    handlelength=1.0, handletextpad=0.4, borderaxespad=0.1,
+                    labelspacing=0.3)
+
+        # (c) saving factor against the sequence length
+        tok = np.array([r["tokens_folded"] for r in rows])
+        series = [("peak_mem_mb", "Memory", PAPER["gold"], "D"),
+                  ("latency_ms_per_window", "Time", PAPER["blue"], "o"),
+                  ("gflops_per_window", "FLOPs", PAPER["rule"], "s")]
+        for key, lab, col, mk in series:
+            v = ratio(key)
+            ax_c.plot(tok, v, color=col, marker=mk, ms=4, lw=1.4, zorder=3)
+            ax_c.text(tok[-1] * 1.12, v[-1], lab, color=col, ha="left", va="center",
+                      fontsize=PAPER_FONT - 0.5, fontweight="bold")
+        # Drawn over the data's x range only, so its label at the right end
+        # sits past the line's end rather than on it.
+        ax_c.plot([tok[0] / 1.35, tok[-1] * 1.05], [4.0, 4.0], color=PAPER["grey"],
+                  lw=0.8, ls="--", zorder=1)
+        # Labelled at the right end like the series, where it crosses no line.
+        ax_c.text(tok[-1] * 1.12, 4.0, "Tokens", color=PAPER["grey"], ha="left",
+                  va="center", fontsize=PAPER_FONT - 0.5, fontweight="bold")
+        ax_c.set_xscale("log", base=2)
+        from matplotlib.ticker import FixedLocator, FixedFormatter, NullLocator
+        ax_c.xaxis.set_major_locator(FixedLocator(list(tok)))
+        ax_c.xaxis.set_major_formatter(FixedFormatter([str(int(t)) for t in tok]))
+        ax_c.xaxis.set_minor_locator(NullLocator())
+        ax_c.set_xlim(tok[0] / 1.35, tok[-1] * 2.3)
+        ax_c.set_ylim(0, max(np.nanmax(ratio(k)) for k, *_ in series) * 1.15)
+        ax_c.set_xlabel("Tokens per window (with ScaleFold)")
+        ax_c.set_ylabel("Saving (without / with)")
+        ax_a.set_xlabel("Route")
+        ax_b.set_xlabel("Route")
+        for i, ch in enumerate("abc"):
+            _letter(fig, gs[i].get_position(fig).x0 - 0.06, 0.99, ch)
+
         data = {k: np.array([r.get(k, np.nan) for r in rows], float)
                 for k in rows[0] if isinstance(rows[0][k], (int, float))}
         data["route"] = np.asarray(rids)
+        fold_share = {r["route"]: 100 * r["t_ms_fold_dynamic"] /
+                      (r["t_ms_decomp"] + r["t_ms_fold_dynamic"] + r["t_ms_patch"]
+                       + r["t_ms_transformer_folded"]) for r in rows}
         w.save(fig, "fig_paper_fold_efficiency", data,
                {"rows": rows, "device": device_name,
+                "fold_share_of_forward_time_pct": fold_share,
                 "unfolded_path": "decomposition output [(J+1)·C rows] patched "
                                  "directly, 2-D position code for (J+1)·C rows, no "
                                  "channel code; same weights",
                 "latency": "median of forward passes at the training batch size, "
-                           "bf16 autocast, CUDA-synchronised",
+                           "bf16 autocast, CUDA-synchronised, per window",
+                "memory": "peak allocated, forward only, at the training batch",
                 "flops": "torch.utils.flop_counter on one window, fp32",
-                "breakdown": "panel (d): each stage timed alone at the training "
-                             "batch; the label above each bar is the dynamic "
-                             "fold's share, t_ms_fold_mean in the rows is a "
-                             "plain mean fold for comparison",
                 "not_measured": "reconstruction quality of the unfolded path"})
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--run-dir", required=True)
+    p.add_argument("--run-dir", default=None)
     p.add_argument("--checkpoint", default="best.pth")
     p.add_argument("--out-dir", default=None)
     p.add_argument("--format", default="svg,pdf")
@@ -350,8 +368,25 @@ def main(argv=None) -> int:
     p.add_argument("--no-amp", action="store_true", help="fp32 instead of bf16 autocast")
     p.add_argument("--threads", type=int, default=None)
     p.add_argument("--no-paper", action="store_true")
+    p.add_argument("--from-json", default=None,
+                   help="redraw the figure from a fold_efficiency.json; nothing runs")
     args = p.parse_args(argv)
 
+    if args.from_json:
+        apply_style()
+        with open(args.from_json) as f:
+            res = json.load(f)
+        out_dir = args.out_dir or os.path.dirname(os.path.abspath(args.from_json))
+        writer = FigureWriter(out_dir, [s.strip() for s in args.format.split(",") if s.strip()],
+                              {"checkpoint": res.get("checkpoint"), "device": res.get("device"),
+                               "redrawn_from": os.path.abspath(args.from_json),
+                               "plotting_script_git_commit": git_commit()},
+                              stamp=args.no_paper, paper=not args.no_paper)
+        fig_fold_efficiency(writer, res["rows"], res.get("device", "?"))
+        return 0
+
+    if not args.run_dir:
+        p.error("--run-dir is required unless --from-json is given")
     if args.threads:
         os.environ["PW_VIZ_THREADS"] = str(args.threads)
     _cap_threads()
