@@ -461,6 +461,47 @@ from the schedule. The directories sit beside `ralf_frozen_szo`, and
 `collect_seizeit2_events.py` tabulates them with it. Choose on validation
 AUPRC as before; the event-level numbers follow.
 
+**Result** (official split, same scoring; `e15siena` is `e15` with the
+Siena-continued EEG encoder; `lr1e-4` did not finish). Validation AUPRC is
+the selection metric, at the epoch each run selected:
+
+| run | best epoch | val AUPRC | test AUPRC | s@11 % | s@2 % | AUROC | AUPR |
+|---|---|---|---|---|---|---|---|
+| `ralf_frozen_szo` (original, 3e-4, 60-epoch cosine) | 5 | 0.380 | 0.399 | **74.4** | 32.0 | **0.741** | 0.0121 |
+| `e15` | 5 | **0.401** | 0.394 | 69.3 | 31.8 | 0.737 | 0.0147 |
+| `e15rw` | 2 | 0.389 | **0.414** | 66.6 | 37.1 | 0.738 | **0.0232** |
+| `e15gd` | 4 | 0.376 | 0.402 | 70.8 | 34.0 | 0.740 | 0.0159 |
+| `ep12` | 4 | 0.359 | 0.391 | 65.8 | 33.5 | 0.738 | 0.0133 |
+| `e15siena` | 5 | 0.360 | 0.384 | 70.8 | 31.4 | 0.739 | 0.0154 |
+| `weighted_logit_frozen_szo` | 2 | 0.372 | 0.372 | 78.9 | 26.7 | 0.750 | 0.0132 |
+| `concat_frozen_szo` | 2 | 0.370 | 0.347 | 68.5 | 24.2 | 0.735 | 0.0177 |
+
+The schedule fix does what it was meant to: the reliability loss stays at
+0.03-0.04 to the end and no variant collapses. It does not move the test
+numbers beyond the spread of one run: validation prefers `e15` by 0.02 over
+the original, and on test the two are level (0.394 against 0.399 AUPRC,
+69.3 against 74.4 % at 11 FA/h, nine seizures of 181). `e15rw` has the
+best test AUPRC and twice the original's AUPR, and the lowest s@11 of the
+RALF runs. Every RALF variant (0.384-0.414) is above weighted logit (0.372)
+and concat (0.347) on the complete window-level AUPRC; none reaches
+weighted logit's 78.9 % at 11 FA/h. The Siena encoder changes nothing
+here either.
+
+The paper keeps `ralf_frozen_szo` as the RALF run: it is the configuration
+the comparison was designed with, its selection is by validation within the
+run, and the sweep is reported as its spread. `fig_main` draws the six
+frozen RALF runs as a min-max band behind the original's line in (a) and
+(d), and adds the weighted-logit and concat curves to (a):
+
+```bash
+R=<synced runs/fusion>   # branch cineca-results
+python scripts/visualize_seizeit2.py --raw-dir /nonexistent --run-dir $R/ralf_frozen_szo \
+    --compare $R/weighted_logit_frozen_szo $R/concat_frozen_szo \
+              $R/ralf_frozen_{e15,e15rw,e15gd,ep12,e15siena}_szo \
+    --eeg-runs $R/eeg_{c1,luna_large,labram,eegpt}_{frozen,finetune}_sze \
+    --only fig_main --paper --out-dir docs/runs/seizeit2_fusion_main --format svg,pdf,png
+```
+
 ## Files
 
 | file | what |

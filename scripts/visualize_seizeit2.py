@@ -707,6 +707,33 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
     others = [r for r in others if r.mode == main.mode]
     fusion = [main] + others
     ralf = next((r for r in fusion if r.fusion == "ralf"), main)
+    # Several runs of one fusion rule (the RALF schedule sweep): the rule is
+    # drawn as its main run's line with a min-max band over all its runs, in
+    # (a) and (d), so the reader sees the spread of the rule, not one draw.
+    by_rule: Dict[str, List[Run]] = {}
+    for r in fusion:
+        by_rule.setdefault(r.fusion, []).append(r)
+    rule_main = {rule: (main if main in rs else rs[0]) for rule, rs in by_rule.items()}
+
+    def fa_band(runs: List[Run], grid: np.ndarray):
+        """Min and max sensitivity (%) over ``runs`` on a FA/h grid."""
+        S, lo_fa, hi_fa = [], 0.05, np.inf
+        for r in runs:
+            cur = r.curve("complete")
+            fa = np.array([c_["official"]["fa_ovlp_h"] for c_ in cur])
+            se = np.array([c_["official"]["sens_ovlp"] for c_ in cur]) * 100
+            ok = np.isfinite(fa) & np.isfinite(se)
+            fa, se = np.maximum(fa[ok], 0.05), se[ok]
+            ufa = np.unique(fa)                       # the best sensitivity at each FA/h
+            use = np.array([se[fa == u].max() for u in ufa])
+            S.append(np.interp(np.log(grid), np.log(ufa), use))
+            lo_fa, hi_fa = max(lo_fa, ufa[0]), min(hi_fa, ufa[-1])
+        S = np.array(S)
+        inside = (grid >= lo_fa) & (grid <= hi_fa)     # no band where a run has no curve
+        lo, hi = S.min(0), S.max(0)
+        lo[~inside] = np.nan
+        hi[~inside] = np.nan
+        return lo, hi
     fus_col = {r.name: MAIN_FUSION.get(r.fusion, MAIN["neutral_dark"]) for r in fusion}
     fus_col[main.name] = MAIN["ours"]
     # the EEG-alone encoders: per encoder, its runs by mode
@@ -748,6 +775,21 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         _plot_curve(a, main.curve("complete"), MAIN["ours"],
                     f"PhysioWave-T + {main.short_label} (EEG, ECG, EMG)", lw=2.0)
         data[f"curve_{main.name}"] = _curve_data(main)
+        band_runs = by_rule[main.fusion]
+        if len(band_runs) > 1:
+            grid = np.geomspace(0.05, 100, 300)
+            lo_b, hi_b = fa_band(band_runs, grid)
+            a.fill_between(grid, lo_b, hi_b, color=MAIN["ours"], alpha=0.14, lw=0, zorder=1,
+                           label=f"{main.short_label}, {len(band_runs)} training variants")
+            data[f"band_{main.fusion}_fa"] = grid
+            data[f"band_{main.fusion}_lo"] = lo_b
+            data[f"band_{main.fusion}_hi"] = hi_b
+        for rule, r in rule_main.items():          # the other fusion rules, same encoders
+            if r is main:
+                continue
+            _plot_curve(a, r.curve("complete"), MAIN_FUSION.get(rule, MAIN["neutral"]),
+                        f"PhysioWave-T + {r.short_label} (EEG, ECG, EMG)", lw=1.1)
+            data[f"curve_{r.name}"] = _curve_data(r)
         a_runs = []
         for k in keys:
             r = best_mode(k)
@@ -769,7 +811,8 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         a.set_ylabel("Sensitivity (%)")
         letter(a, "a", "Event-level seizure detection")
         a.legend(frameon=False, loc="upper left", handlelength=2.2, labelspacing=0.4)
-        meta["a_curves"] = [main.name] + a_runs
+        meta["a_curves"] = [main.name] + [r.name for r in rule_main.values() if r is not main] + a_runs
+        meta["band_runs"] = [r.name for r in band_runs] if len(band_runs) > 1 else []
 
         # (b) the EEG-alone encoders frozen and fine-tuned, at the budget
         xb = np.arange(len(keys))
@@ -836,11 +879,21 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
         x = np.arange(len(subsets))
         ends = []
         for r in fusion:
-            v = [r.test().get(cnd, {}).get("auprc", np.nan) for cnd in subsets]
-            data[f"auprc_subsets_{r.name}"] = v
+            data[f"auprc_subsets_{r.name}"] = [r.test().get(cnd, {}).get("auprc", np.nan)
+                                               for cnd in subsets]
+        for rule, r in rule_main.items():
+            v = data[f"auprc_subsets_{r.name}"]
+            rs = by_rule[rule]
+            if len(rs) > 1:                        # the rule's spread over its runs
+                V = np.array([data[f"auprc_subsets_{q.name}"] for q in rs], dtype=float)
+                d.fill_between(x, np.nanmin(V, 0), np.nanmax(V, 0), color=fus_col[r.name],
+                               alpha=0.14, lw=0, zorder=1)
             d.plot(x, v, marker="o", ms=3.8 if r is main else 2.8, color=fus_col[r.name],
                    lw=1.8 if r is main else 0.9, zorder=3 if r is main else 2)
-            ends.append((v[-1], r.short_label[0].upper() + r.short_label[1:], fus_col[r.name]))
+            lab = r.short_label[0].upper() + r.short_label[1:]
+            if len(rs) > 1:
+                lab += f" ({len(rs)} runs)"
+            ends.append((v[-1], lab, fus_col[r.name]))
         ends.sort()
         ys = [e[0] for e in ends]
         for i in range(1, len(ys)):
@@ -863,6 +916,9 @@ def fig_main(w: FigureWriter, main: Run, others: List[Run], eeg_runs: List[Run])
                      f"{FA_BUDGET:g} FA/h line is the SVM's operating point; each EEG-alone encoder in "
                      "(a) at its better of frozen / fine-tuned; (d): the window-level test set, "
                      "the metric the runs are selected on"
+                     + (f"; the {main.short_label} band in (a), (d) is the min-max over its "
+                        f"{len(band_runs)} frozen training variants (the schedule sweep), the "
+                        "line the original configuration" if len(band_runs) > 1 else "")
                      + (f"; (c) corruption severity {sev:g}" if sev is not None else ""),
                      y=1.0, fontsize=6)
         _alignment_audit(fig, os.path.join(w.meta_dir, "fig_main.alignment.json"))
