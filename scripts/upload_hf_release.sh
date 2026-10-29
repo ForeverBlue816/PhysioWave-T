@@ -3,6 +3,11 @@
 # Upload a prepared release to Hugging Face, from a venv of its own.
 #
 #   bash scripts/upload_hf_release.sh ~/hf_release ForeverBlue/EEG
+#   PRIVATE=1 bash scripts/upload_hf_release.sh ~/hf_release_ecg ForeverBlue/ECG
+#
+# PRIVATE=1 creates the repo private and refuses to upload into one that
+# already exists and is public: `hf upload` alone creates a missing repo
+# PUBLIC, so a private release has to exist, private, before the first file.
 #
 # It asks before publishing, and refuses outright when stdin is not a terminal
 # unless CONFIRM=1 is set. Every check before that point is safe to run.
@@ -43,8 +48,9 @@ if [[ ! -f "${DIR}/README.md" ]]; then
     exit 1
 fi
 
+PRIVATE="${PRIVATE:-0}"
 echo "  release  ${DIR}"
-echo "  repo     ${REPO}"
+echo "  repo     ${REPO}$([[ "${PRIVATE}" == "1" ]] && echo "   (private)")"
 du -sh "${DIR}" | awk '{print "  size     " $1}'
 echo ""
 
@@ -118,8 +124,13 @@ if [[ "${CONFIRM:-}" != "1" ]]; then
     echo ""
     echo "  About to publish ${DIR}"
     echo "  to https://huggingface.co/${REPO} as ${who}."
-    echo "  This is public and the files stay in the repo's git history"
-    echo "  even if deleted afterwards."
+    if [[ "${PRIVATE}" == "1" ]]; then
+        echo "  The repo is created PRIVATE (only you and your orgs see it)."
+        echo "  Files stay in its git history even if deleted afterwards."
+    else
+        echo "  This is public and the files stay in the repo's git history"
+        echo "  even if deleted afterwards. PRIVATE=1 for a private repo."
+    fi
     if [[ -t 0 ]]; then
         # The exact string, quoted. "Type the repo id" is ambiguous the first
         # time someone meets it -- the name alone, or owner/name? -- and a
@@ -138,11 +149,42 @@ if [[ "${CONFIRM:-}" != "1" ]]; then
     fi
 fi
 
+# --- a private repo exists, private, before any file goes up ----------------- #
+if [[ "${PRIVATE}" == "1" ]]; then
+    env -u PYTHONPATH "${UPVENV}/bin/python" - "${REPO}" <<'PY' || exit 1
+import sys
+from huggingface_hub import HfApi
+
+repo = sys.argv[1]
+api = HfApi()
+if not api.repo_exists(repo, repo_type="model"):
+    api.create_repo(repo, repo_type="model", private=True)
+    print(f"  created {repo} (private)")
+info = api.repo_info(repo, repo_type="model")
+if not info.private:
+    print(f"ERROR: {repo} already exists and is PUBLIC. Nothing was uploaded.\n"
+          f"       Make it private on its settings page, or choose another name.",
+          file=sys.stderr)
+    sys.exit(1)
+print(f"  {repo} is private")
+PY
+fi
+
 echo ""
 echo "  uploading ${DIR} -> ${REPO}"
 env -u PYTHONPATH "${UPVENV}/bin/hf" upload "${REPO}" "${DIR}" . \
     --repo-type=model
 rc=$?
+if [[ ${rc} -eq 0 && "${PRIVATE}" == "1" ]]; then
+    # Checked again after the upload, so a repo flipped public while the
+    # files went up is reported rather than assumed.
+    env -u PYTHONPATH "${UPVENV}/bin/python" -c "
+import sys
+from huggingface_hub import HfApi
+p = HfApi().repo_info('${REPO}', repo_type='model').private
+print('  visibility after upload:', 'private' if p else 'PUBLIC')
+sys.exit(0 if p else 1)" || rc=1
+fi
 if [[ ${rc} -eq 0 ]]; then
     echo ""
     echo "  https://huggingface.co/${REPO}"
