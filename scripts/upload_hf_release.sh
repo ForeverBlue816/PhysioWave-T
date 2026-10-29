@@ -112,7 +112,11 @@ if ! env -u PYTHONPATH "${UPVENV}/bin/hf" auth whoami >/dev/null 2>&1; then
         exit 1
     fi
 fi
-who="$(env -u PYTHONPATH "${UPVENV}/bin/hf" auth whoami 2>/dev/null | head -1)"
+# The account name, from the API. `hf auth whoami` changed its first line to
+# "✓ Logged in" in 1.x, and that line is not who you are.
+who="$(env -u PYTHONPATH "${UPVENV}/bin/python" -c \
+       'from huggingface_hub import HfApi; print(HfApi().whoami()["name"])' 2>/dev/null)"
+[[ -n "${who}" ]] || who="$(env -u PYTHONPATH "${UPVENV}/bin/hf" auth whoami 2>/dev/null | head -1)"
 echo "  authenticated as ${who}"
 
 # --- confirm, because the next line publishes ------------------------------- #
