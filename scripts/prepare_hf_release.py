@@ -401,7 +401,7 @@ def model_card(repo_id: str, info: dict, rows, run_dir: str,
                published=(), aliases: Optional[dict] = None,
                modality: str = "eeg", routes=None, main_name: str = "",
                enc_name: str = "", main_label: str = "",
-               main_why: str = "") -> str:
+               main_why: str = "", final_epoch: Optional[int] = None) -> str:
     spec = SPECS[modality]
     routes = routes or {}
     n_routes = len(routes)
@@ -433,24 +433,43 @@ def model_card(repo_id: str, info: dict, rows, run_dir: str,
         v = (row if r is None else r).get(key)
         return fmt.format(v) if isinstance(v, (int, float)) else "n/a"
 
+    # The last epoch is the last CHECKPOINT, not the last metrics row: a run
+    # can be continued past its last logged validation (the sEMG run's
+    # latest.pth is epoch 45 with 39 rows), and a card that took the rows as
+    # the whole run would call an earlier file "the last epoch".
+    main_ep = info.get("epoch")
+    final_ep = final_epoch if isinstance(final_epoch, int) else (
+        (last.get("epoch") + 1) if isinstance(last.get("epoch"), int) else None)
+    final_row = _row_for(rows, final_ep) if isinstance(final_ep, int) else {}
+    if isinstance(final_ep, int) and final_row.get("epoch") != final_ep - 1:
+        final_row = {}                               # no logged row for it
+
     # Measured, not asserted: how far the released checkpoint and the last
     # epoch are apart on the loss that was trained.
     gap_line = ""
-    a, b = row.get("val/loss_total"), last.get("val/loss_total")
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and row is not last:
-        gap_line = (f"The released checkpoint and the last epoch differ by "
+    a, b = row.get("val/loss_total"), final_row.get("val/loss_total")
+    if main_ep == final_ep:
+        gap_line = ("The released checkpoint IS the last epoch, so there is no "
+                    "separate final file.")
+    elif isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        gap_line = (f"The released checkpoint (epoch {main_ep}) and the last one "
+                    f"(epoch {final_ep}) differ by "
                     f"{abs(a - b) / max(abs(b), 1e-12) * 100:.1f}% in validation "
                     f"total loss ({a:.4f} against {b:.4f}). Which transfers better is "
                     f"a downstream question, not a reconstruction-loss question -- "
                     f"measure both.")
-    elif row is last and rows:
-        gap_line = ("The released checkpoint IS the last epoch, so there is no "
-                    "separate final file.")
+    elif isinstance(final_ep, int):
+        gap_line = (f"The last checkpoint (epoch {final_ep}) has no logged validation "
+                    f"row, so it cannot be compared with the released one here. "
+                    f"Which transfers better is a downstream question -- measure both.")
 
-    n_epochs = len(rows) or tcfg.get("epochs", "?")
+    n_epochs = final_ep if isinstance(final_ep, int) else (len(rows) or tcfg.get("epochs", "?"))
     planned = tcfg.get("epochs")
     epochs_note = (f" of {planned} configured" if isinstance(planned, int)
                    and isinstance(n_epochs, int) and planned != n_epochs else "")
+    if rows and isinstance(n_epochs, int) and len(rows) < n_epochs:
+        epochs_note += (f"; validation was logged for the first {len(rows)}, "
+                        f"which is what `metrics_epoch.jsonl` holds")
 
     route_rows = "\n".join(
         f"| `{rid}` | {routes[rid].n_channels} | {routes[rid].sampling_rate:g} Hz |"
@@ -470,7 +489,7 @@ library_name: pytorch
 {spec['intro'].format(n=nw)}
 
 Trained for {n_epochs} epochs{epochs_note}
-({last.get('global_step', '?')} optimizer updates) on a mixture of public
+(the last logged validation at step {last.get('global_step', '?')}) on a mixture of public
 {spec['label']} corpora, {info['n_params'] / 1e6:.1f} M parameters. The files
 here are built around `{main_name}`, epoch {info.get('epoch', '?')}.
 
@@ -729,6 +748,7 @@ def main(argv=None) -> int:
     # detected and recorded as aliases.
     seen = {model_digest(best_dst): main_name}
     aliases, published = {}, []
+    final_epoch = None
     extra = [(args.final, f"{prefix}_final.pth", "last epoch")]
     if args.best != "best.pth":
         # The main file is not best.pth, so best.pth is a different bar and
@@ -749,6 +769,8 @@ def main(argv=None) -> int:
             continue
         dst = os.path.join(out_dir, dst_name)
         fi = strip_checkpoint(src, dst)
+        if src_name == args.final:
+            final_epoch = fi.get("epoch")
         digest = model_digest(dst)
         if digest in seen:
             os.remove(dst)
@@ -818,7 +840,7 @@ def main(argv=None) -> int:
                            published=published, aliases=aliases,
                            modality=modality, routes=routes, main_name=main_name,
                            enc_name=enc_name, main_label=main_label,
-                           main_why=args.main_why))
+                           main_why=args.main_why, final_epoch=final_epoch))
     print(f"  README.md   (model card, {len(rows)} epochs of metrics read)")
 
     # Every file, not only the checkpoints. The first version of this check
